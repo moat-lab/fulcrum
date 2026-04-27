@@ -1,8 +1,10 @@
 import { execSync } from 'child_process'
 import { db } from '../db'
 import { tasks } from '../db/schema'
-import { isNotNull, and, notInArray } from 'drizzle-orm'
+import { isNotNull, isNull, and, eq, notInArray } from 'drizzle-orm'
 import { updateTaskStatus } from './task-status'
+import { gitPull } from '../lib/git-utils'
+import { sendNotification } from './notification-service'
 import { log } from '../lib/logger'
 
 const POLL_INTERVAL = 60_000 // 60 seconds
@@ -49,14 +51,18 @@ function checkPrStatus(prUrl: string): PRStatus | null {
 
 // Poll and update task statuses
 async function pollPRs(): Promise<void> {
-  // Get all tasks with prUrl that are not DONE or CANCELED
+  // Get all tasks with prUrl that are not DONE or CANCELED.
+  // The isNull(prAutoClosedAt) clause guarantees we never auto-close the same
+  // task twice — once stamped, the user can reopen the task to keep working
+  // without the monitor re-closing it on the next poll.
   const tasksWithPR = db
     .select()
     .from(tasks)
     .where(
       and(
         isNotNull(tasks.prUrl),
-        notInArray(tasks.status, ['DONE', 'CANCELED'])
+        notInArray(tasks.status, ['DONE', 'CANCELED']),
+        isNull(tasks.prAutoClosedAt)
       )
     )
     .all()
@@ -72,6 +78,40 @@ async function pollPRs(): Promise<void> {
     if (status.state === 'MERGED' || status.mergedAt) {
       await updateTaskStatus(task.id, 'DONE')
       log.pr.info('Task marked as DONE (PR merged)', { taskId: task.id, taskTitle: task.title })
+
+      // Stamp the auto-close marker so the next poll skips this task even if
+      // the user moves it back out of DONE.
+      db.update(tasks)
+        .set({ prAutoClosedAt: new Date().toISOString() })
+        .where(eq(tasks.id, task.id))
+        .run()
+
+      // Best-effort: pull the merged commits into the main repo checkout.
+      // Failure must not prevent task closure (already done above).
+      if (task.repoPath) {
+        const result = gitPull(task.repoPath)
+        if (!result.success) {
+          log.pr.warn('git pull failed after PR-merge auto-close', {
+            taskId: task.id,
+            repoPath: task.repoPath,
+            error: result.error,
+          })
+          sendNotification({
+            title: 'Git pull failed',
+            message: `Could not pull merged changes into ${task.repoPath}: ${result.error ?? 'unknown error'}`,
+            type: 'deployment_failed',
+            taskId: task.id,
+            taskTitle: task.title,
+          }).catch((err) =>
+            log.pr.error('Failed to send git-pull-failed notification', { error: String(err) })
+          )
+        } else {
+          log.pr.info('Pulled merged changes into main repo', {
+            taskId: task.id,
+            repoPath: task.repoPath,
+          })
+        }
+      }
     }
   }
 }

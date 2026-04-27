@@ -512,6 +512,13 @@
       "when": 1772362400000,
       "tag": "0072_add_project_startup_script",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1777267000000,
+      "tag": "0073_add_task_pr_auto_closed_at",
+      "breakpoints": true
     }
   ]
 }

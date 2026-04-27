@@ -14,6 +14,7 @@ export const tasks = sqliteTable('tasks', {
   worktreePath: text('worktree_path'),
   viewState: text('view_state'), // JSON: { activeTab, browserUrl, diffOptions }
   prUrl: text('pr_url'), // GitHub PR URL for auto-completion tracking
+  prAutoClosedAt: text('pr_auto_closed_at'), // ISO timestamp; once set, PR monitor never auto-closes this task again
   startupScript: text('startup_script'), // Command to run after worktree creation
   agent: text('agent').notNull().default('claude'), // AI agent: 'claude' | 'opencode'
   aiMode: text('ai_mode'), // 'default' | 'plan' | null - AI mode for agent startup

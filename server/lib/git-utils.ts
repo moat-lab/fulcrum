@@ -94,6 +94,26 @@ export function fetchIfRemoteRef(repoPath: string, baseBranch: string): void {
 }
 
 /**
+ * Run `git pull` in the given repository directory.
+ * Best-effort: returns success/error rather than throwing.
+ */
+export function gitPull(repoPath: string): { success: boolean; error?: string } {
+  try {
+    execSync('git pull', {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      timeout: 30_000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    return { success: true }
+  } catch (err) {
+    const stderr = (err as { stderr?: Buffer | string })?.stderr
+    const detail = stderr ? String(stderr).trim() : err instanceof Error ? err.message : String(err)
+    return { success: false, error: detail || 'git pull failed' }
+  }
+}
+
+/**
  * Create a git worktree with a new branch based on baseBranch.
  * Fetches the remote ref first if baseBranch is a remote tracking branch.
  */
