@@ -684,10 +684,16 @@ export const RootStore = types
         }
         terminal.setAttachCleanup(cleanup)
 
-        // Request attachment to get buffer
+        // Request attachment to get buffer. Pass current xterm dimensions so
+        // the server can resize the PTY (and SIGWINCH the running TUI) before
+        // capturing the buffer — keeps replay content sized to what we render.
         getWs().send({
           type: 'terminal:attach',
-          payload: { terminalId },
+          payload: {
+            terminalId,
+            cols: xterm.cols,
+            rows: xterm.rows,
+          },
         })
 
         return cleanup
@@ -695,9 +701,13 @@ export const RootStore = types
 
       /** Request terminal attachment (low-level, just sends message) */
       requestAttach(terminalId: string) {
+        const terminal = self.terminals.get(terminalId)
+        const xterm = terminal?.xterm
         getWs().send({
           type: 'terminal:attach',
-          payload: { terminalId },
+          payload: xterm
+            ? { terminalId, cols: xterm.cols, rows: xterm.rows }
+            : { terminalId },
         })
       },
 
@@ -1020,19 +1030,29 @@ export const RootStore = types
                 terminal.setCursorVisible(false)
               }
 
-              // Only scroll to bottom if:
-              // 1. Cursor is visible (not a TUI app managing viewport)
-              // 2. Auto-scroll setting is enabled
-              // When cursor is hidden (TUI app managing viewport), skip auto-scroll
-              // to avoid interfering with the TUI's viewport management
-              // (fixes cursor position issues in xterm 6.0.0+)
-              xterm.write(data, () => {
-                if (terminal.cursorVisible && self.autoScrollToBottom) {
-                  requestAnimationFrame(() => {
-                    xterm.scrollToBottom()
+              // Serialize through the per-terminal write chain so this chunk
+              // can never be parsed AFTER a subsequent reset+replay (which
+              // would draw onto the freshly-reset screen ahead of the buffer).
+              const next = terminal.writeChain.then(
+                () =>
+                  new Promise<void>((resolve) => {
+                    xterm.write(data, () => {
+                      // Only scroll to bottom if:
+                      // 1. Cursor is visible (not a TUI app managing viewport)
+                      // 2. Auto-scroll setting is enabled
+                      // When cursor is hidden (TUI app managing viewport), skip
+                      // auto-scroll to avoid interfering with the TUI's viewport
+                      // management (fixes cursor position issues in xterm 6.0.0+)
+                      if (terminal.cursorVisible && self.autoScrollToBottom) {
+                        requestAnimationFrame(() => {
+                          xterm.scrollToBottom()
+                        })
+                      }
+                      resolve()
+                    })
                   })
-                }
-              })
+              )
+              terminal.setWriteChain(next)
             } else {
               getWs().log.ws.warn('terminal:output but no xterm', { terminalId })
             }
@@ -1070,16 +1090,33 @@ export const RootStore = types
             }
 
             if (terminal?.xterm) {
-              // Reset terminal to clean state before replaying buffer
-              terminal.xterm.reset()
-              if (buffer) {
-                // Use write callback to ensure buffer is fully processed before invoking callback.
-                // This fixes a race condition where reset() makes cursor visible, and the callback
-                // (which triggers doFit) runs before the buffer's hide-cursor sequence is processed.
-                terminal.xterm.write(buffer, invokeCallback)
-              } else {
-                invokeCallback()
-              }
+              const xterm = terminal.xterm
+              // Serialize the reset+replay through the per-terminal write chain.
+              // Awaiting the chain first ensures any in-flight terminal:output
+              // chunks finish parsing BEFORE we call reset() — otherwise those
+              // chunks would draw onto the cleared screen ahead of the buffer
+              // and produce overlay garbling.
+              const next = terminal.writeChain.then(
+                () =>
+                  new Promise<void>((resolve) => {
+                    xterm.reset()
+                    if (buffer) {
+                      // Use write callback to ensure buffer is fully processed
+                      // before invoking the attached callback. This fixes a
+                      // race where reset() makes cursor visible and the
+                      // callback (which triggers doFit) runs before the
+                      // buffer's hide-cursor sequence is processed.
+                      xterm.write(buffer, () => {
+                        invokeCallback()
+                        resolve()
+                      })
+                    } else {
+                      invokeCallback()
+                      resolve()
+                    }
+                  })
+              )
+              terminal.setWriteChain(next)
             } else {
               invokeCallback()
             }
@@ -1090,7 +1127,17 @@ export const RootStore = types
             const { terminalId } = payload as { terminalId: string }
             const terminal = self.terminals.get(terminalId)
             if (terminal?.xterm) {
-              terminal.xterm.reset()
+              const xterm = terminal.xterm
+              // Serialize through the chain so a pending output chunk doesn't
+              // draw into the cleared screen after the reset.
+              const next = terminal.writeChain.then(
+                () =>
+                  new Promise<void>((resolve) => {
+                    xterm.reset()
+                    resolve()
+                  })
+              )
+              terminal.setWriteChain(next)
             }
             break
           }

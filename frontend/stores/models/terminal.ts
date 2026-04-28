@@ -50,6 +50,16 @@ export const TerminalModel = types
      * the TUI's viewport management (fixes cursor position issues in xterm 6.0.0+).
      */
     cursorVisible: true,
+    /**
+     * Promise chain serializing all xterm.write / reset+replay operations for
+     * this terminal. xterm.write() returns immediately and parses asynchronously,
+     * so a synchronous reset() between two queued writes will clear the screen
+     * while earlier-queued chunks are still in the parser — they then draw onto
+     * the freshly-reset screen, ahead of the buffer replay, producing garbled
+     * overlays. Routing every operation through this chain keeps reset and
+     * replay strictly ordered with respect to live output.
+     */
+    writeChain: Promise.resolve() as Promise<void>,
   }))
   .views((self) => ({
     /** Whether the terminal is alive (running) */
@@ -77,6 +87,14 @@ export const TerminalModel = types
     /** Set the xterm.js terminal instance */
     setXterm(xterm: AnyTerminal | null) {
       self.xterm = xterm
+      // Reset the write chain so a stale promise from a prior xterm instance
+      // can't keep operations queued against a terminal that no longer exists.
+      self.writeChain = Promise.resolve()
+    },
+
+    /** Replace the per-terminal write-serialization chain. */
+    setWriteChain(chain: Promise<void>) {
+      self.writeChain = chain
     },
 
     /** Set follow cursor state for VibeTunnel scroll management */

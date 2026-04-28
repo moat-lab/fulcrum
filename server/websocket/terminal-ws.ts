@@ -278,10 +278,24 @@ export const terminalWebSocketHandlers: WSEvents = {
         }
 
         case 'terminal:attach': {
-          const terminalId = message.payload.terminalId
+          const { terminalId, cols, rows } = message.payload
           // Ensure terminal is attached to dtach (connects PTY if not already)
           // This is async because it polls for the socket to exist (race condition fix)
           await ptyManager.attach(terminalId)
+
+          // Resize the PTY to the client's current dimensions BEFORE capturing
+          // the replay buffer. This SIGWINCHes any running TUI so it redraws at
+          // the size the client will render at. Without this, the buffer can
+          // contain a frame rendered at the previous size — when xterm replays
+          // it at the client's actual size, status bars and cursor-positioning
+          // sequences land at the wrong rows/columns and overlay other content.
+          if (typeof cols === 'number' && typeof rows === 'number') {
+            ptyManager.resize(terminalId, cols, rows)
+            // Brief settle so the TUI has a chance to emit a redraw frame at
+            // the new dimensions before we snapshot the buffer.
+            await new Promise((resolve) => setTimeout(resolve, 60))
+          }
+
           const buffer = ptyManager.getBuffer(terminalId)
           log.ws.info('terminal:attach adding to attachedTerminals', {
             terminalId,
