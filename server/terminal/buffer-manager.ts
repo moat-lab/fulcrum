@@ -122,9 +122,10 @@ export class BufferManager {
       .replace(new RegExp(`${ESC}\\[\\?47[hl]`, 'g'), '')
       // ESC[?1047h/l - alternate screen without cursor save
       .replace(new RegExp(`${ESC}\\[\\?1047[hl]`, 'g'), '')
-      // DECRQSS responses - terminal capability query responses
-      // Pattern: digits;digits$y (e.g., "1016;2$y2027;0$y...")
-      .replace(/\d+;\d+\$y/g, '')
+      // DECRQSS/DECRPM responses - terminal capability query responses.
+      // Pattern examples: "1016;2$y", "2027;0$y", ESC[?2026;2$y.
+      .replace(new RegExp(`${ESC}\\[\\??\\d+;\\d+\\$y`, 'g'), '')
+      .replace(/\??\d+;\d+\$y/g, '')
       // CPR (Cursor Position Report) responses - ESC[row;colR
       .replace(new RegExp(`${ESC}\\[\\d+;\\d+R`, 'g'), '')
       // DA (Device Attributes) responses - ESC[...c
