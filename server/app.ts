@@ -97,7 +97,7 @@ export function createApp() {
   app.route('/api/copier', copierRoutes)
   app.route('/api/github', githubRoutes)
   app.route('/api/monitoring', monitoringRoutes)
-  app.route('/api/server', serverExposeRoutes)
+  app.route('/api/server/expose', serverExposeRoutes)
   app.route('/api/system', systemRoutes)
   app.route('/api/exec', execRoutes)
   app.route('/api/apps', appsRoutes)
