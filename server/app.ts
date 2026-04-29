@@ -40,6 +40,7 @@ import memoryRoutes from './routes/memory'
 import memoryFileRoutes from './routes/memory-file'
 import searchRoutes from './routes/search'
 import scratchDirsRoutes from './routes/scratch-dirs'
+import serverExposeRoutes from './routes/server-expose'
 import { writeEntry } from './lib/logger'
 import type { LogEntry } from '../shared/logger'
 
@@ -96,6 +97,7 @@ export function createApp() {
   app.route('/api/copier', copierRoutes)
   app.route('/api/github', githubRoutes)
   app.route('/api/monitoring', monitoringRoutes)
+  app.route('/api/server', serverExposeRoutes)
   app.route('/api/system', systemRoutes)
   app.route('/api/exec', execRoutes)
   app.route('/api/apps', appsRoutes)
