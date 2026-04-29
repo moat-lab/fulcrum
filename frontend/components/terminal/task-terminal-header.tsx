@@ -189,7 +189,7 @@ export function TaskTerminalHeader({
                 render={
                   <button
                     type="button"
-                    className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_COLORS[taskStatus]}`}
+                    className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_COLORS[taskStatus]} ${updateTaskStatus.isPending ? 'animate-pulse' : ''}`}
                   />
                 }
               >
