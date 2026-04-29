@@ -1,7 +1,7 @@
 {
   "name": "@knowsuchagency/fulcrum",
   "private": true,
-  "version": "5.4.0",
+  "version": "5.5.0",
   "description": "Harness Attention. Orchestrate Agents. Ship.",
   "license": "PolyForm-Perimeter-1.0.0",
   "type": "module",
@@ -47,7 +47,9 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-serialize": "^0.14.0",
     "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/headless": "^6.0.0",
     "@xterm/xterm": "^6.0.0",
     "bun-pty": "^0.4.2",
     "citty": "^0.1.6",

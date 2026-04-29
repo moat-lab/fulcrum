@@ -285,16 +285,16 @@ export const terminalWebSocketHandlers: WSEvents = {
 
           // Resize the PTY to the client's current dimensions BEFORE capturing
           // the replay buffer. This SIGWINCHes any running TUI so it redraws at
-          // the size the client will render at. Without this, the buffer can
-          // contain a frame rendered at the previous size — when xterm replays
-          // it at the client's actual size, status bars and cursor-positioning
-          // sequences land at the wrong rows/columns and overlay other content.
+          // the size the client will render at, and resizes the canonical
+          // emulator so its serialization is at matching dimensions.
           if (typeof cols === 'number' && typeof rows === 'number') {
             ptyManager.resize(terminalId, cols, rows)
-            // Brief settle so the TUI has a chance to emit a redraw frame at
-            // the new dimensions before we snapshot the buffer.
-            await new Promise((resolve) => setTimeout(resolve, 60))
           }
+          // Wait for the emulator to drain pending writes so the snapshot is
+          // consistent. Replaces the previous 60 ms setTimeout guess with a
+          // deterministic boundary — works regardless of how slowly the TUI
+          // emits its post-SIGWINCH redraw.
+          await ptyManager.flushPending(terminalId)
 
           const buffer = ptyManager.getBuffer(terminalId)
           log.ws.info('terminal:attach adding to attachedTerminals', {

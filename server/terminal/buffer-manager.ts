@@ -1,13 +1,28 @@
-// Buffer manager for terminal scrollback
-// Stores raw terminal output without parsing to preserve escape sequences
+// Buffer manager for terminal scrollback.
+//
+// Backed by an @xterm/headless instance that maintains canonical screen state.
+// All escape-sequence handling (alternate screen, mouse modes, OSC, DCS,
+// cursor positioning, etc.) goes through the emulator's parser instead of
+// after-the-fact regex filtering. The serialize addon turns the live screen
+// into ANSI for client replay.
+//
+// Disk persistence keeps the v3 raw-bytes format so history survives daemon
+// restarts; on load we replay the bytes through a fresh emulator to rebuild
+// canonical state.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import * as path from 'path'
+import { SerializeAddon } from '@xterm/addon-serialize'
+import { Terminal } from '@xterm/headless'
 import { getFulcrumDir } from '../lib/settings'
 import { log } from '../lib/logger'
 
-// 1MB total buffer size limit
+// 1MB raw-bytes cap (disk-persistence ring buffer).
 const MAX_BUFFER_BYTES = 1_000_000
+
+// Emulator scrollback in lines. ~5k lines comfortably fits any normal session
+// while bounding emulator memory growth (xterm.js trims past this).
+const SCROLLBACK_LINES = 5000
 
 function getBuffersDir(): string {
   const dir = path.join(getFulcrumDir(), 'buffers')
@@ -31,152 +46,119 @@ interface BufferFileV3 {
     anyEvent: boolean
     sgr: boolean
   }
-  cursorVisible?: boolean // ESC[?25h/l - DECTCEM cursor visibility
+  cursorVisible?: boolean
 }
 
 export class BufferManager {
-  private chunks: BufferChunk[] = []
-  private totalBytes: number = 0
+  private terminal: Terminal
+  private serializer: SerializeAddon
   private terminalId: string | null = null
 
-  // Track mouse tracking mode state so we can restore it after buffer replay.
-  // When old chunks are evicted, we may lose the original enable sequences,
-  // but we still know the current state and can re-apply it.
-  private mouseMode = {
-    x10: false, // ESC[?1000h/l - Basic mouse tracking (X10)
-    buttonEvent: false, // ESC[?1002h/l - Button event tracking
-    anyEvent: false, // ESC[?1003h/l - Any event (all motion) tracking
-    sgr: false, // ESC[?1006h/l - SGR extended mouse mode
-  }
+  // Raw chunks kept for disk persistence so history survives daemon restart.
+  // The emulator is the source of truth for current screen state; this ring
+  // buffer just lets us re-hydrate a fresh emulator on next process start.
+  private chunks: BufferChunk[] = []
+  private totalBytes: number = 0
 
-  // Track cursor visibility state (DECTCEM).
-  // TUIs like Claude Code hide the native cursor and render their own.
-  // When buffer is replayed, we need to restore this state.
-  private cursorVisible = true // ESC[?25h (show) / ESC[?25l (hide)
+  // Cursor visibility (DECTCEM). The serialize addon emits screen content but
+  // does not restore mode state — TUIs that hide the cursor (Claude Code etc.)
+  // need this rehydrated explicitly or the cursor reappears in the wrong place
+  // after replay.
+  private cursorVisible = true
+
+  constructor(cols: number = 80, rows: number = 24) {
+    this.terminal = new Terminal({
+      cols,
+      rows,
+      scrollback: SCROLLBACK_LINES,
+      allowProposedApi: true,
+    })
+    this.serializer = new SerializeAddon()
+    this.terminal.loadAddon(this.serializer)
+  }
 
   setTerminalId(id: string): void {
     this.terminalId = id
   }
 
   append(data: string): void {
-    // Track terminal state changes before storing
-    this.trackTerminalState(data)
+    // Track DECTCEM for replay rehydration. We only watch one mode here;
+    // everything else (mouse, alt-screen, OSC, DCS, etc.) is canonicalized
+    // by the emulator itself.
+    const ESC = ''
+    if (data.includes(`${ESC}[?25h`)) this.cursorVisible = true
+    if (data.includes(`${ESC}[?25l`)) this.cursorVisible = false
 
-    // Store raw data without any parsing - preserves escape sequences
+    // Persist raw bytes for cross-restart history.
     this.chunks.push({ data, timestamp: Date.now() })
     this.totalBytes += data.length
-
-    // Evict oldest chunks if over limit
     while (this.totalBytes > MAX_BUFFER_BYTES && this.chunks.length > 1) {
       const removed = this.chunks.shift()!
       this.totalBytes -= removed.data.length
     }
+
+    // Feed the canonical emulator. Its parser consumes any escape sequences
+    // (including DECRQSS responses, OSC color queries, DA reports, etc.) so
+    // they never appear in serialized output.
+    this.terminal.write(data)
   }
 
   /**
-   * Track terminal state sequences (mouse mode, cursor visibility) in the output.
-   * This allows us to restore the correct state even if the original
-   * sequences were evicted from the buffer.
+   * Build a snapshot for client replay. Output is ANSI bytes that, when
+   * written into a fresh xterm at matching cols/rows, reproduce the current
+   * screen.
    */
-  private trackTerminalState(data: string): void {
-    const ESC = '\u001b'
-    // Check for mouse mode sequences
-    if (new RegExp(`${ESC}\\[\\?1000h`).test(data)) this.mouseMode.x10 = true
-    if (new RegExp(`${ESC}\\[\\?1000l`).test(data)) this.mouseMode.x10 = false
-    if (new RegExp(`${ESC}\\[\\?1002h`).test(data)) this.mouseMode.buttonEvent = true
-    if (new RegExp(`${ESC}\\[\\?1002l`).test(data)) this.mouseMode.buttonEvent = false
-    if (new RegExp(`${ESC}\\[\\?1003h`).test(data)) this.mouseMode.anyEvent = true
-    if (new RegExp(`${ESC}\\[\\?1003l`).test(data)) this.mouseMode.anyEvent = false
-    if (new RegExp(`${ESC}\\[\\?1006h`).test(data)) this.mouseMode.sgr = true
-    if (new RegExp(`${ESC}\\[\\?1006l`).test(data)) this.mouseMode.sgr = false
-    // Check for cursor visibility sequences (DECTCEM)
-    if (new RegExp(`${ESC}\\[\\?25h`).test(data)) this.cursorVisible = true
-    if (new RegExp(`${ESC}\\[\\?25l`).test(data)) this.cursorVisible = false
-  }
-
-  /**
-   * Generate escape sequences to restore the current mouse mode state.
-   */
-  private getMouseModeSequences(): string {
-    const ESC = '\u001b'
-    let sequences = ''
-    if (this.mouseMode.x10) sequences += `${ESC}[?1000h`
-    if (this.mouseMode.buttonEvent) sequences += `${ESC}[?1002h`
-    if (this.mouseMode.anyEvent) sequences += `${ESC}[?1003h`
-    if (this.mouseMode.sgr) sequences += `${ESC}[?1006h`
-    return sequences
-  }
-
-  /**
-   * Filter out escape sequences that cause display issues when replaying buffer.
-   */
-  private filterProblematicSequences(data: string): string {
-    // Using RegExp constructor to avoid eslint no-control-regex warnings
-    // ESC = \x1b = \u001b
-    const ESC = '\u001b'
-    return data
-      // Alternate screen buffer sequences (TUI apps like OpenCode)
-      // ESC[?1049h/l - save cursor & switch to/from alternate screen (most common)
-      .replace(new RegExp(`${ESC}\\[\\?1049[hl]`, 'g'), '')
-      // ESC[?47h/l - older alternate screen switch
-      .replace(new RegExp(`${ESC}\\[\\?47[hl]`, 'g'), '')
-      // ESC[?1047h/l - alternate screen without cursor save
-      .replace(new RegExp(`${ESC}\\[\\?1047[hl]`, 'g'), '')
-      // DECRQSS/DECRPM responses - terminal capability query responses.
-      // Pattern examples: "1016;2$y", "2027;0$y", ESC[?2026;2$y.
-      .replace(new RegExp(`${ESC}\\[\\??\\d+;\\d+\\$y`, 'g'), '')
-      .replace(/\??\d+;\d+\$y/g, '')
-      // CPR (Cursor Position Report) responses - ESC[row;colR
-      .replace(new RegExp(`${ESC}\\[\\d+;\\d+R`, 'g'), '')
-      // DA (Device Attributes) responses - ESC[...c
-      .replace(new RegExp(`${ESC}\\[[\\?>\\d;]*c`, 'g'), '')
-      // Bare R characters from stripped responses
-      .replace(/(?<![a-zA-Z])R+(?![a-zA-Z])/g, '')
-  }
-
   getContents(): string {
-    const raw = this.chunks.map((c) => c.data).join('')
-    // Don't restore mouse mode - it's application-specific state, not display state.
-    // If a TUI that enabled mouse mode is still running, it will re-enable it when it redraws.
-    // If the TUI exited, the shell doesn't need mouse mode and restoring it causes garbage
-    // sequences like [<0;47;33m to appear when clicking in the terminal.
-    let output = this.filterProblematicSequences(raw)
-    // Restore cursor visibility state if cursor was hidden.
-    // TUIs like Claude Code hide the native cursor and render their own.
-    // Unlike mouse mode, cursor visibility is display state that must be preserved,
-    // otherwise xterm.reset() will show the cursor and it will appear incorrectly.
+    let output = this.serializer.serialize({ scrollback: SCROLLBACK_LINES })
     if (!this.cursorVisible) {
-      const ESC = '\u001b'
+      const ESC = ''
       output = `${ESC}[?25l` + output
     }
     return output
   }
 
+  resize(cols: number, rows: number): void {
+    this.terminal.resize(cols, rows)
+  }
+
+  /**
+   * Resolve once the emulator finishes parsing all in-flight writes. Used by
+   * `terminal:attach` to capture a deterministic snapshot after SIGWINCH —
+   * replaces the previous fixed 60 ms setTimeout guess.
+   */
+  flushPending(): Promise<void> {
+    return new Promise((resolve) => {
+      this.terminal.write('', () => resolve())
+    })
+  }
+
   clear(): void {
+    this.terminal.reset()
     this.chunks = []
     this.totalBytes = 0
-    this.mouseMode = { x10: false, buttonEvent: false, anyEvent: false, sgr: false }
     this.cursorVisible = true
   }
 
   getLineCount(): number {
-    // Approximate line count for compatibility
-    const content = this.getContents()
-    return content.split('\n').length
+    return this.terminal.buffer.active.length
   }
 
-  // Save buffer to disk using base64 encoding to preserve all bytes
+  // Save raw chunks to disk in v3 format. We persist raw bytes (rather than a
+  // serialized snapshot) so the disk format is independent of the specific
+  // emulator we use — load-time replay rebuilds canonical state.
   saveToDisk(): void {
     if (!this.terminalId) return
     const filePath = path.join(getBuffersDir(), `${this.terminalId}.buf`)
     try {
-      // Get raw content without prepending state sequences (we save state separately)
-      const raw = this.chunks.map((c) => c.data).join('')
-      const content = this.filterProblematicSequences(raw)
+      const content = this.chunks.map((c) => c.data).join('')
       const fileData: BufferFileV3 = {
         version: 3,
         content: Buffer.from(content).toString('base64'),
-        mouseMode: { ...this.mouseMode },
+        // Mouse mode no longer tracked here. TUIs re-enable it on next redraw,
+        // and prior versions also chose not to restore it (would cause click
+        // garbage when no consumer is running). Field kept zero-valued for
+        // backward compatibility with v3 readers.
+        mouseMode: { x10: false, buttonEvent: false, anyEvent: false, sgr: false },
         cursorVisible: this.cursorVisible,
       }
       writeFileSync(filePath, JSON.stringify(fileData), 'utf-8')
@@ -185,54 +167,47 @@ export class BufferManager {
     }
   }
 
-  // Load buffer from disk, auto-migrating legacy formats
   loadFromDisk(): void {
     if (!this.terminalId) return
     const filePath = path.join(getBuffersDir(), `${this.terminalId}.buf`)
     try {
-      if (existsSync(filePath)) {
-        const raw = readFileSync(filePath, 'utf-8')
+      if (!existsSync(filePath)) {
+        log.buffer.debug('No buffer file', { terminalId: this.terminalId })
+        return
+      }
 
-        let content: string
-        try {
-          const parsed = JSON.parse(raw)
-          if (parsed.version === 3 && typeof parsed.content === 'string') {
-            // V3 format: base64 encoded with mouse mode and cursor visibility state
-            content = Buffer.from(parsed.content, 'base64').toString()
-            if (parsed.mouseMode) {
-              this.mouseMode = {
-                x10: !!parsed.mouseMode.x10,
-                buttonEvent: !!parsed.mouseMode.buttonEvent,
-                anyEvent: !!parsed.mouseMode.anyEvent,
-                sgr: !!parsed.mouseMode.sgr,
-              }
-            }
-            // Restore cursor visibility (default to true for backwards compatibility)
-            this.cursorVisible = parsed.cursorVisible !== false
-          } else if (parsed.version === 2 && typeof parsed.content === 'string') {
-            // V2 format: base64 encoded (no mouse mode or cursor state)
-            content = Buffer.from(parsed.content, 'base64').toString()
-          } else {
-            // Unknown JSON format, treat as legacy
-            content = raw
-          }
-        } catch {
-          // Not JSON, legacy plain text format
+      const raw = readFileSync(filePath, 'utf-8')
+      let content: string
+
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed.version === 3 && typeof parsed.content === 'string') {
+          content = Buffer.from(parsed.content, 'base64').toString()
+          this.cursorVisible = parsed.cursorVisible !== false
+        } else if (parsed.version === 2 && typeof parsed.content === 'string') {
+          content = Buffer.from(parsed.content, 'base64').toString()
+        } else {
           content = raw
         }
-
-        this.chunks = [{ data: content, timestamp: Date.now() }]
-        this.totalBytes = content.length
-        log.buffer.debug('Loaded buffer', { terminalId: this.terminalId, bytes: this.totalBytes })
-      } else {
-        log.buffer.debug('No buffer file', { terminalId: this.terminalId })
+      } catch {
+        // Legacy plain-text format
+        content = raw
       }
+
+      // Seed the chunk ring buffer so the next save preserves loaded history.
+      this.chunks = [{ data: content, timestamp: Date.now() }]
+      this.totalBytes = content.length
+
+      // Hydrate the emulator. The parser consumes escape sequences and rebuilds
+      // canonical screen state.
+      this.terminal.write(content)
+
+      log.buffer.debug('Loaded buffer', { terminalId: this.terminalId, bytes: this.totalBytes })
     } catch (err) {
       log.buffer.error('Failed to load buffer', { terminalId: this.terminalId, error: String(err) })
     }
   }
 
-  // Delete buffer file from disk
   deleteFromDisk(): void {
     if (!this.terminalId) return
     const filePath = path.join(getBuffersDir(), `${this.terminalId}.buf`)
@@ -243,5 +218,21 @@ export class BufferManager {
     } catch {
       // Ignore errors
     }
+  }
+
+  /** Test-only: visible text in the emulator's active buffer. */
+  _visibleText(): string {
+    const lines: string[] = []
+    const buffer = this.terminal.buffer.active
+    for (let i = 0; i < buffer.length; i++) {
+      const line = buffer.getLine(i)
+      if (line) lines.push(line.translateToString(true))
+    }
+    return lines.join('\n').replace(/\s+$/g, '')
+  }
+
+  /** Test-only: dispose the underlying emulator. */
+  _dispose(): void {
+    this.terminal.dispose()
   }
 }

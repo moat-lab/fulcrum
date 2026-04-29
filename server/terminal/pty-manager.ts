@@ -278,6 +278,12 @@ export class PTYManager {
     return session.getBuffer()
   }
 
+  async flushPending(terminalId: string): Promise<void> {
+    const session = this.sessions.get(terminalId)
+    if (!session) return
+    await session.flushPending()
+  }
+
   clearBuffer(terminalId: string): boolean {
     const session = this.sessions.get(terminalId)
     if (!session) {
