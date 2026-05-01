@@ -5,11 +5,10 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  LinkSquare02Icon,
   RefreshIcon,
 } from '@hugeicons/core-free-icons'
 import { useBrowserUrl } from '@/hooks/use-browser-url'
-import { useTailscaleHostname } from '@/hooks/use-config'
-import { rewriteLocalhostForPreview } from '@/lib/preview-url'
 
 interface BrowserPreviewProps {
   taskId: string
@@ -17,16 +16,9 @@ interface BrowserPreviewProps {
 
 export function BrowserPreview({ taskId }: BrowserPreviewProps) {
   const { url, setUrl } = useBrowserUrl(taskId)
-  const { data: tailscaleHostname } = useTailscaleHostname()
   const [inputValue, setInputValue] = useState(url)
   const [key, setKey] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
-
-  const iframeSrc = rewriteLocalhostForPreview(
-    url,
-    tailscaleHostname,
-    typeof window !== 'undefined' ? window.location.host : '',
-  )
 
   // Sync input value when URL changes (e.g., on initial load)
   useEffect(() => {
@@ -48,6 +40,11 @@ export function BrowserPreview({ taskId }: BrowserPreviewProps) {
   const handleRefresh = useCallback(() => {
     setKey((k) => k + 1)
   }, [])
+
+  const handleOpenInNewTab = useCallback(() => {
+    if (!url) return
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [url])
 
   const handleNavigate = useCallback(
     (e: React.FormEvent) => {
@@ -84,6 +81,16 @@ export function BrowserPreview({ taskId }: BrowserPreviewProps) {
             placeholder="Enter URL..."
           />
         </form>
+
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={handleOpenInNewTab}
+          disabled={!url}
+          title="Open in new tab"
+        >
+          <HugeiconsIcon icon={LinkSquare02Icon} size={14} strokeWidth={2} />
+        </Button>
       </div>
 
       {/* Browser content */}
@@ -91,10 +98,9 @@ export function BrowserPreview({ taskId }: BrowserPreviewProps) {
         <iframe
           ref={iframeRef}
           key={key}
-          src={iframeSrc}
+          src={url}
           className="h-full w-full border-0"
           title="Browser Preview"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           onLoad={handleIframeLoad}
         />
       </div>
