@@ -15,28 +15,42 @@ import {
 const app = new Hono()
 
 interface TailscaleStatus {
-  Self?: { DNSName?: string; HostName?: string }
+  Self?: { DNSName?: string; HostName?: string; TailscaleIPs?: string[] }
   MagicDNSSuffix?: string
 }
 
-/** Best-effort Tailscale hostname detection. Returns null if Tailscale is not available. */
-function detectTailscaleHostname(): string | null {
+function readTailscaleStatus(): TailscaleStatus | null {
   try {
     const raw = execSync('tailscale status --json', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 5000,
     })
-    const status = JSON.parse(raw) as TailscaleStatus
-    const dnsName = status.Self?.DNSName
-    if (dnsName) return dnsName.replace(/\.$/, '')
-    if (status.Self?.HostName && status.MagicDNSSuffix) {
-      return `${status.Self.HostName}.${status.MagicDNSSuffix}`
-    }
+    return JSON.parse(raw) as TailscaleStatus
   } catch {
     // tailscale not installed, not running, or not authenticated
+    return null
+  }
+}
+
+/** Best-effort Tailscale hostname detection. Returns null if Tailscale is not available. */
+function detectTailscaleHostname(): string | null {
+  const status = readTailscaleStatus()
+  if (!status) return null
+  const dnsName = status.Self?.DNSName
+  if (dnsName) return dnsName.replace(/\.$/, '')
+  if (status.Self?.HostName && status.MagicDNSSuffix) {
+    return `${status.Self.HostName}.${status.MagicDNSSuffix}`
   }
   return null
+}
+
+/** Best-effort Tailscale IPv4 detection. Returns null if Tailscale is not available. */
+function detectTailscaleIp(): string | null {
+  const status = readTailscaleStatus()
+  if (!status?.Self?.TailscaleIPs) return null
+  // TailscaleIPs is typically [IPv4, IPv6]; pick the first IPv4 entry.
+  return status.Self.TailscaleIPs.find((ip) => !ip.includes(':')) ?? null
 }
 
 /** GET /api/server/expose — current state */
@@ -196,4 +210,4 @@ app.delete('/', async (c) => {
 export default app
 
 // Re-export for tests
-export { detectTailscaleHostname }
+export { detectTailscaleHostname, detectTailscaleIp }

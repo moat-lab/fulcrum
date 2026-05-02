@@ -20,6 +20,7 @@ import {
 } from '../lib/settings'
 import { spawn } from 'child_process'
 import { testNotificationChannel, sendNotification, type NotificationPayload } from '../services/notification-service'
+import { detectTailscaleIp } from './server-expose'
 
 export { CONFIG_KEYS } from '../../shared/config-keys'
 import { CONFIG_KEYS } from '../../shared/config-keys'
@@ -258,6 +259,9 @@ app.get('/:key', (c) => {
   }
   if (key === 'home_dir') {
     return c.json({ key, value: os.homedir(), isDefault: true })
+  }
+  if (key === 'tailscale_ip') {
+    return c.json({ key, value: detectTailscaleIp(), isDefault: true })
   }
 
   // Resolve key to nested path

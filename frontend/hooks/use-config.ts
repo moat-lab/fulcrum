@@ -36,10 +36,21 @@ export function usePort() {
 }
 
 // Tailscale hostname for this Fulcrum host. Populated by `fulcrum expose`.
-// When non-null and the UI is served from a non-localhost host, the task
-// browser preview rewrites `localhost:<port>` URLs to this hostname.
 export function useTailscaleHostname() {
   const query = useConfig(CONFIG_KEYS.TAILSCALE_HOSTNAME)
+
+  return {
+    ...query,
+    data: (query.data?.value as string | null) ?? null,
+    isDefault: query.data?.isDefault ?? true,
+  }
+}
+
+// Tailscale IPv4 address for this Fulcrum host. Populated by `fulcrum expose`.
+// Preferred over the hostname for browser preview defaults since IPs always
+// resolve from any tailnet client.
+export function useTailscaleIp() {
+  const query = useConfig(CONFIG_KEYS.TAILSCALE_IP)
 
   return {
     ...query,

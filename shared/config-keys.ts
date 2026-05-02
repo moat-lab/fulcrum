@@ -4,6 +4,7 @@ export const CONFIG_KEYS = {
   PORT: 'server.port',
   PUBLIC_DOMAIN: 'server.publicDomain',
   TAILSCALE_HOSTNAME: 'server.tailscaleHostname',
+  TAILSCALE_IP: 'tailscale_ip', // Read-only, detected at request time via `tailscale ip -4`
   WORKTREE_BASE_PATH: 'worktree_base_path', // Read-only, derived from FULCRUM_DIR
   SCRATCH_BASE_PATH: 'scratch_base_path', // Read-only, derived from FULCRUM_DIR
   HOME_DIR: 'home_dir', // Read-only, system home directory

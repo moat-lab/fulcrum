@@ -1,6 +1,7 @@
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTask } from './use-tasks'
+import { useTailscaleIp } from './use-config'
 import type { Task, ViewState, DiffOptions, FilesViewState } from '@/types'
 
 interface PendingUpdates {
@@ -10,11 +11,11 @@ interface PendingUpdates {
   filesViewState?: Partial<FilesViewState>
 }
 
-const getDefaultBrowserUrl = () => 'http://localhost:3000'
+const LOCALHOST_BROWSER_URL = 'http://localhost:3000'
 
 const DEFAULT_VIEW_STATE: ViewState = {
   activeTab: 'diff',
-  browserUrl: getDefaultBrowserUrl(),
+  browserUrl: LOCALHOST_BROWSER_URL,
   diffOptions: {
     wrap: true,
     ignoreWhitespace: true,
@@ -35,15 +36,22 @@ export function useTaskViewState(taskId: string) {
   const latestViewStateRef = useRef<ViewState>(DEFAULT_VIEW_STATE)
 
   const { data: task } = useTask(taskId)
+  const { data: tailscaleIp } = useTailscaleIp()
+
+  const defaultBrowserUrl = tailscaleIp
+    ? `http://${tailscaleIp}:3000`
+    : LOCALHOST_BROWSER_URL
 
   // Parse viewState from task, merge with defaults
   const viewState: ViewState = useMemo(() => {
     const stored = task?.viewState
-    if (!stored) return DEFAULT_VIEW_STATE
+    if (!stored) {
+      return { ...DEFAULT_VIEW_STATE, browserUrl: defaultBrowserUrl }
+    }
 
     return {
       activeTab: stored.activeTab ?? DEFAULT_VIEW_STATE.activeTab,
-      browserUrl: stored.browserUrl ?? DEFAULT_VIEW_STATE.browserUrl,
+      browserUrl: stored.browserUrl ?? defaultBrowserUrl,
       diffOptions: {
         ...DEFAULT_VIEW_STATE.diffOptions,
         ...stored.diffOptions,
@@ -53,7 +61,7 @@ export function useTaskViewState(taskId: string) {
         ...stored.filesViewState,
       },
     }
-  }, [task?.viewState])
+  }, [task?.viewState, defaultBrowserUrl])
 
   useEffect(() => {
     latestViewStateRef.current = viewState
