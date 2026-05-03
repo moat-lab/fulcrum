@@ -173,6 +173,19 @@ export async function createTaskRecord(body: Omit<NewTask, 'id' | 'createdAt' | 
 
   const warnings: string[] = []
 
+  if (body.derivedFromTaskId) {
+    const parentTask = db.select().from(tasks).where(eq(tasks.id, body.derivedFromTaskId)).get()
+    if (!parentTask) {
+      return { error: 'Parent task not found for derivation', status: 400 }
+    }
+    if (parentTask.status === 'DONE') {
+      return { error: 'Cannot derive from a DONE task', status: 400 }
+    }
+    if (parentTask.status === 'CANCELED') {
+      return { error: 'Cannot derive from a CANCELED task', status: 400 }
+    }
+  }
+
   if (newTask.branch && newTask.worktreePath && newTask.repoPath && newTask.baseBranch) {
     if (!isValidBranchName(newTask.branch)) {
       return { error: 'Invalid branch name: only alphanumeric, /, _, -, . characters allowed', status: 400 }
