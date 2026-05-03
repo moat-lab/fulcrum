@@ -7,7 +7,8 @@ import { execFileSync } from 'child_process'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { setFnoxValue } from '../lib/settings/fnox'
-import { db, tasks } from '../db'
+import { eq } from 'drizzle-orm'
+import { db, tasks, terminals } from '../db'
 
 const TOKEN = 'test-secret-token-123'
 
@@ -174,7 +175,50 @@ describe('Mattermost Routes', () => {
       setFnoxValue('editor.host', 'http://localhost:18888')
     })
 
-    test('view_diff renders an inline changed-file summary for task worktrees', async () => {
+    test('task_detail shows start and restart agent operation-chain actions', async () => {
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'task-agent-chain',
+        title: 'Run agent chain',
+        status: 'TO_DO',
+        position: 1,
+        priority: 'medium',
+        worktreePath: '/tmp/fulcrum-mm-agent-chain',
+        agent: 'claude',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const { post } = createTestApp()
+      const todoRes = await post('/api/mattermost/actions', {
+        context: { action: 'task_detail', task_id: 'task-agent-chain' },
+      })
+      const todoData = await todoRes.json() as { update?: { props?: { attachments?: Array<{ actions?: Array<{ name: string }> }> } } }
+      expect(todoData.update?.props?.attachments?.[0]?.actions?.map(action => action.name)).toContain('🤖 Start Agent')
+
+      db.update(tasks).set({ status: 'IN_PROGRESS', updatedAt: now }).where(eq(tasks.id, 'task-agent-chain')).run()
+      db.insert(terminals).values({
+        id: 'terminal-agent-chain',
+        name: 'claude: Run agent chain',
+        cwd: '/tmp/fulcrum-mm-agent-chain',
+        cols: 120,
+        rows: 30,
+        tmuxSession: '',
+        status: 'error',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const crashedRes = await post('/api/mattermost/actions', {
+        context: { action: 'task_detail', task_id: 'task-agent-chain' },
+      })
+      const crashedData = await crashedRes.json() as { update?: { props?: { attachments?: Array<{ fields?: Array<{ title: string; value: string }>; actions?: Array<{ name: string }> }> } } }
+      const card = crashedData.update?.props?.attachments?.[0]
+      expect(card?.fields?.find(field => field.title === 'Agent')?.value).toBe('claude crashed')
+      expect(card?.actions?.map(action => action.name)).toContain('🤖 Restart Agent')
+    })
+
+    test('view_diff exposes notification closure actions for review and PR workflow', async () => {
       const worktreePath = mkdtempSync(join(tmpdir(), 'fulcrum-mm-diff-'))
       execFileSync('git', ['init'], { cwd: worktreePath })
       execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: worktreePath })
@@ -206,7 +250,10 @@ describe('Mattermost Routes', () => {
       expect(attachment?.text).toContain('Diff —')
       expect(attachment?.text).toContain('auth.ts')
       expect(attachment?.text).toContain('+2 -1')
-      expect(attachment?.actions?.map(action => action.name)).toContain('→ Review')
+      const actionNames = attachment?.actions?.map(action => action.name)
+      expect(actionNames).toContain('→ Review')
+      expect(actionNames).toContain('Create PR')
+      expect(actionNames).toContain('Merge')
     })
   })
 

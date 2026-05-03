@@ -4,7 +4,7 @@
  */
 
 import { execFileSync } from 'child_process'
-import { db, tasks, apps, deployments, projects, tags, taskTags } from '../../db'
+import { db, tasks, apps, deployments, projects, tags, taskTags, terminals } from '../../db'
 import { eq, desc, and } from 'drizzle-orm'
 import { getActionsUrl, fulcrumUrl } from './client'
 import type { MattermostAttachment, MattermostAction, MattermostField } from './client'
@@ -32,12 +32,30 @@ const APP_STATUS_EMOJI: Record<string, string> = {
   stopped: '⏹',
 }
 
+type AgentRuntimeStatus = 'running' | 'idle' | 'crashed'
+
 interface DiffPreview {
   branch: string
   fileCount: number
   insertions: number
   deletions: number
   files: Array<{ path: string; insertions: number; deletions: number }>
+}
+
+function getAgentRuntimeStatus(worktreePath: string | null): AgentRuntimeStatus {
+  if (!worktreePath) return 'idle'
+  const rows = db.select().from(terminals).where(eq(terminals.cwd, worktreePath)).all()
+  if (rows.some(row => row.status === 'running')) return 'running'
+  if (rows.some(row => row.status === 'error' || row.status === 'exited')) return 'crashed'
+  return 'idle'
+}
+
+function agentStatusLabel(agent: string, status: AgentRuntimeStatus): string {
+  switch (status) {
+    case 'running': return `${agent} running`
+    case 'crashed': return `${agent} crashed`
+    case 'idle': return `${agent} idle`
+  }
 }
 
 function actionBtn(id: string, name: string, context: Record<string, unknown>, style?: MattermostAction['style']): MattermostAction {
@@ -316,17 +334,8 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     fields.push({ short: true, title: 'Estimate', value: `${task.timeEstimate}h` })
   }
   if (task.agent) {
-    let agentStatus = task.agent
-    // Check if an agent process is running for this task's worktree
-    if (task.worktreePath && task.status === 'IN_PROGRESS') {
-      try {
-        const { execSync } = await import('child_process')
-        const result = execSync(`pgrep -f "${task.worktreePath}" 2>/dev/null`, { encoding: 'utf-8', timeout: 2000 }).trim()
-        agentStatus = result ? `${task.agent} (running)` : `${task.agent} (idle)`
-      } catch {
-        agentStatus = `${task.agent} (idle)`
-      }
-    }
+    const runtimeStatus = task.status === 'IN_PROGRESS' ? getAgentRuntimeStatus(task.worktreePath) : 'idle'
+    const agentStatus = task.status === 'IN_PROGRESS' ? agentStatusLabel(task.agent, runtimeStatus) : task.agent
     fields.push({ short: true, title: 'Agent', value: agentStatus })
   }
   if (tagStr) {
@@ -338,15 +347,21 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
 
   switch (task.status) {
     case 'TO_DO':
-      actions.push(actionBtn('start', '▶ Start', { action: 'status_change', task_id: task.id, status: 'IN_PROGRESS' }, 'primary'))
+      actions.push(actionBtn('start_agent', '🤖 Start Agent', { action: 'start_agent', task_id: task.id }, 'primary'))
+      actions.push(actionBtn('start', '▶ Start', { action: 'status_change', task_id: task.id, status: 'IN_PROGRESS' }))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
       break
-    case 'IN_PROGRESS':
+    case 'IN_PROGRESS': {
+      const runtimeStatus = getAgentRuntimeStatus(task.worktreePath)
+      if (runtimeStatus === 'crashed') {
+        actions.push(actionBtn('restart_agent', '🤖 Restart Agent', { action: 'start_agent', task_id: task.id }, 'primary'))
+      }
       actions.push(actionBtn('review', '→ Review', { action: 'status_change', task_id: task.id, status: 'IN_REVIEW' }, 'primary'))
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))
       actions.push(actionBtn('diff', 'View Diff', { action: 'view_diff', task_id: task.id }))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
       break
+    }
     case 'IN_REVIEW':
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))
       actions.push(actionBtn('back', '← Progress', { action: 'status_change', task_id: task.id, status: 'IN_PROGRESS' }))
@@ -433,8 +448,49 @@ export async function buildTaskDiffCard(taskId: string): Promise<MattermostAttac
     text: formatDiffPreview(preview),
     actions: [
       actionBtn('review', '→ Review', { action: 'status_change', task_id: task.id, status: 'IN_REVIEW' }, 'primary'),
+      actionBtn('create_pr', 'Create PR', { action: 'create_pr', task_id: task.id }),
+      actionBtn('merge', 'Merge', { action: 'merge_to_main', task_id: task.id }, 'good'),
       actionBtn('back', '← Back', { action: 'task_detail', task_id: task.id }),
       actionBtn('open', 'Open Full Diff ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${task.id}`) }),
+    ],
+  }
+}
+
+export async function buildAgentCompletedCard(taskId: string): Promise<MattermostAttachment> {
+  const diffCard = await buildTaskDiffCard(taskId)
+  return {
+    ...diffCard,
+    fallback: `Agent completed — ${diffCard.fallback ?? taskId}`,
+    color: '#22C55E',
+    pretext: `#### 🤖 Agent completed — ${diffCard.pretext?.replace(/^####\s*/, '') ?? taskId}`,
+    actions: diffCard.actions?.filter(action => ['review', 'create_pr', 'merge', 'open'].includes(action.id)),
+  }
+}
+
+export function buildPullRequestMergedCard(taskId: string, branch: string | null): MattermostAttachment {
+  return {
+    fallback: 'PR merged',
+    color: '#22C55E',
+    pretext: '#### ✅ PR merged',
+    text: branch ? `Branch \`${branch}\` is ready for cleanup.` : 'Task branch is ready for cleanup.',
+    actions: [
+      actionBtn('done', '→ Done', { action: 'status_change', task_id: taskId, status: 'DONE' }, 'good'),
+      actionBtn('delete_worktree', 'Delete Worktree', { action: 'delete_worktree', task_id: taskId }, 'danger'),
+      actionBtn('open', 'Open Task ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${taskId}`) }),
+    ],
+  }
+}
+
+export function buildDeployFailedCard(appId: string, appName: string, error: string): MattermostAttachment {
+  return {
+    fallback: `Deploy failed — ${appName}`,
+    color: '#EF4444',
+    pretext: `#### ❌ Deploy failed — ${appName}`,
+    text: `\`\`\`\n${error.slice(0, 1000) || 'Unknown error'}\n\`\`\``,
+    actions: [
+      actionBtn('retry_deploy', 'Retry', { action: 'deploy_app', app_id: appId }, 'primary'),
+      actionBtn('rollback', 'Rollback', { action: 'rollback_app', app_id: appId }),
+      actionBtn('logs', 'View Full Log', { action: 'app_logs', app_id: appId }),
     ],
   }
 }

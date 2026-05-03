@@ -25,8 +25,10 @@ import {
   buildMonitorCard,
   buildProjectsCard,
   buildSearchCard,
+  buildDeployFailedCard,
 } from '../services/mattermost/cards'
 import { openDialog, postMessage, updatePost, getActionsUrl } from '../services/mattermost/client'
+import { getPTYManager } from '../terminal/pty-instance'
 import type { MattermostAttachment, MattermostDialog } from '../services/mattermost/client'
 
 const VALID_STATUS = new Set(['TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CANCELED'])
@@ -344,6 +346,31 @@ app.post('/actions', async (c) => {
         return c.json({ update: mattermostUpdate(card) })
       }
 
+      case 'start_agent': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        if (!task.worktreePath) return c.json({ ephemeral_text: 'Task has no worktree or scratch directory.' })
+        try {
+          const ptyManager = getPTYManager()
+          const terminal = await ptyManager.create({
+            name: `${task.agent || 'agent'}: ${task.title.slice(0, 32)}`,
+            cwd: task.worktreePath,
+            cols: 120,
+            rows: 30,
+            taskId: task.id,
+            hostId: task.hostId ?? undefined,
+          })
+          const command = task.agent === 'opencode' ? 'opencode\n' : 'claude\n'
+          ptyManager.write(terminal.id, command)
+          await updateTaskStatus(task.id, 'IN_PROGRESS')
+          const card = await buildTaskDetailCard(task.id)
+          return c.json({ update: mattermostUpdate(card), ephemeral_text: 'Agent started.' })
+        } catch (err) {
+          return c.json({ ephemeral_text: `Failed to start agent: ${err instanceof Error ? err.message : String(err)}` })
+        }
+      }
+
       case 'list_apps': {
         const card = await buildAppsCard()
         return c.json({ update: { props: { attachments: [card] } } })
@@ -365,7 +392,9 @@ app.post('/actions', async (c) => {
             await updateMattermostPost(postTarget, buildDeploymentProgressCard(appName, progress))
           })
           if (!result.success) {
-            return c.json({ ephemeral_text: `❌ Deploy failed: ${result.error || 'unknown error'}` })
+            const failedCard = buildDeployFailedCard(appId, appName, result.error || 'unknown error')
+            await updateMattermostPost(postTarget, failedCard)
+            return c.json({ update: mattermostUpdate(failedCard), ephemeral_text: `❌ Deploy failed: ${result.error || 'unknown error'}` })
           }
           const card = await buildAppDetailCard(appId)
           return c.json({ update: mattermostUpdate(card) })
@@ -448,6 +477,29 @@ app.post('/actions', async (c) => {
         } catch (err) {
           return c.json({ ephemeral_text: `Rollback failed: ${err}` })
         }
+      }
+
+      case 'create_pr': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        if (task.prUrl) return c.json({ ephemeral_text: `PR already exists: ${task.prUrl}` })
+        return c.json({ ephemeral_text: 'Open the task terminal and create the PR from the prepared diff.', update: mattermostUpdate(await buildTaskDiffCard(task.id)) })
+      }
+
+      case 'merge_to_main': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        if (!task.prUrl) return c.json({ ephemeral_text: 'No PR URL is linked to this task yet.' })
+        return c.json({ ephemeral_text: `Merge gate stays on GitHub: ${task.prUrl}` })
+      }
+
+      case 'delete_worktree': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        return c.json({ ephemeral_text: task.worktreePath ? `Delete worktree from Fulcrum after confirming no local changes: ${task.worktreePath}` : 'Task has no worktree.' })
       }
 
       case 'monitor': {
