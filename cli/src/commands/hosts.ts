@@ -2,8 +2,11 @@ import { defineCommand } from 'citty'
 import { FulcrumClient, type CreateHostInput } from '../client'
 import { output, isJsonOutput } from '../utils/output'
 import { CliError, ExitCodes } from '../utils/errors'
+import { confirm, prompt } from '../utils/prompt'
 import { globalArgs, toFlags, setupJsonOutput } from './shared'
-import type { Host } from '@shared/types'
+import type { Host, Task } from '@shared/types'
+
+type HostAddFlags = Record<string, string | boolean | undefined>
 
 function statusGlyph(status: Host['status']): string {
   if (status === 'connected') return '✓'
@@ -13,6 +16,58 @@ function statusGlyph(status: Host['status']): string {
 
 function findHostByName(hosts: Host[], name: string): Host | undefined {
   return hosts.find((h) => h.name === name)
+}
+
+function hasStringFlag(flags: HostAddFlags, key: string): boolean {
+  const value = flags[key]
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+async function readHostAddValue(
+  flags: HostAddFlags,
+  key: string,
+  message: string,
+  options: { required: true; defaultValue?: string; prompt?: boolean }
+): Promise<string>
+async function readHostAddValue(
+  flags: HostAddFlags,
+  key: string,
+  message: string,
+  options?: { required?: false; defaultValue?: string; prompt?: boolean }
+): Promise<string | undefined>
+async function readHostAddValue(
+  flags: HostAddFlags,
+  key: string,
+  message: string,
+  options?: { required?: boolean; defaultValue?: string; prompt?: boolean }
+): Promise<string | undefined> {
+  const flagValue = flags[key]
+  const value = typeof flagValue === 'string' ? flagValue.trim() : ''
+  if (value) return value
+  if (isJsonOutput() || !options?.prompt) {
+    if (options?.defaultValue) return options.defaultValue
+    if (!options?.required) return undefined
+    throw new CliError(
+      `MISSING_${key.replace(/-/g, '_').toUpperCase()}`,
+      `--${key} is required${isJsonOutput() ? ' when using --json' : ''}`,
+      ExitCodes.INVALID_ARGS
+    )
+  }
+
+  const answer = await prompt(message, options?.defaultValue)
+  if (answer) return answer
+  if (!options?.required) return undefined
+  throw new CliError(
+    `MISSING_${key.replace(/-/g, '_').toUpperCase()}`,
+    `${message} is required`,
+    ExitCodes.INVALID_ARGS
+  )
+}
+
+export function activeTasksForHost(tasks: Task[], hostId: string): Task[] {
+  return tasks.filter((task) =>
+    task.hostId === hostId && task.status !== 'DONE' && task.status !== 'CANCELED'
+  )
 }
 
 async function resolveHostByName(client: FulcrumClient, name: string): Promise<Host> {
@@ -50,43 +105,56 @@ async function handleList(client: FulcrumClient) {
   }
 }
 
-async function handleAdd(
-  client: FulcrumClient,
+export async function buildCreateHostInput(
   name: string,
-  flags: Record<string, string>
-) {
-  const hostname = flags.hostname
-  const username = flags.username
-  if (!hostname) {
-    throw new CliError('MISSING_HOSTNAME', '--hostname is required', ExitCodes.INVALID_ARGS)
-  }
-  if (!username) {
-    throw new CliError('MISSING_USERNAME', '--username is required', ExitCodes.INVALID_ARGS)
-  }
+  flags: HostAddFlags,
+  options?: { interactive?: boolean }
+): Promise<CreateHostInput> {
+  const promptForMissing = options?.interactive ?? (!hasStringFlag(flags, 'hostname') || !hasStringFlag(flags, 'username'))
+  const hostname = await readHostAddValue(flags, 'hostname', 'SSH hostname or IP', { required: true, prompt: promptForMissing })
+  const username = await readHostAddValue(flags, 'username', 'SSH username', { required: true, prompt: promptForMissing })
+  const portValue = await readHostAddValue(flags, 'port', 'SSH port', { defaultValue: '22', prompt: promptForMissing })
+  const authMethod = (typeof flags['auth-method'] === 'string' && flags['auth-method'].trim()
+    ? flags['auth-method'].trim()
+    : 'key') as 'key' | 'password'
 
-  const authMethod = (flags['auth-method'] ?? 'key') as 'key' | 'password'
   if (authMethod !== 'key' && authMethod !== 'password') {
     throw new CliError('INVALID_AUTH_METHOD', '--auth-method must be "key" or "password"', ExitCodes.INVALID_ARGS)
   }
-  if (authMethod === 'password' && !flags.password) {
-    throw new CliError('MISSING_PASSWORD', '--password is required when --auth-method=password', ExitCodes.INVALID_ARGS)
+
+  const port = portValue ? Number(portValue) : undefined
+  if (port !== undefined && (Number.isNaN(port) || port < 1 || port > 65535)) {
+    throw new CliError('INVALID_PORT', 'Port must be between 1 and 65535', ExitCodes.INVALID_ARGS)
   }
 
-  const input: CreateHostInput = {
+  const keyPath = authMethod === 'key'
+    ? await readHostAddValue(flags, 'key-path', 'Private key path', { defaultValue: '~/.ssh/id_ed25519', prompt: promptForMissing })
+    : undefined
+  const password = authMethod === 'password'
+    ? await readHostAddValue(flags, 'password', 'SSH password', { required: true, prompt: promptForMissing })
+    : undefined
+  const defaultDirectory = await readHostAddValue(flags, 'directory', 'Default directory', { prompt: promptForMissing })
+  const fulcrumUrl = await readHostAddValue(flags, 'fulcrum-url', 'Fulcrum URL', { prompt: promptForMissing })
+
+  return {
     name,
     hostname,
     username,
-    port: flags.port ? Number(flags.port) : undefined,
+    port,
     authMethod,
-    privateKeyPath: authMethod === 'key' ? flags['key-path'] : undefined,
-    password: authMethod === 'password' ? flags.password : undefined,
-    defaultDirectory: flags.directory,
-    fulcrumUrl: flags['fulcrum-url'],
+    privateKeyPath: keyPath,
+    password,
+    defaultDirectory,
+    fulcrumUrl,
   }
+}
 
-  if (input.port !== undefined && (Number.isNaN(input.port) || input.port < 1 || input.port > 65535)) {
-    throw new CliError('INVALID_PORT', 'Port must be between 1 and 65535', ExitCodes.INVALID_ARGS)
-  }
+async function handleAdd(
+  client: FulcrumClient,
+  name: string,
+  flags: HostAddFlags
+) {
+  const input = await buildCreateHostInput(name, flags)
 
   const host = await client.createHost(input)
   if (isJsonOutput()) {
@@ -98,6 +166,30 @@ async function handleAdd(
 
 async function handleRemove(client: FulcrumClient, name: string) {
   const host = await resolveHostByName(client, name)
+  const activeTasks = activeTasksForHost(await client.listTasks(), host.id)
+
+  if (activeTasks.length > 0) {
+    const taskList = activeTasks
+      .slice(0, 5)
+      .map((task) => `#${task.id} ${task.title}`)
+      .join(', ')
+    const extra = activeTasks.length > 5 ? `, and ${activeTasks.length - 5} more` : ''
+    if (isJsonOutput()) {
+      throw new CliError(
+        'HOST_HAS_ACTIVE_TASKS',
+        `Host "${host.name}" has ${activeTasks.length} active task(s): ${taskList}${extra}`,
+        ExitCodes.VALIDATION_ERROR
+      )
+    }
+
+    const shouldRemove = await confirm(
+      `Host "${host.name}" has ${activeTasks.length} active task(s): ${taskList}${extra}. Remove it anyway? Tasks using this host will fall back to local execution.`
+    )
+    if (!shouldRemove) {
+      throw new CliError('REMOVE_CANCELED', 'Host removal canceled', ExitCodes.ERROR)
+    }
+  }
+
   await client.deleteHost(host.id)
   if (isJsonOutput()) {
     output({ success: true, removed: host.name })
@@ -151,13 +243,21 @@ const hostsListCommand = defineCommand({
   },
 })
 
+const hostServerArgs = {
+  'server-port': { type: 'string' as const, description: 'Fulcrum server port (default: 7777)' },
+  url: globalArgs.url,
+  json: globalArgs.json,
+  debug: globalArgs.debug,
+}
+
 const hostsAddCommand = defineCommand({
   meta: { name: 'add', description: 'Add a new remote host' },
   args: {
-    ...globalArgs,
+    ...hostServerArgs,
     name: { type: 'positional' as const, description: 'Host name (display label, must be unique)', required: true },
-    hostname: { type: 'string' as const, description: 'SSH hostname or IP', required: true },
-    username: { type: 'string' as const, description: 'SSH username', required: true },
+    hostname: { type: 'string' as const, description: 'SSH hostname or IP' },
+    port: { type: 'string' as const, description: 'SSH port (default: 22)' },
+    username: { type: 'string' as const, description: 'SSH username' },
     'auth-method': { type: 'string' as const, description: 'Authentication method: key (default) or password' },
     'key-path': { type: 'string' as const, description: 'Private key path (default: ~/.ssh/id_ed25519, only used with --auth-method=key)' },
     password: { type: 'string' as const, description: 'SSH password (required when --auth-method=password; consider env var to avoid shell history)' },
@@ -167,7 +267,7 @@ const hostsAddCommand = defineCommand({
   async run({ args }) {
     setupJsonOutput(args)
     const flags = toFlags(args)
-    const client = new FulcrumClient(flags.url, flags.port)
+    const client = new FulcrumClient(flags.url, flags['server-port'])
     await handleAdd(client, args.name as string, flags)
   },
 })
