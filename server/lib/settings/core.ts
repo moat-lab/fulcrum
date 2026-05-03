@@ -128,6 +128,7 @@ export function getSettings(): Settings {
         teamId: (fv('channels.mattermost.teamId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.teamId,
         channelId: (fv('channels.mattermost.channelId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.channelId,
         commandToken: (fv('channels.mattermost.commandToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.commandToken,
+        allowedUserIds: (fv('channels.mattermost.allowedUserIds') as string[] | null) ?? DEFAULT_SETTINGS.channels.mattermost.allowedUserIds,
       },
     },
     caldav: {

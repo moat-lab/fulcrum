@@ -50,9 +50,19 @@ describe('Mattermost Routes', () => {
       setFnoxValue('channels.mattermost.enabled', true)
       setFnoxValue('channels.mattermost.commandToken', TOKEN)
       const client = createTestApp()
-      const res = await postForm(client, '/api/mattermost/commands', { token: 'wrong', text: '' })
+      const res = await postForm(client, '/api/mattermost/commands', { token: 'wrong', text: '', user_id: 'owner' })
       const data = await res.json() as { text: string }
       expect(data.text).toBe('Invalid command token.')
+    })
+
+    test('rejects request from user outside allowedUserIds', async () => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
+      setFnoxValue('channels.mattermost.allowedUserIds', ['owner'])
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'help', user_id: 'stranger' })
+      const data = await res.json() as { text: string }
+      expect(data.text).toBe('Mattermost user not allowed.')
     })
   })
 
@@ -64,28 +74,28 @@ describe('Mattermost Routes', () => {
 
     test('dashboard subcommand (empty text) returns in_channel', async () => {
       const client = createTestApp()
-      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: '' })
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: '', user_id: 'owner' })
       const data = await res.json() as { response_type: string }
       expect(data.response_type).toBe('in_channel')
     })
 
     test('tasks subcommand returns ephemeral', async () => {
       const client = createTestApp()
-      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'tasks' })
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'tasks', user_id: 'owner' })
       const data = await res.json() as { response_type: string }
       expect(data.response_type).toBe('ephemeral')
     })
 
     test('help subcommand returns ephemeral', async () => {
       const client = createTestApp()
-      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'help' })
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'help', user_id: 'owner' })
       const data = await res.json() as { response_type: string }
       expect(data.response_type).toBe('ephemeral')
     })
 
     test('deploy subcommand returns in_channel (deployments are channel-visible events)', async () => {
       const client = createTestApp()
-      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'deploy' })
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'deploy', user_id: 'owner' })
       const data = await res.json() as { response_type: string }
       expect(data.response_type).toBe('in_channel')
     })
@@ -102,6 +112,7 @@ describe('Mattermost Routes', () => {
       const res = await postForm(client, '/api/mattermost/commands', {
         token: TOKEN,
         text: 'randomgarbagesubcommand',
+        user_id: 'owner',
       })
       const data = await res.json() as {
         props?: { attachments?: Array<{ pretext?: string }> }
@@ -118,16 +129,36 @@ describe('Mattermost Routes', () => {
       const data = await res.json() as { ephemeral_text?: string }
       expect(data.ephemeral_text).toContain('disabled')
     })
+
+    test('refuses when commandToken is empty', async () => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/actions', { token: 'anything', user_id: 'owner', context: { action: 'monitor' } })
+      const data = await res.json() as { ephemeral_text?: string }
+      expect(data.ephemeral_text).toContain('commandToken not configured')
+    })
+
+    test('rejects invalid token', async () => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/actions', { token: 'wrong', user_id: 'owner', context: { action: 'monitor' } })
+      const data = await res.json() as { ephemeral_text?: string }
+      expect(data.ephemeral_text).toBe('Invalid command token.')
+    })
   })
 
   describe('POST /api/mattermost/actions — enum validation', () => {
     beforeEach(() => {
       setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
     })
 
     test('status_change rejects unknown status value', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'status_change', task_id: 'fake-id', status: 'GARBAGE' },
       })
       const data = await res.json() as { ephemeral_text?: string }
@@ -137,6 +168,8 @@ describe('Mattermost Routes', () => {
     test('change_priority rejects unknown priority value', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'change_priority', task_id: 'fake-id' },
         selected_option: 'critical',
       })
@@ -147,6 +180,8 @@ describe('Mattermost Routes', () => {
     test('change_priority rejects missing selected_option', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'change_priority', task_id: 'fake-id' },
       })
       const data = await res.json() as { ephemeral_text?: string }
@@ -156,6 +191,8 @@ describe('Mattermost Routes', () => {
     test('rollback_app rejects missing deployment ID', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'rollback_app', app_id: 'fake-id' },
       })
       const data = await res.json() as { ephemeral_text?: string }
@@ -169,6 +206,23 @@ describe('Mattermost Routes', () => {
       const res = await post('/api/mattermost/dialogs', { callback_id: 'create_task' })
       const data = await res.json() as { errors?: Record<string, string> }
       expect(data.errors?.['']).toContain('disabled')
+    })
+
+    test('refuses when commandToken is empty', async () => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/dialogs', { token: 'anything', user_id: 'owner', callback_id: 'create_task' })
+      const data = await res.json() as { errors?: Record<string, string> }
+      expect(data.errors?.['']).toContain('commandToken not configured')
+    })
+
+    test('rejects invalid token', async () => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/dialogs', { token: 'wrong', user_id: 'owner', callback_id: 'create_task' })
+      const data = await res.json() as { errors?: Record<string, string> }
+      expect(data.errors?.['']).toBe('Invalid command token.')
     })
   })
 })

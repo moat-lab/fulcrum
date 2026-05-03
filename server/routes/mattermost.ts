@@ -32,29 +32,43 @@ const VALID_STATUS = new Set(['TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CANC
 const VALID_PRIORITY = new Set(['high', 'medium', 'low'])
 const IN_CHANNEL_SUBCOMMANDS = new Set(['', 'deploy'])
 
+type MattermostAuthResult =
+  | { ok: true }
+  | { ok: false; message: string }
+
 const app = new Hono()
+
+function authorizeMattermostRequest(token: string | undefined, userId: string | undefined): MattermostAuthResult {
+  const config = getSettings().channels.mattermost
+  if (!config.enabled) {
+    return { ok: false, message: 'Mattermost integration disabled.' }
+  }
+  if (!config.commandToken) {
+    log.messaging.error('Mattermost commandToken not configured — refusing callback')
+    return { ok: false, message: 'Mattermost commandToken not configured.' }
+  }
+  if (token !== config.commandToken) {
+    return { ok: false, message: 'Invalid command token.' }
+  }
+  if (config.allowedUserIds.length > 0 && (!userId || !config.allowedUserIds.includes(userId))) {
+    return { ok: false, message: 'Mattermost user not allowed.' }
+  }
+  return { ok: true }
+}
 
 // --- Slash Command Handler ---
 // Mattermost sends application/x-www-form-urlencoded
 app.post('/commands', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ response_type: 'ephemeral', text: 'Mattermost integration disabled.' })
-  }
-  if (!config.commandToken) {
-    log.messaging.error('Mattermost commandToken not configured — refusing command')
-    return c.json({ response_type: 'ephemeral', text: 'Mattermost commandToken not configured.' })
-  }
-
   const body = await c.req.parseBody()
-  const token = body.token as string
+  const token = body.token as string | undefined
   const text = (body.text as string || '').trim()
   const triggerId = body.trigger_id as string
   const channelId = body.channel_id as string
-  const userId = body.user_id as string
+  const userId = body.user_id as string | undefined
 
-  if (token !== config.commandToken) {
-    return c.json({ response_type: 'ephemeral', text: 'Invalid command token.' })
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ response_type: 'ephemeral', text: auth.message })
   }
 
   const subcommand = text.split(/\s+/)[0]?.toLowerCase() || ''
@@ -263,17 +277,18 @@ async function openCreateTaskDialog(triggerId: string, prefillTitle: string) {
 // --- Action Handler (button/select callbacks) ---
 
 app.post('/actions', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ ephemeral_text: 'Mattermost integration disabled.' })
-  }
-
   const body = await c.req.json()
+  const token = body.token as string | undefined
   const context = body.context || {}
   const action = context.action as string
-  const _userId = body.user_id as string
+  const userId = body.user_id as string | undefined
   const _postId = body.post_id as string
   const triggerId = body.trigger_id as string
+
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ ephemeral_text: auth.message })
+  }
 
   try {
     switch (action) {
@@ -442,16 +457,17 @@ app.post('/actions', async (c) => {
 // --- Dialog Submission Handler ---
 
 app.post('/dialogs', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ errors: { '': 'Mattermost integration disabled.' } })
-  }
-
   const body = await c.req.json()
+  const token = body.token as string | undefined
   const callbackId = body.callback_id as string
   const submission = body.submission || {}
   const channelId = body.channel_id as string
-  const _userId = body.user_id as string
+  const userId = body.user_id as string | undefined
+
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ errors: { '': auth.message } })
+  }
 
   try {
     switch (callbackId) {
