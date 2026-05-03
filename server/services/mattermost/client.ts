@@ -104,7 +104,7 @@ async function mmFetch(path: string, options: RequestInit = {}): Promise<Respons
 
   if (!res.ok) {
     const body = await res.text()
-    log.error('Mattermost API error', { status: res.status, path, body })
+    log.messaging.error('Mattermost API error', { status: res.status, path, body })
     throw new Error(`Mattermost API error: ${res.status} ${body}`)
   }
 
