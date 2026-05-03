@@ -64,6 +64,19 @@ export interface MattermostDialogElement {
   options?: Array<{ text: string; value: string }>
 }
 
+export interface MattermostConnectionInfo {
+  bot: {
+    id: string
+    username: string
+    displayName: string
+  }
+  team: {
+    id: string
+    name: string
+    displayName: string
+  } | null
+}
+
 function getConfig(): MattermostSettings {
   return getSettings().channels.mattermost
 }
@@ -147,6 +160,33 @@ export async function postNotification(attachment: MattermostAttachment): Promis
     channel_id: config.channelId,
     props: { attachments: [attachment] },
   })
+}
+
+export async function validateConnection(): Promise<MattermostConnectionInfo> {
+  const config = getConfig()
+  const userRes = await mmFetch('/users/me')
+  const user = await userRes.json() as { id: string; username?: string; nickname?: string; first_name?: string; last_name?: string }
+
+  let team: MattermostConnectionInfo['team'] = null
+  if (config.teamId) {
+    const teamRes = await mmFetch(`/teams/${config.teamId}`)
+    const teamBody = await teamRes.json() as { id: string; name: string; display_name?: string }
+    team = {
+      id: teamBody.id,
+      name: teamBody.name,
+      displayName: teamBody.display_name || teamBody.name,
+    }
+  }
+
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ')
+  return {
+    bot: {
+      id: user.id,
+      username: user.username || user.id,
+      displayName: user.nickname || fullName || user.username || user.id,
+    },
+    team,
+  }
 }
 
 /** Get the callback URL for actions */
