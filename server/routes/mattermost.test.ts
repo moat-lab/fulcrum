@@ -3,6 +3,9 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { setFnoxValue } from '../lib/settings/fnox'
+import { getSettings } from '../lib/settings'
+import { db, tasks, tags, taskTags } from '../db'
+import { eq } from 'drizzle-orm'
 
 const TOKEN = 'test-secret-token-123'
 
@@ -169,6 +172,78 @@ describe('Mattermost Routes', () => {
       const res = await post('/api/mattermost/dialogs', { callback_id: 'create_task' })
       const data = await res.json() as { errors?: Record<string, string> }
       expect(data.errors?.['']).toContain('disabled')
+    })
+  })
+
+  describe('POST /api/mattermost/dialogs — submissions', () => {
+    beforeEach(() => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.serverUrl', 'https://mattermost.example.test')
+      setFnoxValue('channels.mattermost.botToken', 'bot-token')
+      setFnoxValue('channels.mattermost.channelId', 'default-channel')
+      globalThis.fetch = async () => new Response(JSON.stringify({ id: 'post-id' }), { status: 200 })
+    })
+
+    test('create_task creates a task with optional tags and posts a card', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/dialogs', {
+        callback_id: 'create_task',
+        channel_id: 'mattermost-channel',
+        submission: {
+          title: 'Ship Mattermost dialogs',
+          description: 'Create task from dialog',
+          priority: 'high',
+          type: 'manual',
+          due_date: '2026-05-10',
+          tags: 'mattermost, dialogs, mattermost',
+        },
+      })
+
+      expect(await res.json()).toBeNull()
+      const createdTask = db.select().from(tasks).where(eq(tasks.title, 'Ship Mattermost dialogs')).get()
+      expect(createdTask?.priority).toBe('high')
+      expect(createdTask?.type).toBeNull()
+      expect(createdTask?.dueDate).toBe('2026-05-10')
+      const createdTags = db.select().from(tags).all().map(tag => tag.name).sort()
+      expect(createdTags).toEqual(['dialogs', 'mattermost'])
+      const joins = db.select().from(taskTags).all()
+      expect(joins).toHaveLength(2)
+    })
+
+    test('create_task rejects invalid date text', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/dialogs', {
+        callback_id: 'create_task',
+        submission: { title: 'Bad date task', due_date: 'tomorrow' },
+      })
+
+      const data = await res.json() as { errors?: Record<string, string> }
+      expect(data.errors?.due_date).toContain('YYYY-MM-DD')
+      expect(db.select().from(tasks).where(eq(tasks.title, 'Bad date task')).get()).toBeUndefined()
+    })
+
+    test('configure_settings stores non-secret fields and keeps blank secrets unchanged', async () => {
+      setFnoxValue('channels.mattermost.botToken', 'existing-bot-token')
+      setFnoxValue('channels.mattermost.commandToken', 'existing-command-token')
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/dialogs', {
+        callback_id: 'configure_settings',
+        submission: {
+          server_url: 'https://mattermost.internal',
+          bot_token: '',
+          team_id: 'team-id',
+          channel_id: 'channel-id',
+          command_token: '',
+        },
+      })
+
+      expect(await res.json()).toBeNull()
+      expect(getSettings().channels.mattermost.enabled).toBe(true)
+      expect(getSettings().channels.mattermost.serverUrl).toBe('https://mattermost.internal')
+      expect(getSettings().channels.mattermost.teamId).toBe('team-id')
+      expect(getSettings().channels.mattermost.channelId).toBe('channel-id')
+      expect(getSettings().channels.mattermost.botToken).toBe('existing-bot-token')
+      expect(getSettings().channels.mattermost.commandToken).toBe('existing-command-token')
     })
   })
 })
