@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test'
+import * as childProcess from 'node:child_process'
 import { FNOX_CONFIG_MAP, FNOX_SECRET_MAP, isSecretPath } from './fnox'
 import { VALID_SETTING_PATHS } from './types'
 
@@ -172,6 +173,45 @@ describe('fnox', () => {
       expect(getFnoxValue('server.port')).toBe(9999)
       clearFnoxCache()
       expect(getFnoxValue('server.port')).toBeNull()
+    })
+  })
+
+  describe('non-test persistence failures', () => {
+    test('setFnoxValue throws instead of cache-only fallback when fnox is unavailable', () => {
+      const output = childProcess.execSync(
+        `PATH=/usr/bin:/bin FULCRUM_FNOX_STRICT=1 FULCRUM_FNOX_INSTALLED=0 "${process.execPath}" -e "const m = await import('./server/lib/settings/fnox.ts'); m.clearFnoxCache(); try { m.setFnoxValue('server.port', 9999); process.exit(1) } catch (err) { console.log(String(err.message)) }"`,
+        { encoding: 'utf-8' },
+      )
+
+      expect(output).toContain('Cannot persist Fulcrum setting server.port: fnox CLI not found in PATH')
+    })
+
+    test('removeFnoxSecret throws instead of cache-only delete when fnox is unavailable', () => {
+      const output = childProcess.execSync(
+        `PATH=/usr/bin:/bin FULCRUM_FNOX_IN_MEMORY_ONLY=1 "${process.execPath}" -e "const m = await import('./server/lib/settings/fnox.ts'); m.clearFnoxCache(); m.setFnoxValue('integrations.githubPat', 'test-token'); process.env.FULCRUM_FNOX_STRICT = '1'; delete process.env.FULCRUM_FNOX_IN_MEMORY_ONLY; try { m.removeFnoxSecret('integrations.githubPat'); process.exit(1) } catch (err) { console.log(String(err.message)); console.log(m.getFnoxSecret('integrations.githubPat')) }"`,
+        { encoding: 'utf-8' },
+      )
+
+      expect(output).toContain('Cannot persist Fulcrum setting integrations.githubPat: fnox CLI not found in PATH')
+      expect(output).toContain('test-token')
+    })
+
+    test('explicit in-memory mode keeps cache-only writes opt-in', () => {
+      const output = childProcess.execSync(
+        `PATH=/usr/bin:/bin FULCRUM_FNOX_IN_MEMORY_ONLY=1 "${process.execPath}" -e "const m = await import('./server/lib/settings/fnox.ts'); m.clearFnoxCache(); m.setFnoxValue('server.port', 9999); console.log(m.getFnoxValue('server.port'))"`,
+        { encoding: 'utf-8' },
+      )
+
+      expect(output).toContain('9999')
+    })
+
+    test('ensureFnoxBootstrap throws when required binaries are unavailable', () => {
+      const output = childProcess.execSync(
+        `PATH=/usr/bin:/bin FULCRUM_FNOX_STRICT=1 FULCRUM_DIR=/tmp/fulcrum-missing-fnox-test "${process.execPath}" -e "const m = await import('./server/lib/settings/fnox.ts'); try { m.ensureFnoxBootstrap(); process.exit(1) } catch (err) { console.log(String(err.message)) }"`,
+        { encoding: 'utf-8' },
+      )
+
+      expect(output).toContain('Cannot bootstrap Fulcrum configuration: fnox and age-keygen must be installed')
     })
   })
 })
