@@ -296,6 +296,9 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
       actions.push(actionBtn('review', '→ Review', { action: 'status_change', task_id: task.id, status: 'IN_REVIEW' }, 'primary'))
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
+      if (task.worktreePath) {
+        actions.push(actionBtn('kill_agent', 'Kill Agent', { action: 'kill_agent', task_id: task.id }, 'danger'))
+      }
       break
     case 'IN_REVIEW':
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))

@@ -3,6 +3,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { setFnoxValue } from '../lib/settings/fnox'
+import { db, tasks } from '../db'
+import { eq } from 'drizzle-orm'
 
 const TOKEN = 'test-secret-token-123'
 
@@ -160,6 +162,67 @@ describe('Mattermost Routes', () => {
       })
       const data = await res.json() as { ephemeral_text?: string }
       expect(data.ephemeral_text).toContain('No deployment selected')
+    })
+    test('change_priority accepts Mattermost selected_option objects', async () => {
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'priority-test-1',
+        title: 'Priority Test',
+        status: 'TO_DO',
+        position: 0,
+        priority: 'medium',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/actions', {
+        context: { action: 'change_priority', task_id: 'priority-test-1' },
+        selected_option: { value: 'high' },
+      })
+      const data = await res.json() as { update?: unknown }
+      const task = db.select().from(tasks).where(eq(tasks.id, 'priority-test-1')).get()
+      expect(data.update).toBeDefined()
+      expect(task?.priority).toBe('high')
+    })
+
+    test('cancel status_change requires confirmation before updating task', async () => {
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'cancel-test-1',
+        title: 'Cancel Test',
+        status: 'IN_PROGRESS',
+        position: 0,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/actions', {
+        context: { action: 'status_change', task_id: 'cancel-test-1', status: 'CANCELED' },
+      })
+      const data = await res.json() as { update?: { props?: { attachments?: Array<{ text?: string }> } } }
+      const task = db.select().from(tasks).where(eq(tasks.id, 'cancel-test-1')).get()
+      expect(data.update?.props?.attachments?.[0]?.text).toContain('Confirm canceling')
+      expect(task?.status).toBe('IN_PROGRESS')
+    })
+
+    test('kill_agent validates task existence after confirmation', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/actions', {
+        context: { action: 'kill_agent', task_id: 'missing-task', confirm: true },
+      })
+      const data = await res.json() as { ephemeral_text?: string }
+      expect(data.ephemeral_text).toContain('Task not found')
+    })
+
+    test('open_create_task_dialog rejects callbacks without trigger_id', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/actions', {
+        context: { action: 'open_create_task_dialog' },
+      })
+      const data = await res.json() as { ephemeral_text?: string }
+      expect(data.ephemeral_text).toContain('missing Mattermost trigger_id')
     })
   })
 
