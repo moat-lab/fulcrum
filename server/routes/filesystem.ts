@@ -662,6 +662,159 @@ app.post('/edit', async (c) => {
   }
 })
 
+// POST /api/fs/rename
+// Body: { path: string, root: string, newName: string }
+// Renames a file to a sibling with `newName` (no directory traversal)
+app.post('/rename', async (c) => {
+  const body = await c.req.json<{ path?: string; root?: string; newName?: string }>()
+  const { path: filePath, root, newName } = body
+
+  if (!filePath) {
+    return c.json({ error: 'path is required' }, 400)
+  }
+
+  if (!root) {
+    return c.json({ error: 'root is required' }, 400)
+  }
+
+  if (!newName || newName.trim() === '') {
+    return c.json({ error: 'newName is required' }, 400)
+  }
+
+  // Reject path separators and traversal in the new name
+  if (newName.includes('/') || newName.includes('\\') || newName === '.' || newName === '..') {
+    return c.json({ error: 'newName must be a plain file name (no path separators)' }, 400)
+  }
+
+  const resolvedRoot = path.resolve(root)
+  const resolvedPath = path.resolve(resolvedRoot, filePath)
+  const resolvedNewPath = path.resolve(path.dirname(resolvedPath), newName)
+
+  if (!isPathWithinRoot(resolvedPath, resolvedRoot) || !isPathWithinRoot(resolvedNewPath, resolvedRoot)) {
+    return c.json({ error: 'Access denied: path outside root' }, 403)
+  }
+
+  try {
+    if (!fs.existsSync(resolvedPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
+
+    if (resolvedPath === resolvedNewPath) {
+      return c.json({
+        success: true,
+        path: path.relative(resolvedRoot, resolvedNewPath),
+      })
+    }
+
+    if (fs.existsSync(resolvedNewPath)) {
+      return c.json({ error: 'A file with that name already exists' }, 409)
+    }
+
+    fs.renameSync(resolvedPath, resolvedNewPath)
+
+    return c.json({
+      success: true,
+      path: path.relative(resolvedRoot, resolvedNewPath),
+    })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to rename file' }, 500)
+  }
+})
+
+// POST /api/fs/delete
+// Body: { path: string, root: string }
+// Deletes a file (not a directory).
+app.post('/delete', async (c) => {
+  const body = await c.req.json<{ path?: string; root?: string }>()
+  const { path: filePath, root } = body
+
+  if (!filePath) {
+    return c.json({ error: 'path is required' }, 400)
+  }
+
+  if (!root) {
+    return c.json({ error: 'root is required' }, 400)
+  }
+
+  const resolvedRoot = path.resolve(root)
+  const resolvedPath = path.resolve(resolvedRoot, filePath)
+
+  if (!isPathWithinRoot(resolvedPath, resolvedRoot)) {
+    return c.json({ error: 'Access denied: path outside root' }, 403)
+  }
+
+  // Refuse to delete the root itself
+  if (resolvedPath === resolvedRoot) {
+    return c.json({ error: 'Cannot delete the root directory' }, 400)
+  }
+
+  try {
+    if (!fs.existsSync(resolvedPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
+
+    const stat = fs.statSync(resolvedPath)
+    if (!stat.isFile()) {
+      return c.json({ error: 'Path is not a file' }, 400)
+    }
+
+    fs.unlinkSync(resolvedPath)
+
+    return c.json({ success: true })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to delete file' }, 500)
+  }
+})
+
+// GET /api/fs/download?path=/path/to/file&root=/worktree/root
+// Returns the file as an attachment so the browser downloads it.
+app.get('/download', (c) => {
+  const filePath = c.req.query('path')
+  const root = c.req.query('root')
+
+  if (!filePath) {
+    return c.json({ error: 'path parameter is required' }, 400)
+  }
+
+  if (!root) {
+    return c.json({ error: 'root parameter is required' }, 400)
+  }
+
+  const resolvedRoot = path.resolve(root)
+  const resolvedPath = path.resolve(resolvedRoot, filePath)
+
+  if (!isPathWithinRoot(resolvedPath, resolvedRoot)) {
+    return c.json({ error: 'Access denied: path outside root' }, 403)
+  }
+
+  try {
+    if (!fs.existsSync(resolvedPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
+
+    const stat = fs.statSync(resolvedPath)
+    if (!stat.isFile()) {
+      return c.json({ error: 'Path is not a file' }, 400)
+    }
+
+    const buffer = fs.readFileSync(resolvedPath)
+    const filename = path.basename(resolvedPath)
+    // Encode the filename for non-ASCII characters per RFC 5987
+    const encodedFilename = encodeURIComponent(filename)
+
+    return new Response(buffer, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${filename.replace(/"/g, '\\"')}"; filename*=UTF-8''${encodedFilename}`,
+        'Content-Length': buffer.length.toString(),
+        'Cache-Control': 'no-store',
+      },
+    })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to download file' }, 500)
+  }
+})
+
 // GET /api/fs/stat?path=/path/to/check
 // Returns type and existence info for a path
 app.get('/stat', (c) => {

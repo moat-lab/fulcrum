@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ContextMenu } from '@base-ui/react/context-menu'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Folder01Icon,
@@ -9,6 +10,9 @@ import {
   Image01Icon,
   MenuCollapseIcon,
   Cancel01Icon,
+  PencilEdit02Icon,
+  Download01Icon,
+  Delete02Icon,
 } from '@hugeicons/core-free-icons'
 import { cn } from '@/lib/utils'
 import { fuzzyScore } from '@/lib/fuzzy-search'
@@ -21,6 +25,9 @@ interface FileTreeProps {
   onSelectFile: (path: string) => void
   onToggleDir: (path: string) => void
   onCollapseAll: () => void
+  onRenameFile?: (path: string) => void
+  onDownloadFile?: (path: string) => void
+  onDeleteFile?: (path: string) => void
 }
 
 /** Flatten tree to get all file paths */
@@ -74,6 +81,71 @@ function getFileIcon(name: string) {
   return File01Icon
 }
 
+interface FileContextMenuProps {
+  path: string
+  onRename?: (path: string) => void
+  onDownload?: (path: string) => void
+  onDelete?: (path: string) => void
+  children: ReactNode
+}
+
+/**
+ * Wraps a file row with a right-click / long-press context menu.
+ * If no action callbacks are provided, the children render with no menu.
+ */
+function FileContextMenu({ path, onRename, onDownload, onDelete, children }: FileContextMenuProps) {
+  const { t } = useTranslation('repositories')
+
+  if (!onRename && !onDownload && !onDelete) {
+    return <>{children}</>
+  }
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger>{children}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Positioner className="isolate z-50 outline-none">
+          <ContextMenu.Popup
+            className={cn(
+              'data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0',
+              'data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 bg-popover text-popover-foreground',
+              'min-w-40 rounded-lg p-1 shadow-md ring-1 duration-100 outline-none'
+            )}
+          >
+            {onRename && (
+              <ContextMenu.Item
+                onClick={() => onRename(path)}
+                className="focus:bg-accent focus:text-accent-foreground min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0"
+              >
+                <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={2} />
+                {t('detailView.fileTree.contextMenu.rename')}
+              </ContextMenu.Item>
+            )}
+            {onDownload && (
+              <ContextMenu.Item
+                onClick={() => onDownload(path)}
+                className="focus:bg-accent focus:text-accent-foreground min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0"
+              >
+                <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={2} />
+                {t('detailView.fileTree.contextMenu.download')}
+              </ContextMenu.Item>
+            )}
+            {onDelete && (
+              <ContextMenu.Item
+                onClick={() => onDelete(path)}
+                className="text-destructive focus:bg-destructive/10 dark:focus:bg-destructive/20 [&_svg]:text-destructive min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0"
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={2} />
+                {t('detailView.fileTree.contextMenu.delete')}
+              </ContextMenu.Item>
+            )}
+          </ContextMenu.Popup>
+        </ContextMenu.Positioner>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
+  )
+}
+
 interface TreeNodeProps {
   entry: FileTreeEntry
   depth: number
@@ -81,6 +153,9 @@ interface TreeNodeProps {
   expandedDirs: string[]
   onSelectFile: (path: string) => void
   onToggleDir: (path: string) => void
+  onRenameFile?: (path: string) => void
+  onDownloadFile?: (path: string) => void
+  onDeleteFile?: (path: string) => void
 }
 
 function TreeNode({
@@ -90,6 +165,9 @@ function TreeNode({
   expandedDirs,
   onSelectFile,
   onToggleDir,
+  onRenameFile,
+  onDownloadFile,
+  onDeleteFile,
 }: TreeNodeProps) {
   const isExpanded = expandedDirs.includes(entry.path)
   const isSelected = selectedFile === entry.path
@@ -103,33 +181,48 @@ function TreeNode({
     }
   }, [isDirectory, entry.path, onSelectFile, onToggleDir])
 
+  const row = (
+    <div
+      className={cn(
+        'flex items-center gap-1.5 px-2 py-0.5 cursor-pointer text-sm hover:bg-muted/50',
+        isSelected && 'bg-primary/10 text-primary'
+      )}
+      style={{ paddingLeft: `${depth * 12 + 8}px` }}
+      onClick={handleClick}
+    >
+      <HugeiconsIcon
+        icon={
+          isDirectory
+            ? isExpanded
+              ? FolderOpenIcon
+              : Folder01Icon
+            : getFileIcon(entry.name)
+        }
+        size={14}
+        strokeWidth={2}
+        className={cn(
+          'shrink-0',
+          isDirectory ? 'text-accent' : 'text-muted-foreground'
+        )}
+      />
+      <span className="break-all">{entry.name}</span>
+    </div>
+  )
+
   return (
     <div>
-      <div
-        className={cn(
-          'flex items-center gap-1.5 px-2 py-0.5 cursor-pointer text-sm hover:bg-muted/50',
-          isSelected && 'bg-primary/10 text-primary'
-        )}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        onClick={handleClick}
-      >
-        <HugeiconsIcon
-          icon={
-            isDirectory
-              ? isExpanded
-                ? FolderOpenIcon
-                : Folder01Icon
-              : getFileIcon(entry.name)
-          }
-          size={14}
-          strokeWidth={2}
-          className={cn(
-            'shrink-0',
-            isDirectory ? 'text-accent' : 'text-muted-foreground'
-          )}
-        />
-        <span className="break-all">{entry.name}</span>
-      </div>
+      {isDirectory ? (
+        row
+      ) : (
+        <FileContextMenu
+          path={entry.path}
+          onRename={onRenameFile}
+          onDownload={onDownloadFile}
+          onDelete={onDeleteFile}
+        >
+          {row}
+        </FileContextMenu>
+      )}
 
       {isDirectory && isExpanded && entry.children && (
         <div>
@@ -142,6 +235,9 @@ function TreeNode({
               expandedDirs={expandedDirs}
               onSelectFile={onSelectFile}
               onToggleDir={onToggleDir}
+              onRenameFile={onRenameFile}
+              onDownloadFile={onDownloadFile}
+              onDeleteFile={onDeleteFile}
             />
           ))}
         </div>
@@ -157,6 +253,9 @@ export function FileTree({
   onSelectFile,
   onToggleDir,
   onCollapseAll,
+  onRenameFile,
+  onDownloadFile,
+  onDeleteFile,
 }: FileTreeProps) {
   const { t } = useTranslation('repositories')
   const [searchQuery, setSearchQuery] = useState('')
@@ -227,27 +326,34 @@ export function FileTree({
         {filteredFiles ? (
           filteredFiles.length > 0 ? (
             filteredFiles.map((file) => (
-              <div
+              <FileContextMenu
                 key={file.path}
-                className={cn(
-                  'flex items-center gap-1.5 px-2 py-0.5 cursor-pointer text-sm hover:bg-muted/50',
-                  selectedFile === file.path && 'bg-primary/10 text-primary'
-                )}
-                onClick={() => onSelectFile(file.path)}
+                path={file.path}
+                onRename={onRenameFile}
+                onDownload={onDownloadFile}
+                onDelete={onDeleteFile}
               >
-                <HugeiconsIcon
-                  icon={getFileIcon(file.name)}
-                  size={14}
-                  strokeWidth={2}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <span className="truncate" title={file.path}>
-                  {file.name}
-                </span>
-                <span className="text-xs text-muted-foreground truncate ml-auto">
-                  {file.path.split('/').slice(0, -1).join('/')}
-                </span>
-              </div>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-0.5 cursor-pointer text-sm hover:bg-muted/50',
+                    selectedFile === file.path && 'bg-primary/10 text-primary'
+                  )}
+                  onClick={() => onSelectFile(file.path)}
+                >
+                  <HugeiconsIcon
+                    icon={getFileIcon(file.name)}
+                    size={14}
+                    strokeWidth={2}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  <span className="truncate" title={file.path}>
+                    {file.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate ml-auto">
+                    {file.path.split('/').slice(0, -1).join('/')}
+                  </span>
+                </div>
+              </FileContextMenu>
             ))
           ) : (
             <div className="px-2 py-4 text-center text-sm text-muted-foreground">
@@ -264,6 +370,9 @@ export function FileTree({
               expandedDirs={expandedDirs}
               onSelectFile={onSelectFile}
               onToggleDir={onToggleDir}
+              onRenameFile={onRenameFile}
+              onDownloadFile={onDownloadFile}
+              onDeleteFile={onDeleteFile}
             />
           ))
         )}

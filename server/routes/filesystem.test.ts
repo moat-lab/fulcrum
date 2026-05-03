@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { createTestGitRepo } from '../__tests__/fixtures/git'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -750,6 +750,201 @@ describe('Filesystem Routes', () => {
       const { readFileSync } = await import('node:fs')
       const content = readFileSync(join(tempDir, 'test.txt'), 'utf-8')
       expect(content).toBe('replaced\nmultiline\nline3')
+    })
+  })
+
+  describe('POST /api/fs/rename', () => {
+    test('renames a file to a sibling name', async () => {
+      writeFileSync(join(tempDir, 'old.txt'), 'hello')
+
+      const { post } = createTestApp()
+      const res = await post('/api/fs/rename', {
+        path: 'old.txt',
+        root: tempDir,
+        newName: 'new.txt',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.success).toBe(true)
+      expect(body.path).toBe('new.txt')
+      expect(existsSync(join(tempDir, 'old.txt'))).toBe(false)
+      expect(existsSync(join(tempDir, 'new.txt'))).toBe(true)
+    })
+
+    test('renames a file inside a subdirectory', async () => {
+      mkdirSync(join(tempDir, 'sub'))
+      writeFileSync(join(tempDir, 'sub', 'a.txt'), 'x')
+
+      const { post } = createTestApp()
+      const res = await post('/api/fs/rename', {
+        path: 'sub/a.txt',
+        root: tempDir,
+        newName: 'b.txt',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.path).toBe(join('sub', 'b.txt'))
+      expect(existsSync(join(tempDir, 'sub', 'b.txt'))).toBe(true)
+    })
+
+    test('rejects newName containing path separator', async () => {
+      writeFileSync(join(tempDir, 'a.txt'), 'x')
+
+      const { post } = createTestApp()
+      const res = await post('/api/fs/rename', {
+        path: 'a.txt',
+        root: tempDir,
+        newName: '../b.txt',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('plain file name')
+    })
+
+    test('returns 409 when target already exists', async () => {
+      writeFileSync(join(tempDir, 'a.txt'), 'x')
+      writeFileSync(join(tempDir, 'b.txt'), 'y')
+
+      const { post } = createTestApp()
+      const res = await post('/api/fs/rename', {
+        path: 'a.txt',
+        root: tempDir,
+        newName: 'b.txt',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(409)
+      expect(body.error).toContain('already exists')
+    })
+
+    test('returns 404 when source does not exist', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/fs/rename', {
+        path: 'missing.txt',
+        root: tempDir,
+        newName: 'other.txt',
+      })
+
+      expect(res.status).toBe(404)
+    })
+
+    test('blocks path traversal in source path', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/fs/rename', {
+        path: '../escape.txt',
+        root: tempDir,
+        newName: 'whatever.txt',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(403)
+      expect(body.error).toContain('Access denied')
+    })
+
+    test('returns 400 when newName is missing', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/fs/rename', {
+        path: 'a.txt',
+        root: tempDir,
+      })
+
+      expect(res.status).toBe(400)
+    })
+  })
+
+  describe('POST /api/fs/delete', () => {
+    test('deletes a file', async () => {
+      writeFileSync(join(tempDir, 'gone.txt'), 'bye')
+
+      const { post } = createTestApp()
+      const res = await post('/api/fs/delete', {
+        path: 'gone.txt',
+        root: tempDir,
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.success).toBe(true)
+      expect(existsSync(join(tempDir, 'gone.txt'))).toBe(false)
+    })
+
+    test('refuses to delete a directory', async () => {
+      mkdirSync(join(tempDir, 'adir'))
+
+      const { post } = createTestApp()
+      const res = await post('/api/fs/delete', {
+        path: 'adir',
+        root: tempDir,
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('not a file')
+      expect(existsSync(join(tempDir, 'adir'))).toBe(true)
+    })
+
+    test('returns 404 for missing file', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/fs/delete', {
+        path: 'nope.txt',
+        root: tempDir,
+      })
+
+      expect(res.status).toBe(404)
+    })
+
+    test('blocks path traversal', async () => {
+      const { post } = createTestApp()
+      const res = await post('/api/fs/delete', {
+        path: '../../etc/passwd',
+        root: tempDir,
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(403)
+      expect(body.error).toContain('Access denied')
+    })
+  })
+
+  describe('GET /api/fs/download', () => {
+    test('streams file as attachment', async () => {
+      writeFileSync(join(tempDir, 'data.bin'), 'payload')
+
+      const { get } = createTestApp()
+      const res = await get(`/api/fs/download?path=data.bin&root=${tempDir}`)
+
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('application/octet-stream')
+      expect(res.headers.get('content-disposition')).toContain('attachment')
+      expect(res.headers.get('content-disposition')).toContain('data.bin')
+      const text = await res.text()
+      expect(text).toBe('payload')
+    })
+
+    test('returns 404 for missing file', async () => {
+      const { get } = createTestApp()
+      const res = await get(`/api/fs/download?path=missing.bin&root=${tempDir}`)
+      expect(res.status).toBe(404)
+    })
+
+    test('blocks path traversal', async () => {
+      const { get } = createTestApp()
+      const res = await get(`/api/fs/download?path=../escape.bin&root=${tempDir}`)
+      const body = await res.json()
+      expect(res.status).toBe(403)
+      expect(body.error).toContain('Access denied')
+    })
+
+    test('returns 400 for directory', async () => {
+      mkdirSync(join(tempDir, 'sub'))
+      const { get } = createTestApp()
+      const res = await get(`/api/fs/download?path=sub&root=${tempDir}`)
+      const body = await res.json()
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('not a file')
     })
   })
 

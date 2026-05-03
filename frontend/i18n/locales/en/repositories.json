@@ -148,7 +148,38 @@
       "title": "Files",
       "searchPlaceholder": "Search files...",
       "noFiles": "No files",
-      "collapseAll": "Collapse all folders"
+      "collapseAll": "Collapse all folders",
+      "contextMenu": {
+        "rename": "Rename",
+        "download": "Download",
+        "delete": "Delete"
+      },
+      "renameDialog": {
+        "title": "Rename file",
+        "description": "Enter a new name for \"{{name}}\".",
+        "label": "New name",
+        "submit": "Rename",
+        "renaming": "Renaming...",
+        "cancel": "Cancel"
+      },
+      "renameToast": {
+        "success": "File renamed",
+        "error": "Failed to rename file"
+      },
+      "downloadToast": {
+        "error": "Failed to download file"
+      },
+      "deleteDialog": {
+        "title": "Delete file",
+        "description": "Permanently delete \"{{name}}\"? This cannot be undone.",
+        "confirm": "Delete",
+        "deleting": "Deleting...",
+        "cancel": "Cancel"
+      },
+      "deleteToast": {
+        "success": "File deleted",
+        "error": "Failed to delete file"
+      }
     },
     "settings": {
       "generalTitle": "General",
