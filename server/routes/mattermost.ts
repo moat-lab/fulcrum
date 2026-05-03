@@ -7,14 +7,14 @@
  */
 
 import { Hono } from 'hono'
-import { getSettings } from '../lib/settings'
+import { getSettings, getWorktreeBasePath } from '../lib/settings'
 import { log } from '../lib/logger'
 import { updateTaskStatus } from '../services/task-status'
 import { deployApp, stopApp, rollbackApp, getProjectName } from '../services/deployment'
 import { stackServices, serviceLogs } from '../services/docker-swarm'
 import { db, tasks, projects, repositories, apps } from '../db'
 import { eq } from 'drizzle-orm'
-import { nanoid } from 'nanoid'
+import { createTaskRecord } from './tasks'
 import {
   buildDashboardCard,
   buildTaskListCard,
@@ -461,42 +461,36 @@ app.post('/dialogs', async (c) => {
           return c.json({ errors: { title: 'Title is required' } })
         }
 
-        const taskId = nanoid()
-        const now = new Date().toISOString()
-
-        // Get max position for ordering
-        const maxPos = db.select().from(tasks).all()
-          .reduce((max, t) => Math.max(max, t.position), 0)
-
         const taskType = submission.type === 'manual' ? null : (submission.type || null)
-
-        const defaultAgent = getSettings().agent.defaultAgent || 'claude'
-
-        db.insert(tasks).values({
-          id: taskId,
+        const repositoryId = submission.repository_id || null
+        const selectedRepo = repositoryId ? db.select().from(repositories).where(eq(repositories.id, repositoryId)).get() : null
+        const result = await createTaskRecord({
           title,
           description: submission.description || null,
           status: 'TO_DO',
-          position: maxPos + 1,
           priority: submission.priority || 'medium',
           type: taskType,
           projectId: submission.project_id || null,
-          repositoryId: submission.repository_id || null,
+          repositoryId,
           dueDate: submission.due_date || null,
-          agent: defaultAgent,
-          createdAt: now,
-          updatedAt: now,
-        }).run()
+          agent: getSettings().agent.defaultAgent || 'claude',
+          repoPath: selectedRepo?.path || null,
+          repoName: selectedRepo?.displayName || null,
+          baseBranch: selectedRepo?.lastBaseBranch || null,
+          startedAt: new Date().toISOString(),
+        })
 
-        // Post the new task card to the channel
-        const config = getSettings().channels.mattermost
-        const card = await buildTaskDetailCard(taskId)
+        if ('error' in result) {
+          return c.json({ errors: { '': result.error } })
+        }
+
+        const card = await buildTaskDetailCard(result.taskId)
         await postMessage({
-          channel_id: channelId || config.channelId,
+          channel_id: channelId || getSettings().channels.mattermost.channelId,
           props: { attachments: [card] },
         })
 
-        return c.json(null) // null = success, no errors
+        return c.json(null)
       }
 
       default:
