@@ -1,5 +1,8 @@
 import { describe, test, expect } from 'bun:test'
-import { FNOX_CONFIG_MAP, FNOX_SECRET_MAP, isSecretPath } from './fnox'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { FNOX_CONFIG_MAP, FNOX_SECRET_MAP, isSecretPath, migrateLegacyFnoxConfig } from './fnox'
 import { VALID_SETTING_PATHS } from './types'
 
 describe('fnox', () => {
@@ -146,6 +149,87 @@ describe('fnox', () => {
     test('returns false for unknown paths', () => {
       expect(isSecretPath('foo.bar')).toBe(false)
       expect(isSecretPath('')).toBe(false)
+    })
+  })
+
+  describe('migrateLegacyFnoxConfig', () => {
+    type LegacyFileName = '.fnox.toml' | 'fnox.toml'
+
+    function withTempFulcrumDir(run: (fulcrumDir: string) => void): void {
+      const fulcrumDir = mkdtempSync(join(tmpdir(), 'fulcrum-fnox-migrate-'))
+      try {
+        run(fulcrumDir)
+      } finally {
+        rmSync(fulcrumDir, { recursive: true, force: true })
+      }
+    }
+
+    function writeLegacyFiles(fulcrumDir: string, fileNames: LegacyFileName[]): void {
+      for (const fileName of fileNames) {
+        writeFileSync(join(fulcrumDir, fileName), `${fileName} content`, 'utf-8')
+      }
+    }
+
+    test('migrates only .fnox.toml when it is the only legacy file', () => {
+      withTempFulcrumDir(fulcrumDir => {
+        writeLegacyFiles(fulcrumDir, ['.fnox.toml'])
+
+        expect(migrateLegacyFnoxConfig(fulcrumDir)).toBe(true)
+
+        expect(readFileSync(join(fulcrumDir, 'config', 'fnox.toml'), 'utf-8')).toBe('.fnox.toml content')
+        expect(existsSync(join(fulcrumDir, '.fnox.toml'))).toBe(false)
+        expect(existsSync(join(fulcrumDir, 'fnox.toml'))).toBe(false)
+      })
+    })
+
+    test('migrates only fnox.toml when it is the only legacy file', () => {
+      withTempFulcrumDir(fulcrumDir => {
+        writeLegacyFiles(fulcrumDir, ['fnox.toml'])
+
+        expect(migrateLegacyFnoxConfig(fulcrumDir)).toBe(true)
+
+        expect(readFileSync(join(fulcrumDir, 'config', 'fnox.toml'), 'utf-8')).toBe('fnox.toml content')
+        expect(existsSync(join(fulcrumDir, '.fnox.toml'))).toBe(false)
+        expect(existsSync(join(fulcrumDir, 'fnox.toml'))).toBe(false)
+      })
+    })
+
+    test('migrates .fnox.toml and backs up fnox.toml when both legacy files exist', () => {
+      withTempFulcrumDir(fulcrumDir => {
+        writeLegacyFiles(fulcrumDir, ['.fnox.toml', 'fnox.toml'])
+
+        expect(migrateLegacyFnoxConfig(fulcrumDir)).toBe(true)
+
+        expect(readFileSync(join(fulcrumDir, 'config', 'fnox.toml'), 'utf-8')).toBe('.fnox.toml content')
+        expect(readFileSync(join(fulcrumDir, 'config', 'legacy-fnox.toml.bak'), 'utf-8')).toBe('fnox.toml content')
+        expect(existsSync(join(fulcrumDir, '.fnox.toml'))).toBe(false)
+        expect(existsSync(join(fulcrumDir, 'fnox.toml'))).toBe(false)
+      })
+    })
+
+    test('does nothing when no legacy files exist', () => {
+      withTempFulcrumDir(fulcrumDir => {
+        expect(migrateLegacyFnoxConfig(fulcrumDir)).toBe(false)
+
+        expect(existsSync(join(fulcrumDir, 'config', 'fnox.toml'))).toBe(false)
+        expect(existsSync(join(fulcrumDir, '.fnox.toml'))).toBe(false)
+        expect(existsSync(join(fulcrumDir, 'fnox.toml'))).toBe(false)
+      })
+    })
+
+    test('does nothing when the nested fnox config already exists', () => {
+      withTempFulcrumDir(fulcrumDir => {
+        writeLegacyFiles(fulcrumDir, ['.fnox.toml', 'fnox.toml'])
+        const nestedPath = join(fulcrumDir, 'config', 'fnox.toml')
+        mkdirSync(join(fulcrumDir, 'config'), { recursive: true })
+        writeFileSync(nestedPath, 'nested content', 'utf-8')
+
+        expect(migrateLegacyFnoxConfig(fulcrumDir)).toBe(false)
+
+        expect(readFileSync(nestedPath, 'utf-8')).toBe('nested content')
+        expect(readFileSync(join(fulcrumDir, '.fnox.toml'), 'utf-8')).toBe('.fnox.toml content')
+        expect(readFileSync(join(fulcrumDir, 'fnox.toml'), 'utf-8')).toBe('fnox.toml content')
+      })
     })
   })
 
