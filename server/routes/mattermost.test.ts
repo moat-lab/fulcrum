@@ -62,11 +62,13 @@ describe('Mattermost Routes', () => {
       setFnoxValue('channels.mattermost.commandToken', TOKEN)
     })
 
-    test('dashboard subcommand (empty text) returns in_channel', async () => {
+    test('dashboard subcommand (empty text) returns in_channel with Fulcrum bot attribution', async () => {
       const client = createTestApp()
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: '' })
-      const data = await res.json() as { response_type: string }
+      const data = await res.json() as { response_type: string; username?: string; icon_url?: string }
       expect(data.response_type).toBe('in_channel')
+      expect(data.username).toBe('fulcrum')
+      expect(data.icon_url).toEndWith('/icon-192.png')
     })
 
     test('tasks subcommand returns ephemeral', async () => {
