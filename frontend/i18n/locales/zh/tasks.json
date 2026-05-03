@@ -144,7 +144,8 @@
     "derivedLabel": "派生"
   },
   "derivedTasks": {
-    "heading": "派生任务（{{count}}）"
+    "heading": "派生任务（{{count}}）",
+    "empty": "暂无派生任务"
   },
   "initializeModal": {
     "title": "初始化为工作树任务",

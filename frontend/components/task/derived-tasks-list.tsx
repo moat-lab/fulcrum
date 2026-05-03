@@ -47,30 +47,32 @@ export function DerivedTasksList({ taskId }: DerivedTasksListProps) {
     .slice()
     .sort(compareDerived)
 
-  if (children.length === 0) return null
-
   return (
     <div className="rounded-lg border bg-card p-4">
       <h3 className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-2">
         <HugeiconsIcon icon={GitForkIcon} size={14} className="text-purple-600 dark:text-purple-400" />
         {t('derivedTasks.heading', { count: children.length })}
       </h3>
-      <ul className="flex flex-col gap-1.5">
-        {children.map((child) => (
-          <li key={child.id} className="flex items-center gap-2 text-sm">
-            <Link
-              to="/tasks/$taskId"
-              params={{ taskId: child.id }}
-              className="truncate hover:underline flex-1"
-            >
-              {child.title}
-            </Link>
-            <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_CLASS[child.status] ?? STATUS_CLASS.TO_DO}`}>
-              {tc(`statuses.${child.status}`)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {children.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('derivedTasks.empty')}</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {children.map((child) => (
+            <li key={child.id} className="flex items-center gap-2 text-sm">
+              <Link
+                to="/tasks/$taskId"
+                params={{ taskId: child.id }}
+                className="truncate hover:underline flex-1"
+              >
+                {child.title}
+              </Link>
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_CLASS[child.status] ?? STATUS_CLASS.TO_DO}`}>
+                {tc(`statuses.${child.status}`)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
