@@ -3,10 +3,11 @@
  * Each function returns a Mattermost attachment (card) with fields and action buttons.
  */
 
-import { db, tasks, apps, deployments, projects, tags, taskTags } from '../../db'
+import { db, tasks, apps, deployments, projects, tags, taskTags, terminals } from '../../db'
 import { eq, desc, and } from 'drizzle-orm'
 import { getActionsUrl, fulcrumUrl } from './client'
 import type { MattermostAttachment, MattermostAction, MattermostField } from './client'
+import { getPTYManager } from '../../terminal/pty-instance'
 
 // --- Helpers ---
 
@@ -42,6 +43,38 @@ function actionBtn(id: string, name: string, context: Record<string, unknown>, s
       context,
     },
   }
+}
+
+type AgentRuntimeStatus = 'running' | 'idle' | 'crashed'
+
+function getAgentRuntimeStatus(worktreePath: string): AgentRuntimeStatus {
+  try {
+    const managedTerminal = getPTYManager().listTerminals().find((terminal) => terminal.cwd === worktreePath)
+    if (managedTerminal) {
+      return managedTerminal.status === 'running' ? 'running' : 'crashed'
+    }
+  } catch {
+  }
+
+  const terminalRecord = db
+    .select({ status: terminals.status })
+    .from(terminals)
+    .where(eq(terminals.cwd, worktreePath))
+    .get()
+
+  if (!terminalRecord) {
+    return 'idle'
+  }
+
+  return terminalRecord.status === 'running' ? 'running' : 'crashed'
+}
+
+function formatAgentStatus(agent: string, taskStatus: string, worktreePath: string | null): string {
+  if (taskStatus !== 'IN_PROGRESS' || !worktreePath) {
+    return agent
+  }
+
+  return `${agent} (${getAgentRuntimeStatus(worktreePath)})`
 }
 
 function formatDate(dateStr: string | null): string {
@@ -267,18 +300,7 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     fields.push({ short: true, title: 'Estimate', value: `${task.timeEstimate}h` })
   }
   if (task.agent) {
-    let agentStatus = task.agent
-    // Check if an agent process is running for this task's worktree
-    if (task.worktreePath && task.status === 'IN_PROGRESS') {
-      try {
-        const { execSync } = await import('child_process')
-        const result = execSync(`pgrep -f "${task.worktreePath}" 2>/dev/null`, { encoding: 'utf-8', timeout: 2000 }).trim()
-        agentStatus = result ? `${task.agent} (running)` : `${task.agent} (idle)`
-      } catch {
-        agentStatus = `${task.agent} (idle)`
-      }
-    }
-    fields.push({ short: true, title: 'Agent', value: agentStatus })
+    fields.push({ short: true, title: 'Agent', value: formatAgentStatus(task.agent, task.status, task.worktreePath) })
   }
   if (tagStr) {
     fields.push({ short: false, title: 'Tags', value: tagStr })
