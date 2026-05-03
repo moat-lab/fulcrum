@@ -150,6 +150,7 @@
     "title": "初始化为工作树任务",
     "description": "为 \"{{taskTitle}}\" 创建 Git 工作树并开始编码会话",
     "branchName": "分支名称",
+    "pullingFromRemoteHint": "正在从远程拉取——初始化工作树可能需要片刻。",
     "errors": {
       "initFailed": "初始化工作树任务失败"
     }
