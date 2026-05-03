@@ -47,15 +47,7 @@ function actionBtn(id: string, name: string, context: Record<string, unknown>, s
 
 type AgentRuntimeStatus = 'running' | 'idle' | 'crashed'
 
-function getAgentRuntimeStatus(worktreePath: string): AgentRuntimeStatus {
-  try {
-    const managedTerminal = getPTYManager().listTerminals().find((terminal) => terminal.cwd === worktreePath)
-    if (managedTerminal) {
-      return managedTerminal.status === 'running' ? 'running' : 'crashed'
-    }
-  } catch {
-  }
-
+function getAgentRuntimeStatusFromDb(worktreePath: string): AgentRuntimeStatus {
   const terminalRecord = db
     .select({ status: terminals.status })
     .from(terminals)
@@ -67,6 +59,19 @@ function getAgentRuntimeStatus(worktreePath: string): AgentRuntimeStatus {
   }
 
   return terminalRecord.status === 'running' ? 'running' : 'crashed'
+}
+
+function getAgentRuntimeStatus(worktreePath: string): AgentRuntimeStatus {
+  try {
+    const managedTerminal = getPTYManager().listTerminals().find((terminal) => terminal.cwd === worktreePath)
+    if (managedTerminal) {
+      return managedTerminal.status === 'running' ? 'running' : 'crashed'
+    }
+  } catch {
+    return getAgentRuntimeStatusFromDb(worktreePath)
+  }
+
+  return getAgentRuntimeStatusFromDb(worktreePath)
 }
 
 function formatAgentStatus(agent: string, taskStatus: string, worktreePath: string | null): string {
