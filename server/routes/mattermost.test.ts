@@ -3,6 +3,46 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { setFnoxValue } from '../lib/settings/fnox'
+import { fulcrumUrl, getActionsUrl } from '../services/mattermost/client'
+
+describe('Mattermost callback URLs', () => {
+  let testEnv: TestEnv
+  let originalFulcrumHost: string | undefined
+
+  beforeEach(() => {
+    testEnv = setupTestEnv()
+    originalFulcrumHost = process.env.FULCRUM_HOST
+    delete process.env.FULCRUM_HOST
+  })
+
+  afterEach(() => {
+    if (originalFulcrumHost === undefined) {
+      delete process.env.FULCRUM_HOST
+    } else {
+      process.env.FULCRUM_HOST = originalFulcrumHost
+    }
+    testEnv.cleanup()
+  })
+
+  test('uses localhost only while Mattermost is disabled', () => {
+    expect(getActionsUrl()).toBe('http://localhost:7777/api/mattermost/actions')
+  })
+
+  test('fails closed instead of emitting localhost callback URLs when Mattermost is enabled without FULCRUM_HOST', () => {
+    setFnoxValue('channels.mattermost.enabled', true)
+
+    expect(() => getActionsUrl()).toThrow('Mattermost callback host not configured')
+    expect(() => fulcrumUrl('/tasks')).toThrow('Mattermost callback host not configured')
+  })
+
+  test('uses FULCRUM_HOST for Mattermost callback URLs when configured', () => {
+    setFnoxValue('channels.mattermost.enabled', true)
+    process.env.FULCRUM_HOST = 'fulcrum.example.test'
+
+    expect(getActionsUrl()).toBe('http://fulcrum.example.test:7777/api/mattermost/actions')
+    expect(fulcrumUrl('/tasks')).toBe('http://fulcrum.example.test:7777/tasks')
+  })
+})
 
 const TOKEN = 'test-secret-token-123'
 
@@ -20,12 +60,20 @@ function postForm(client: ReturnType<typeof createTestApp>, path: string, params
 
 describe('Mattermost Routes', () => {
   let testEnv: TestEnv
+  let originalFulcrumHost: string | undefined
 
   beforeEach(() => {
     testEnv = setupTestEnv()
+    originalFulcrumHost = process.env.FULCRUM_HOST
+    process.env.FULCRUM_HOST = 'fulcrum.example.test'
   })
 
   afterEach(() => {
+    if (originalFulcrumHost === undefined) {
+      delete process.env.FULCRUM_HOST
+    } else {
+      process.env.FULCRUM_HOST = originalFulcrumHost
+    }
     testEnv.cleanup()
   })
 
