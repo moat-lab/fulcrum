@@ -32,6 +32,13 @@ import {
   enableSlack,
   disableSlack,
   disconnectSlack,
+  // Mattermost
+  getMattermostStatus,
+  getMattermostConfig,
+  configureMattermost,
+  enableMattermost,
+  disableMattermost,
+  disconnectMattermost,
   // Email
   getEmailStatus,
   getEmailConfig,
@@ -48,6 +55,7 @@ import {
   SLACK_CONNECTION_ID,
   DISCORD_CONNECTION_ID,
   TELEGRAM_CONNECTION_ID,
+  MATTERMOST_CONNECTION_ID,
 } from '../services/channels'
 import { getStoredEmailById, type StoredEmail } from '../services/channels/email-storage'
 import { getChannelMessageById } from '../services/channels/message-storage'
@@ -372,6 +380,79 @@ app.get('/slack/sessions', (c) => {
   return c.json({ sessions: mappings })
 })
 
+// ==================== Mattermost Routes ====================
+
+app.get('/mattermost', (c) => {
+  const status = getMattermostStatus()
+  const config = getMattermostConfig()
+  return c.json({ ...status, config })
+})
+
+app.post('/mattermost/configure', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { serverUrl, botToken, teamId, channelId, commandToken } = body
+
+    if (!serverUrl || typeof serverUrl !== 'string') return c.json({ error: 'serverUrl is required' }, 400)
+    if (!botToken || typeof botToken !== 'string') return c.json({ error: 'botToken is required' }, 400)
+
+    const result = await configureMattermost(
+      serverUrl,
+      botToken,
+      typeof teamId === 'string' ? teamId : '',
+      typeof channelId === 'string' ? channelId : '',
+      typeof commandToken === 'string' ? commandToken : '',
+    )
+    log.messaging.info('Mattermost configured via API')
+    return c.json(result)
+  } catch (err) {
+    log.messaging.error('Failed to configure Mattermost', { error: String(err) })
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+app.post('/mattermost/enable', async (c) => {
+  try {
+    const result = await enableMattermost()
+    if (result.error) return c.json({ error: result.error }, 400)
+    log.messaging.info('Mattermost enabled via API')
+    return c.json(result)
+  } catch (err) {
+    log.messaging.error('Failed to enable Mattermost', { error: String(err) })
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+app.post('/mattermost/disable', async (c) => {
+  try {
+    const result = await disableMattermost()
+    log.messaging.info('Mattermost disabled via API')
+    return c.json(result)
+  } catch (err) {
+    log.messaging.error('Failed to disable Mattermost', { error: String(err) })
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+app.post('/mattermost/disconnect', async (c) => {
+  try {
+    const result = await disconnectMattermost()
+    log.messaging.info('Mattermost disconnected via API')
+    return c.json(result)
+  } catch (err) {
+    log.messaging.error('Failed to disconnect Mattermost', { error: String(err) })
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+app.get('/mattermost/sessions', (c) => {
+  const status = getMattermostStatus()
+  if (!status.enabled) return c.json({ sessions: [] })
+
+  const mappings = listSessionMappings(MATTERMOST_CONNECTION_ID)
+  return c.json({ sessions: mappings })
+})
+
 // ==================== Email Routes ====================
 
 // GET /api/messaging/email - Get email connection status
@@ -593,7 +674,7 @@ app.get('/messages/:id', (c) => {
 app.post('/send', async (c) => {
   try {
     const body = await c.req.json<{
-      channel: 'email' | 'whatsapp' | 'discord' | 'telegram' | 'slack'
+      channel: 'email' | 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'mattermost'
       body: string
       subject?: string
       replyToMessageId?: string

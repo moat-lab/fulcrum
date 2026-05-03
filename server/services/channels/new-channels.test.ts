@@ -34,12 +34,12 @@ import { activeChannels } from './channel-manager'
 // Base mock channel class for all channels (no mock.module needed)
 class BaseMockChannel implements MessagingChannel {
   readonly connectionId: string
-  readonly type: 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'email'
+  readonly type: 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'email' | 'mattermost'
   protected events: ChannelEvents | null = null
   protected status: ConnectionStatus = 'disconnected'
   sentMessages: Array<{ recipientId: string; content: string }> = []
 
-  constructor(connectionId: string, type: 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'email') {
+  constructor(connectionId: string, type: 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'email' | 'mattermost') {
     this.connectionId = connectionId
     this.type = type
   }
@@ -74,6 +74,7 @@ const mockChannelFactory: ChannelFactory = {
   createDiscordChannel: (id) => new BaseMockChannel(id, 'discord'),
   createTelegramChannel: (id) => new BaseMockChannel(id, 'telegram'),
   createSlackChannel: (id) => new BaseMockChannel(id, 'slack'),
+  createMattermostChannel: (id) => new BaseMockChannel(id, 'mattermost'),
   createEmailChannel: (id) => new BaseMockChannel(id, 'email'),
   // Mock validators that always pass
   validateDiscordToken: async () => {},
