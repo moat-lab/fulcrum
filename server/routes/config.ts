@@ -124,8 +124,8 @@ app.put('/notifications', async (c) => {
 
 // POST /api/config/notifications/test/:channel - Test a notification channel
 app.post('/notifications/test/:channel', async (c) => {
-  const channel = c.req.param('channel') as 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail'
-  const validChannels = ['sound', 'slack', 'discord', 'pushover', 'whatsapp', 'telegram', 'gmail']
+  const channel = c.req.param('channel') as 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail' | 'mattermost'
+  const validChannels = ['sound', 'slack', 'discord', 'pushover', 'whatsapp', 'telegram', 'gmail', 'mattermost']
 
   if (!validChannels.includes(channel)) {
     return c.json({ error: `Invalid channel: ${channel}` }, 400)

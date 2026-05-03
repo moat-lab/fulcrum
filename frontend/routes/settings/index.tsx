@@ -217,6 +217,7 @@ function SettingsPage() {
   const [telegramNotifEnabled, setTelegramNotifEnabled] = useState(false)
   const [gmailNotifEnabled, setGmailNotifEnabled] = useState(false)
   const [gmailNotifAccountId, setGmailNotifAccountId] = useState('')
+  const [mattermostNotifEnabled, setMattermostNotifEnabled] = useState(false)
   const [slackUseMessaging, setSlackUseMessaging] = useState(false)
   const [discordUseMessaging, setDiscordUseMessaging] = useState(false)
 
@@ -299,6 +300,7 @@ function SettingsPage() {
       setTelegramNotifEnabled(notificationSettings.telegram?.enabled ?? false)
       setGmailNotifEnabled(notificationSettings.gmail?.enabled ?? false)
       setGmailNotifAccountId(notificationSettings.gmail?.googleAccountId ?? '')
+      setMattermostNotifEnabled(notificationSettings.mattermost?.enabled ?? false)
       setSlackUseMessaging(notificationSettings.slack?.useMessagingChannel ?? false)
       setDiscordUseMessaging(notificationSettings.discord?.useMessagingChannel ?? false)
     }
@@ -428,7 +430,8 @@ function SettingsPage() {
     whatsappNotifEnabled !== (notificationSettings.whatsapp?.enabled ?? false) ||
     telegramNotifEnabled !== (notificationSettings.telegram?.enabled ?? false) ||
     gmailNotifEnabled !== (notificationSettings.gmail?.enabled ?? false) ||
-    gmailNotifAccountId !== (notificationSettings.gmail?.googleAccountId ?? '')
+    gmailNotifAccountId !== (notificationSettings.gmail?.googleAccountId ?? '') ||
+    mattermostNotifEnabled !== (notificationSettings.mattermost?.enabled ?? false)
   )
 
   const hasEditorChanges =
@@ -652,6 +655,7 @@ function SettingsPage() {
               whatsapp: { enabled: whatsappNotifEnabled },
               telegram: { enabled: telegramNotifEnabled },
               gmail: { enabled: gmailNotifEnabled, googleAccountId: gmailNotifAccountId || undefined },
+              mattermost: { enabled: mattermostNotifEnabled },
               _updatedAt: notificationSettings?._updatedAt, // Include timestamp for conflict detection
             },
             {
@@ -964,7 +968,7 @@ function SettingsPage() {
     })
   }
 
-  const handleTestChannel = async (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail') => {
+  const handleTestChannel = async (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail' | 'mattermost') => {
     testChannel.mutate(channel, {
       onSuccess: (result) => {
         if (result.success) {
@@ -2620,6 +2624,37 @@ function SettingsPage() {
                     {telegramNotifEnabled && (
                       <p className="ml-10 text-xs text-muted-foreground">
                         {t('notifications.messagingChannelRequired') || 'Requires connected Telegram messaging channel'}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Mattermost */}
+                  <div className="space-y-2 pl-4">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={mattermostNotifEnabled}
+                        onCheckedChange={setMattermostNotifEnabled}
+                        disabled={isLoading || !notificationsEnabled}
+                      />
+                      <label className="text-sm text-muted-foreground">Mattermost</label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="ml-auto h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => handleTestChannel('mattermost')}
+                        disabled={isLoading || !notificationsEnabled || !mattermostNotifEnabled || testChannel.isPending}
+                        title="Mattermost"
+                      >
+                        {testChannel.isPending ? (
+                          <HugeiconsIcon icon={Loading03Icon} size={14} strokeWidth={2} className="animate-spin" />
+                        ) : (
+                          <HugeiconsIcon icon={TestTube01Icon} size={14} strokeWidth={2} />
+                        )}
+                      </Button>
+                    </div>
+                    {mattermostNotifEnabled && (
+                      <p className="ml-10 text-xs text-muted-foreground">
+                        Sends rich notification cards with context fields and action buttons to the configured Mattermost channel.
                       </p>
                     )}
                   </div>

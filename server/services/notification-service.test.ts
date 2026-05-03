@@ -11,11 +11,21 @@ mock.module('../websocket/terminal-ws', () => ({
 // Track calls to sendNotificationViaMessaging for messaging-based notification tests
 let messagingSendCalls: Array<{ channel: string; body: string }> = []
 let messagingSendResult: { success: boolean; error?: string } = { success: true }
+let mattermostNotifications: unknown[] = []
 
 mock.module('./notification-messaging', () => ({
   sendNotificationViaMessaging: async (channel: string, body: string) => {
     messagingSendCalls.push({ channel, body })
     return messagingSendResult
+  },
+}))
+
+mock.module('./mattermost/client', () => ({
+  getActionsUrl: () => 'http://localhost:7777/api/mattermost/actions',
+  fulcrumUrl: (path: string) => `http://localhost:7777${path}`,
+  postNotification: async (attachment: unknown) => {
+    mattermostNotifications.push(attachment)
+    return { id: 'post-1' }
   },
 }))
 
@@ -26,6 +36,9 @@ describe('Notification Service', () => {
     testEnv = setupTestEnv()
     // Ensure notifications are enabled by default
     await updateNotificationSettings({ enabled: true })
+    messagingSendCalls = []
+    messagingSendResult = { success: true }
+    mattermostNotifications = []
   })
 
   afterEach(() => {
@@ -447,6 +460,59 @@ describe('Notification Service', () => {
 
       const results = await sendNotification(payload)
       expect(results.some(r => r.channel === 'gmail' && !r.success)).toBe(true)
+    })
+
+    test('sends Mattermost task notification card with action buttons when enabled', async () => {
+      await updateNotificationSettings({
+        enabled: true,
+        sound: { enabled: false },
+        slack: { enabled: false },
+        discord: { enabled: false },
+        pushover: { enabled: false },
+        whatsapp: { enabled: false },
+        telegram: { enabled: false },
+        gmail: { enabled: false },
+        mattermost: { enabled: true },
+      })
+
+      const payload: NotificationPayload = {
+        title: 'Task status changed',
+        message: 'Task moved from TO_DO to IN_PROGRESS by user',
+        type: 'task_status_change',
+        taskId: 'task-123',
+        taskTitle: 'Mattermost task',
+      }
+
+      const results = await sendNotification(payload)
+      const attachment = mattermostNotifications[0] as { fields?: Array<{ title: string; value: string }>; actions?: Array<{ id: string; integration: { context: Record<string, unknown> } }> }
+
+      expect(results.some(r => r.channel === 'mattermost' && r.success)).toBe(true)
+      expect(attachment.fields?.some(f => f.title === 'Task' && f.value === 'Mattermost task')).toBe(true)
+      expect(attachment.actions?.some(a => a.id === 'view_task' && a.integration.context.task_id === 'task-123')).toBe(true)
+      expect(attachment.actions?.some(a => a.id === 'next_status' && a.integration.context.status === 'IN_REVIEW')).toBe(true)
+    })
+
+    test('sends Mattermost failed deployment card with logs retry and rollback actions', async () => {
+      await updateNotificationSettings({
+        enabled: true,
+        sound: { enabled: false },
+        mattermost: { enabled: true },
+      })
+
+      const payload: NotificationPayload = {
+        title: 'Deployment failed',
+        message: 'Build failed after 2m',
+        type: 'deployment_failed',
+        appId: 'app-123',
+        appName: 'fulcrum-web',
+      }
+
+      await sendNotification(payload)
+      const attachment = mattermostNotifications[0] as { color?: string; fields?: Array<{ title: string; value: string }>; actions?: Array<{ id: string }> }
+
+      expect(attachment.color).toBe('#EF4444')
+      expect(attachment.fields?.some(f => f.title === 'App' && f.value === 'fulcrum-web')).toBe(true)
+      expect(attachment.actions?.map(a => a.id)).toEqual(['logs', 'retry', 'rollback'])
     })
 
     test('sends slack via messaging when useMessagingChannel is true', async () => {

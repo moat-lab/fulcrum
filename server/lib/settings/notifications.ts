@@ -146,6 +146,7 @@ export function updateNotificationSettingsSync(
     whatsapp: { ...current.whatsapp, ...updates.whatsapp },
     telegram: { ...current.telegram, ...updates.telegram },
     gmail: { ...current.gmail, ...updates.gmail },
+    mattermost: { ...current.mattermost, ...updates.mattermost },
     _updatedAt: Date.now(),
   }
 
@@ -184,6 +185,7 @@ export function updateNotificationSettingsSync(
   if (updated.gmail.googleAccountId !== undefined) {
     setFnoxValue('notifications.gmail.googleAccountId', updated.gmail.googleAccountId || null)
   }
+  setFnoxValue('notifications.mattermost.enabled', updated.mattermost.enabled)
   setFnoxValue('notifications._updatedAt', updated._updatedAt)
 
   // Log what changed
@@ -223,6 +225,9 @@ export function updateNotificationSettingsSync(
   }
   if (updates.gmail?.enabled !== undefined && updates.gmail.enabled !== current.gmail.enabled) {
     changes['gmail.enabled'] = { from: current.gmail.enabled, to: updates.gmail.enabled }
+  }
+  if (updates.mattermost?.enabled !== undefined && updates.mattermost.enabled !== current.mattermost.enabled) {
+    changes['mattermost.enabled'] = { from: current.mattermost.enabled, to: updates.mattermost.enabled }
   }
   if (Object.keys(changes).length > 0) {
     log.settings.info('Notification settings updated', { changes })

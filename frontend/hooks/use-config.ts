@@ -451,6 +451,7 @@ export interface NotificationSettings {
   whatsapp: { enabled: boolean }
   telegram: { enabled: boolean }
   gmail: { enabled: boolean; googleAccountId?: string }
+  mattermost: { enabled: boolean }
   _updatedAt?: number // Timestamp for optimistic locking
 }
 
@@ -513,7 +514,7 @@ export function useUpdateNotificationSettings() {
 
 export function useTestNotificationChannel() {
   return useMutation({
-    mutationFn: (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail') =>
+    mutationFn: (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail' | 'mattermost') =>
       fetchJSON<NotificationTestResult>(`${API_BASE}/api/config/notifications/test/${channel}`, {
         method: 'POST',
       }),
