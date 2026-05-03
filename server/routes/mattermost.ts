@@ -7,7 +7,7 @@
  */
 
 import { Hono } from 'hono'
-import { getSettings, getWorktreeBasePath } from '../lib/settings'
+import { getSettings } from '../lib/settings'
 import { log } from '../lib/logger'
 import { updateTaskStatus } from '../services/task-status'
 import { deployApp, stopApp, rollbackApp, getProjectName } from '../services/deployment'
