@@ -1,8 +1,13 @@
 // Mattermost route tests using standard test environment
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import { mkdtempSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { execFileSync } from 'child_process'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { setFnoxValue } from '../lib/settings/fnox'
+import { db, tasks } from '../db'
 
 const TOKEN = 'test-secret-token-123'
 
@@ -160,6 +165,48 @@ describe('Mattermost Routes', () => {
       })
       const data = await res.json() as { ephemeral_text?: string }
       expect(data.ephemeral_text).toContain('No deployment selected')
+    })
+  })
+
+  describe('POST /api/mattermost/actions — diff preview', () => {
+    beforeEach(() => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('editor.host', 'http://localhost:18888')
+    })
+
+    test('view_diff renders an inline changed-file summary for task worktrees', async () => {
+      const worktreePath = mkdtempSync(join(tmpdir(), 'fulcrum-mm-diff-'))
+      execFileSync('git', ['init'], { cwd: worktreePath })
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: worktreePath })
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: worktreePath })
+      writeFileSync(join(worktreePath, 'auth.ts'), 'export const auth = "old"\n')
+      execFileSync('git', ['add', 'auth.ts'], { cwd: worktreePath })
+      execFileSync('git', ['commit', '-m', 'initial'], { cwd: worktreePath })
+      writeFileSync(join(worktreePath, 'auth.ts'), 'export const auth = "new"\nexport const token = "safe"\n')
+
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'task-diff-preview',
+        title: 'Preview diff in Mattermost',
+        status: 'IN_REVIEW',
+        position: 1,
+        priority: 'medium',
+        worktreePath,
+        agent: 'claude',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const { post } = createTestApp()
+      const res = await post('/api/mattermost/actions', {
+        context: { action: 'view_diff', task_id: 'task-diff-preview' },
+      })
+      const data = await res.json() as { update?: { props?: { attachments?: Array<{ text?: string; actions?: Array<{ name: string }> }> } } }
+      const attachment = data.update?.props?.attachments?.[0]
+      expect(attachment?.text).toContain('Diff —')
+      expect(attachment?.text).toContain('auth.ts')
+      expect(attachment?.text).toContain('+2 -1')
+      expect(attachment?.actions?.map(action => action.name)).toContain('→ Review')
     })
   })
 

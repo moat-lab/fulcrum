@@ -19,20 +19,44 @@ import {
   buildDashboardCard,
   buildTaskListCard,
   buildTaskDetailCard,
+  buildTaskDiffCard,
   buildAppsCard,
   buildAppDetailCard,
   buildMonitorCard,
   buildProjectsCard,
   buildSearchCard,
 } from '../services/mattermost/cards'
-import { openDialog, postMessage, getActionsUrl } from '../services/mattermost/client'
-import type { MattermostDialog } from '../services/mattermost/client'
+import { openDialog, postMessage, updatePost, getActionsUrl } from '../services/mattermost/client'
+import type { MattermostAttachment, MattermostDialog } from '../services/mattermost/client'
 
 const VALID_STATUS = new Set(['TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CANCELED'])
 const VALID_PRIORITY = new Set(['high', 'medium', 'low'])
 const IN_CHANNEL_SUBCOMMANDS = new Set(['', 'deploy'])
 
+type MattermostPostUpdateTarget = { postId: string } | { postId: null }
+
 const app = new Hono()
+
+function mattermostUpdate(attachment: MattermostAttachment) {
+  return { props: { attachments: [attachment] } }
+}
+
+async function updateMattermostPost(target: MattermostPostUpdateTarget, attachment: MattermostAttachment): Promise<void> {
+  if (target.postId === null) return
+  await updatePost(target.postId, mattermostUpdate(attachment))
+}
+
+function buildDeploymentProgressCard(appName: string, progress: { stage: string; message: string; progress?: number }): MattermostAttachment {
+  const pct = progress.progress ?? 0
+  const filled = Math.max(0, Math.min(10, Math.round(pct / 10)))
+  const bar = pct > 0 ? `\n${'█'.repeat(filled)}${'░'.repeat(10 - filled)} ${pct}%` : ''
+  return {
+    fallback: `Deploying ${appName}`,
+    color: progress.stage === 'failed' ? '#EF4444' : progress.stage === 'done' ? '#22C55E' : '#F59E0B',
+    pretext: `#### 🔨 Deploying ${appName}`,
+    text: `**${progress.stage}** — ${progress.message}${bar}`,
+  }
+}
 
 // --- Slash Command Handler ---
 // Mattermost sends application/x-www-form-urlencoded
@@ -315,6 +339,11 @@ app.post('/actions', async (c) => {
         return c.json({ update: { props: { attachments: [card] } } })
       }
 
+      case 'view_diff': {
+        const card = await buildTaskDiffCard(context.task_id as string)
+        return c.json({ update: mattermostUpdate(card) })
+      }
+
       case 'list_apps': {
         const card = await buildAppsCard()
         return c.json({ update: { props: { attachments: [card] } } })
@@ -327,13 +356,19 @@ app.post('/actions', async (c) => {
 
       case 'deploy_app': {
         const appId = context.app_id as string
+        const postTarget: MattermostPostUpdateTarget = body.post_id ? { postId: body.post_id as string } : { postId: null }
+        const appRecord = db.select().from(apps).where(eq(apps.id, appId)).get()
+        const appName = appRecord?.name ?? 'app'
         try {
-          const result = await deployApp(appId, { deployedBy: 'manual' })
+          await updateMattermostPost(postTarget, buildDeploymentProgressCard(appName, { stage: 'queued', message: 'Deployment queued...' }))
+          const result = await deployApp(appId, { deployedBy: 'manual' }, async (progress) => {
+            await updateMattermostPost(postTarget, buildDeploymentProgressCard(appName, progress))
+          })
           if (!result.success) {
             return c.json({ ephemeral_text: `❌ Deploy failed: ${result.error || 'unknown error'}` })
           }
           const card = await buildAppDetailCard(appId)
-          return c.json({ update: { props: { attachments: [card] } } })
+          return c.json({ update: mattermostUpdate(card) })
         } catch (err) {
           return c.json({ ephemeral_text: `❌ Deploy failed: ${err}` })
         }

@@ -3,6 +3,7 @@
  * Each function returns a Mattermost attachment (card) with fields and action buttons.
  */
 
+import { execFileSync } from 'child_process'
 import { db, tasks, apps, deployments, projects, tags, taskTags } from '../../db'
 import { eq, desc, and } from 'drizzle-orm'
 import { getActionsUrl, fulcrumUrl } from './client'
@@ -29,6 +30,14 @@ const APP_STATUS_EMOJI: Record<string, string> = {
   building: '🔨',
   failed: '❌',
   stopped: '⏹',
+}
+
+interface DiffPreview {
+  branch: string
+  fileCount: number
+  insertions: number
+  deletions: number
+  files: Array<{ path: string; insertions: number; deletions: number }>
 }
 
 function actionBtn(id: string, name: string, context: Record<string, unknown>, style?: MattermostAction['style']): MattermostAction {
@@ -59,6 +68,46 @@ function timeAgo(dateStr: string | null): string {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+function readDiffPreview(worktreePath: string): DiffPreview | null {
+  try {
+    const branch = execFileSync('git', ['branch', '--show-current'], { cwd: worktreePath, encoding: 'utf-8' }).trim() || 'detached'
+    const summary = execFileSync('git', ['diff', '--numstat', 'HEAD'], { cwd: worktreePath, encoding: 'utf-8' }).trim()
+    const files = summary.split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [added, removed, path] = line.split('\t')
+        return {
+          path,
+          insertions: Number(added) || 0,
+          deletions: Number(removed) || 0,
+        }
+      })
+    if (files.length === 0) return null
+    return {
+      branch,
+      fileCount: files.length,
+      insertions: files.reduce((sum, file) => sum + file.insertions, 0),
+      deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+      files,
+    }
+  } catch {
+    return null
+  }
+}
+
+function formatDiffPreview(preview: DiffPreview): string {
+  const shownFiles = preview.files.slice(0, 8).map((file) => {
+    const delta = `+${file.insertions} -${file.deletions}`
+    return `- \`${file.path}\` (${delta})`
+  })
+  const more = preview.files.length > shownFiles.length ? `\n- … ${preview.files.length - shownFiles.length} more file(s)` : ''
+  return [
+    `#### Diff — ${preview.branch} (${preview.fileCount} files, +${preview.insertions} -${preview.deletions})`,
+    '',
+    `${shownFiles.join('\n')}${more}`,
+  ].join('\n')
 }
 
 // --- Dashboard Card ---
@@ -295,11 +344,13 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     case 'IN_PROGRESS':
       actions.push(actionBtn('review', '→ Review', { action: 'status_change', task_id: task.id, status: 'IN_REVIEW' }, 'primary'))
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))
+      actions.push(actionBtn('diff', 'View Diff', { action: 'view_diff', task_id: task.id }))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
       break
     case 'IN_REVIEW':
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))
       actions.push(actionBtn('back', '← Progress', { action: 'status_change', task_id: task.id, status: 'IN_PROGRESS' }))
+      actions.push(actionBtn('diff', 'View Diff', { action: 'view_diff', task_id: task.id }))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
       break
     case 'DONE':
@@ -338,6 +389,53 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     text: descText || undefined,
     fields,
     actions,
+  }
+}
+
+export async function buildTaskDiffCard(taskId: string): Promise<MattermostAttachment> {
+  let task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+  if (!task) {
+    const allTasks = db.select().from(tasks).all()
+    task = allTasks.find(t => t.id.startsWith(taskId))
+  }
+
+  if (!task) {
+    return { fallback: 'Task not found', color: '#EF4444', text: `Task **${taskId}** not found.` }
+  }
+  if (!task.worktreePath) {
+    return {
+      fallback: 'No diff available',
+      color: '#6B7280',
+      pretext: `#### Diff — Task #${task.id.slice(0, 6)}`,
+      text: '_No worktree is available for this task._',
+      actions: [actionBtn('back', '← Back', { action: 'task_detail', task_id: task.id })],
+    }
+  }
+
+  const preview = readDiffPreview(task.worktreePath)
+  if (!preview) {
+    return {
+      fallback: 'No diff available',
+      color: '#6B7280',
+      pretext: `#### Diff — Task #${task.id.slice(0, 6)}`,
+      text: '_No working tree diff against HEAD._',
+      actions: [
+        actionBtn('back', '← Back', { action: 'task_detail', task_id: task.id }),
+        actionBtn('open', 'Open Task ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${task.id}`) }),
+      ],
+    }
+  }
+
+  return {
+    fallback: `Diff — ${task.title}`,
+    color: '#3B82F6',
+    pretext: `#### Task #${task.id.slice(0, 6)} — ${task.title}`,
+    text: formatDiffPreview(preview),
+    actions: [
+      actionBtn('review', '→ Review', { action: 'status_change', task_id: task.id, status: 'IN_REVIEW' }, 'primary'),
+      actionBtn('back', '← Back', { action: 'task_detail', task_id: task.id }),
+      actionBtn('open', 'Open Full Diff ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${task.id}`) }),
+    ],
   }
 }
 
