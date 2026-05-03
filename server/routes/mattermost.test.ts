@@ -3,6 +3,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { setFnoxValue } from '../lib/settings/fnox'
+import { db, tasks } from '../db'
 
 const TOKEN = 'test-secret-token-123'
 
@@ -108,6 +109,48 @@ describe('Mattermost Routes', () => {
       }
       const pretext = data.props?.attachments?.[0]?.pretext ?? ''
       expect(pretext).toContain('Fulcrum Commands')
+    })
+  })
+
+  describe('POST /api/mattermost/commands — card links', () => {
+    beforeEach(() => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
+    })
+
+    test('dashboard card renders an inline Fulcrum Markdown link instead of an open button', async () => {
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: '' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }> }
+      }
+      const attachment = data.props?.attachments?.[0]
+      expect(attachment?.text).toContain('[Open in Fulcrum ↗](')
+      expect(attachment?.actions?.some(action => action.id === 'open' || action.name === 'Open ↗')).toBe(false)
+    })
+
+    test('task detail card keeps task actions and renders the Fulcrum link in text', async () => {
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'mattermost-link-task',
+        title: 'Inline link task',
+        description: 'Task description',
+        status: 'TO_DO',
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task mattermost-link-task' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }> }
+      }
+      const attachment = data.props?.attachments?.[0]
+      expect(attachment?.text).toContain('Task description')
+      expect(attachment?.text).toContain('[Open in Fulcrum ↗](')
+      expect(attachment?.actions?.some(action => action.id === 'open' || action.name === 'Open ↗')).toBe(false)
+      expect(attachment?.actions?.some(action => action.id === 'start')).toBe(true)
     })
   })
 
