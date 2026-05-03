@@ -1,0 +1,15 @@
+[Unit]
+Description=Fulcrum Cloudflare Tunnel
+Documentation=https://github.com/knowsuchagency/fulcrum
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/env cloudflared --no-autoupdate tunnel --token __TUNNEL_TOKEN__ run
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target
