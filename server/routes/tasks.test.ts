@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestGitRepo, type TestGitRepo } from '../__tests__/fixtures/git'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
-import { db, tasks } from '../db'
+import { db, tasks, hosts } from '../db'
 import { eq } from 'drizzle-orm'
 import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,6 +18,7 @@ describe('Tasks Routes', () => {
   })
 
   afterEach(() => {
+    delete process.env.FULCRUM_REMOTE_ONLY
     repo.cleanup()
     testEnv.cleanup()
   })
@@ -212,6 +213,48 @@ describe('Tasks Routes', () => {
       expect(body.status).toBe('IN_PROGRESS')
       expect(body.id).toBeDefined()
       expect(body.worktreePath).toBeNull()
+    })
+
+    test('rejects task creation without hostId in remote-only mode', async () => {
+      process.env.FULCRUM_REMOTE_ONLY = 'true'
+      const { post } = createTestApp()
+
+      const res = await post('/api/tasks', {
+        title: 'Remote-only local task',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toBe('remote-only mode requires hostId')
+    })
+
+    test('creates a task with hostId in remote-only mode', async () => {
+      process.env.FULCRUM_REMOTE_ONLY = 'true'
+      const now = new Date().toISOString()
+      db.insert(hosts)
+        .values({
+          id: 'remote-host-1',
+          name: 'Remote Host',
+          hostname: 'remote.example.com',
+          port: 22,
+          username: 'agent',
+          authMethod: 'key',
+          status: 'connected',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+      const { post } = createTestApp()
+
+      const res = await post('/api/tasks', {
+        title: 'Remote-only task',
+        hostId: 'remote-host-1',
+        type: 'worktree',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(201)
+      expect(body.hostId).toBe('remote-host-1')
     })
 
     test('creates a task with worktree', async () => {

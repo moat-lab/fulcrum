@@ -4,6 +4,7 @@ import { getPTYManager } from '../terminal/pty-instance'
 import { getTabManager } from '../terminal/tab-manager'
 import { getWorktreeBasePath, getSettings, updateSettingByPath } from '../lib/settings'
 import { log } from '../lib/logger'
+import { getRuntimeConfig } from '../lib/runtime-config'
 
 interface ClientData {
   id: string
@@ -148,6 +149,17 @@ export const terminalWebSocketHandlers: WSEvents = {
 
           // Prevent duplicate terminals for same cwd - but only for task terminals (no tabId)
           // Regular tabs can have multiple terminals in the same directory
+          if (getRuntimeConfig().remoteOnly && !hostId) {
+            sendTo(ws, {
+              type: 'terminal:error',
+              payload: {
+                terminalId: tempId ?? requestId ?? 'remote-only',
+                error: 'remote-only mode requires hostId',
+              },
+            })
+            break
+          }
+
           if (effectiveCwd && !tabId) {
             const existing = existingTerminals.find((t) => t.cwd === effectiveCwd && !t.tabId)
             if (existing) {

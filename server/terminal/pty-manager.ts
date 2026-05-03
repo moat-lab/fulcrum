@@ -10,6 +10,7 @@ import type { ITerminalSession } from './session-interface'
 import { log } from '../lib/logger'
 import { getFulcrumDir, getSettingByKey } from '../lib/settings'
 import { getSSHConnectionManager } from './ssh-connection-manager'
+import { getRuntimeConfig } from '../lib/runtime-config'
 
 import type { TerminalStatus } from '../types'
 
@@ -287,6 +288,10 @@ export class PTYManager {
     }
 
     // Local terminal (existing behavior)
+    if (getRuntimeConfig().remoteOnly) {
+      throw new Error('remote-only mode requires hostId')
+    }
+
     if (!DtachService.isAvailable()) {
       throw new Error('dtach is not installed')
     }

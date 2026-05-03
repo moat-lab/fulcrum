@@ -20,6 +20,7 @@ import {
 } from '../lib/settings'
 import { spawn } from 'child_process'
 import { testNotificationChannel, sendNotification, type NotificationPayload } from '../services/notification-service'
+import { getRuntimeConfig } from '../lib/runtime-config'
 
 export { CONFIG_KEYS } from '../../shared/config-keys'
 import { CONFIG_KEYS } from '../../shared/config-keys'
@@ -85,7 +86,10 @@ app.get('/', (c) => {
     const value = getSettingValue(path)
     config[path] = value ?? getDefaultValue(path)
   }
-  return c.json(config)
+  return c.json({
+    ...config,
+    ...getRuntimeConfig(),
+  })
 })
 
 // Notification routes must come before generic /:key routes

@@ -46,7 +46,7 @@ import { useCreateTask, useAddTaskLink } from '@/hooks/use-tasks'
 import { useSearchTags } from '@/hooks/use-tags'
 import type { Task, TagWithUsage, RecurrenceRule, TaskPriority } from '@shared/types'
 import { useBranches, checkIsGitRepo } from '@/hooks/use-filesystem'
-import { useWorktreeBasePath, useScratchBasePath, useDefaultGitReposDir, useDefaultAgent, useOpencodeModel, useDefaultTaskType, useStartWorktreeTasksImmediately } from '@/hooks/use-config'
+import { useWorktreeBasePath, useScratchBasePath, useDefaultGitReposDir, useDefaultAgent, useOpencodeModel, useDefaultTaskType, useStartWorktreeTasksImmediately, useRemoteOnlyMode } from '@/hooks/use-config'
 import { AGENT_DISPLAY_NAMES, type AgentType } from '@/types'
 import { useRepositories } from '@/hooks/use-repositories'
 import { useProjects } from '@/hooks/use-projects'
@@ -167,6 +167,7 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
   const { data: repositories } = useRepositories()
   const { data: projects } = useProjects()
   const { data: remoteHosts = [] } = useHosts()
+  const { data: remoteOnly } = useRemoteOnlyMode()
   const { data: branchData, isLoading: branchesLoading } = useBranches(
     repoPath || null
   )
@@ -401,6 +402,8 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
 
     // For code tasks, repo is required
     if (taskType === 'worktree' && !repoPath) return
+
+    if (remoteOnly && !selectedHostId) return
 
     // Build the task payload based on type
     const isCodeTask = taskType === 'worktree'
@@ -638,7 +641,8 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
 
   // Cmd+Enter to submit form when modal is open
   const pullBlockedByUnpushed = pullToLatest && (branchData?.unpushedCommits ?? 0) > 0 && taskType === 'worktree'
-  const canSubmit = !createTask.isPending && !!title.trim() && (taskType === 'manual' || taskType === 'scratch' || taskType === 'draft' || !!repoPath) && !pullBlockedByUnpushed
+  const remoteOnlyBlocked = remoteOnly && !selectedHostId
+  const canSubmit = !createTask.isPending && !!title.trim() && (taskType === 'manual' || taskType === 'scratch' || taskType === 'draft' || !!repoPath) && !pullBlockedByUnpushed && !remoteOnlyBlocked
   useHotkeys('meta+enter', () => {
     if (formRef.current) {
       formRef.current.requestSubmit()
@@ -1115,18 +1119,18 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
               {/* Remote host - for worktree and scratch tasks */}
               {(taskType === 'worktree' || taskType === 'scratch') && (
                 <Field>
-                  <FieldLabel>Remote Host</FieldLabel>
-                  <FieldDescription>Run this agent on a remote machine via SSH</FieldDescription>
+                  <FieldLabel>Remote Host{remoteOnly ? ' *' : ''}</FieldLabel>
+                  <FieldDescription>{remoteOnly ? 'Remote mode requires a configured host.' : 'Run this agent on a remote machine via SSH'}</FieldDescription>
                   {remoteHosts.length > 0 ? (
                     <Select
                       value={selectedHostId ?? '__local__'}
                       onValueChange={(v) => setSelectedHostId(v === '__local__' ? null : v)}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="w-full" aria-required={remoteOnly}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__local__">Local (this machine)</SelectItem>
+                        {!remoteOnly && <SelectItem value="__local__">Local (this machine)</SelectItem>}
                         {remoteHosts.filter((h) => h.status === 'connected').map((host) => (
                           <SelectItem key={host.id} value={host.id}>
                             {host.name} ({host.username}@{host.hostname})
@@ -1141,9 +1145,9 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
                     </Select>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      No remote hosts configured.{' '}
+                      Remote mode requires a configured host.{' '}
                       <a href="/settings" className="text-primary hover:underline">
-                        Add hosts in Settings → General
+                        Add hosts in Settings → Remote Hosts
                       </a>
                     </p>
                   )}

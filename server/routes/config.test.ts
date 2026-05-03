@@ -15,6 +15,7 @@ describe('Config Routes', () => {
   })
 
   afterEach(() => {
+    delete process.env.FULCRUM_REMOTE_ONLY
     testEnv.cleanup()
   })
 
@@ -29,6 +30,17 @@ describe('Config Routes', () => {
       expect(body['server.port']).toBeDefined()
       expect(body['paths.defaultGitReposDir']).toBeDefined()
       expect(body['editor.app']).toBeDefined()
+      expect(body.remoteOnly).toBe(false)
+    })
+
+    test('returns remoteOnly true when FULCRUM_REMOTE_ONLY is enabled', async () => {
+      process.env.FULCRUM_REMOTE_ONLY = 'true'
+      const { get } = createTestApp()
+      const res = await get('/api/config')
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.remoteOnly).toBe(true)
     })
   })
 
