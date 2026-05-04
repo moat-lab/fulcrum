@@ -48,6 +48,7 @@ export function ShellTerminal({
 }: ShellTerminalProps) {
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [xtermOpened, setXtermOpened] = useState(false)
   const xtermRef = useRef<XTerm | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const createdRef = useRef(false)
@@ -86,11 +87,14 @@ export function ShellTerminal({
     attachedRef.current = false
     setTerminalId(null)
     setIsCreating(false)
+    setXtermOpened(false)
   }, [cwd, scopeId])
 
   // Find existing or create new shell terminal
+  // Gated on xtermOpened so setTerminalId never fires before xtermRef is populated —
+  // otherwise the [terminalId]-keyed attach effect runs once with a null ref and never re-runs.
   useEffect(() => {
-    if (!connected || !cwd || !terminalsLoaded) return
+    if (!connected || !cwd || !terminalsLoaded || !xtermOpened) return
 
     const existing = terminals.find((t) => t.tabId === scopeId)
     if (existing) {
@@ -114,7 +118,7 @@ export function ShellTerminal({
         ...(taskId ? { taskId } : {}),
       })
     }
-  }, [connected, cwd, terminalsLoaded, terminals, scopeId, name, taskId, createTerminal])
+  }, [connected, cwd, terminalsLoaded, xtermOpened, terminals, scopeId, name, taskId, createTerminal])
 
   // Track terminal ID when it appears (optimistic tempId → realId)
   useEffect(() => {
@@ -132,7 +136,11 @@ export function ShellTerminal({
     }
   }, [terminals, cwd, terminalId, scopeId])
 
-  // Attach xterm to terminal
+  // Attach xterm to terminal.
+  // xtermOpened is in deps so this re-runs when the child's xterm finishes opening
+  // (the onReady callback fires inside rAF, which sets xtermRef.current AND xtermOpened).
+  // Without this, terminalId set by the tempId→realId effect can race ahead of the ref,
+  // and the attach effect would early-return once and never retry.
   useEffect(() => {
     if (!terminalId || !xtermRef.current || !containerRef.current || attachedRef.current) return
 
@@ -151,10 +159,11 @@ export function ShellTerminal({
       cleanupPaste()
       attachedRef.current = false
     }
-  }, [terminalId])
+  }, [terminalId, xtermOpened])
 
   const handleReady = useCallback((term: XTerm) => {
     xtermRef.current = term
+    setXtermOpened(true)
   }, [])
 
   const handleResize = useCallback((cols: number, rows: number) => {
