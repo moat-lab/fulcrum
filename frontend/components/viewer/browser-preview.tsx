@@ -8,14 +8,13 @@ import {
   LinkSquare02Icon,
   RefreshIcon,
 } from '@hugeicons/core-free-icons'
-import { useBrowserUrl } from '@/hooks/use-browser-url'
 
 interface BrowserPreviewProps {
-  taskId: string
+  url: string
+  setUrl: (url: string) => void
 }
 
-export function BrowserPreview({ taskId }: BrowserPreviewProps) {
-  const { url, setUrl } = useBrowserUrl(taskId)
+export function BrowserPreview({ url, setUrl }: BrowserPreviewProps) {
   const [inputValue, setInputValue] = useState(url)
   const [key, setKey] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)

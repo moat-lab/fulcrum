@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { useTask, useUpdateTask } from '@/hooks/use-tasks'
 import { useRepositories } from '@/hooks/use-repositories'
 import { useTaskViewState } from '@/hooks/use-task-view-state'
+import { useDiffOptions } from '@/hooks/use-diff-options'
+import { useBrowserUrl } from '@/hooks/use-browser-url'
 import { useGitSync } from '@/hooks/use-git-sync'
 import { useGitMergeToMain } from '@/hooks/use-git-merge'
 import { useGitPush } from '@/hooks/use-git-push'
@@ -127,6 +129,8 @@ function TaskView() {
   const { data: task, isLoading } = useTask(taskId)
   const updateTask = useUpdateTask()
   const { viewState, setActiveTab, setFilesViewState } = useTaskViewState(taskId)
+  const diffOptions = useDiffOptions(taskId)
+  const { url: browserUrl, setUrl: setBrowserUrl } = useBrowserUrl(taskId)
   const gitSync = useGitSync()
   const gitMerge = useGitMergeToMain()
   const gitPush = useGitPush()
@@ -1033,7 +1037,16 @@ function TaskView() {
 
               {!isScratchTask && (
                 <TabsContent value="diff" className="flex-1 overflow-hidden">
-                  <DiffViewer taskId={task.id} worktreePath={task.worktreePath} baseBranch={task.baseBranch ?? undefined} />
+                  <DiffViewer
+                    worktreePath={task.worktreePath}
+                    baseBranch={task.baseBranch ?? undefined}
+                    options={diffOptions.options}
+                    collapsedSet={diffOptions.collapsedSet}
+                    setOption={diffOptions.setOption}
+                    toggleFileCollapse={diffOptions.toggleFileCollapse}
+                    collapseAll={diffOptions.collapseAll}
+                    expandAll={diffOptions.expandAll}
+                  />
                 </TabsContent>
               )}
 
@@ -1058,7 +1071,7 @@ function TaskView() {
               </TabsContent>
 
               <TabsContent value="browser" className="flex-1 overflow-hidden">
-                <BrowserPreview taskId={task.id} />
+                <BrowserPreview url={browserUrl} setUrl={setBrowserUrl} />
               </TabsContent>
 
               <TabsContent value="details" className="flex-1 overflow-hidden">
@@ -1157,7 +1170,16 @@ function TaskView() {
 
               {!isScratchTask && (
                 <TabsContent value="diff" className="flex-1 overflow-hidden">
-                  <DiffViewer taskId={task.id} worktreePath={task.worktreePath} baseBranch={task.baseBranch ?? undefined} />
+                  <DiffViewer
+                    worktreePath={task.worktreePath}
+                    baseBranch={task.baseBranch ?? undefined}
+                    options={diffOptions.options}
+                    collapsedSet={diffOptions.collapsedSet}
+                    setOption={diffOptions.setOption}
+                    toggleFileCollapse={diffOptions.toggleFileCollapse}
+                    collapseAll={diffOptions.collapseAll}
+                    expandAll={diffOptions.expandAll}
+                  />
                 </TabsContent>
               )}
 
@@ -1182,7 +1204,7 @@ function TaskView() {
               </TabsContent>
 
               <TabsContent value="browser" className="flex-1 overflow-hidden">
-                <BrowserPreview taskId={task.id} />
+                <BrowserPreview url={browserUrl} setUrl={setBrowserUrl} />
               </TabsContent>
 
               <TabsContent value="details" className="flex-1 overflow-hidden">

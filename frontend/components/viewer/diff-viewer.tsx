@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowRight01Icon, ArrowDown01Icon, MenuCollapseIcon, UnfoldMoreIcon } from '@hugeicons/core-free-icons'
 import { useGitDiff } from '@/hooks/use-filesystem'
-import { useDiffOptions } from '@/hooks/use-diff-options'
+import type { DiffOptions } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface DiffLine {
@@ -108,13 +108,26 @@ const FILE_HEADER_HEIGHT = 32
 const DIFF_LINE_HEIGHT = 22
 
 interface DiffViewerProps {
-  taskId: string
   worktreePath: string | null
   baseBranch?: string
+  options: DiffOptions
+  collapsedSet: Set<string>
+  setOption: <K extends keyof DiffOptions>(key: K, value: DiffOptions[K]) => void
+  toggleFileCollapse: (path: string) => void
+  collapseAll: (filePaths: string[]) => void
+  expandAll: () => void
 }
 
-export function DiffViewer({ taskId, worktreePath, baseBranch }: DiffViewerProps) {
-  const { options, collapsedSet, setOption, toggleFileCollapse, collapseAll, expandAll } = useDiffOptions(taskId)
+export function DiffViewer({
+  worktreePath,
+  baseBranch,
+  options,
+  collapsedSet,
+  setOption,
+  toggleFileCollapse,
+  collapseAll,
+  expandAll,
+}: DiffViewerProps) {
   const { wrap, ignoreWhitespace, includeUntracked, collapsedFiles } = options
   const { data, isLoading, error } = useGitDiff(worktreePath, { ignoreWhitespace, includeUntracked, baseBranch })
 
