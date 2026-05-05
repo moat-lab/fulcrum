@@ -151,6 +151,7 @@
     "title": "Initialize as Worktree Task",
     "description": "Create a git worktree and start a coding session for \"{{taskTitle}}\"",
     "branchName": "Branch Name",
+    "pullingFromRemoteHint": "Pulling from remote — initializing the worktree may take a moment.",
     "errors": {
       "initFailed": "Failed to initialize worktree task"
     }
