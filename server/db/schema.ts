@@ -335,6 +335,7 @@ export const artifacts = sqliteTable('artifacts', {
 // System metrics for monitoring - stores historical CPU, memory, disk usage
 export const systemMetrics = sqliteTable('system_metrics', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  hostId: text('host_id').notNull().default('local'),
   timestamp: integer('timestamp').notNull(), // Unix timestamp in seconds
   cpuPercent: real('cpu_percent').notNull(),
   memoryUsedBytes: integer('memory_used_bytes').notNull(),

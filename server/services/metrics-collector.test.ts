@@ -1,10 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
+import { db, hosts, systemMetrics } from '../db'
 import {
   startMetricsCollector,
   stopMetricsCollector,
   getMetrics,
   getCurrentMetrics,
+  getHostMetricSummaries,
 } from './metrics-collector'
 
 describe('Metrics Collector', () => {
@@ -102,6 +104,37 @@ describe('Metrics Collector', () => {
         expect(metric).toHaveProperty('diskUsedPercent')
       }
     })
+
+    test('filters metrics by host id', () => {
+      const timestamp = Math.floor(Date.now() / 1000)
+      db.insert(systemMetrics).values({
+        hostId: 'local',
+        timestamp,
+        cpuPercent: 10,
+        memoryUsedBytes: 100,
+        memoryTotalBytes: 200,
+        memoryCacheBytes: 20,
+        diskUsedBytes: 300,
+        diskTotalBytes: 600,
+      }).run()
+      db.insert(systemMetrics).values({
+        hostId: 'remote-1',
+        timestamp,
+        cpuPercent: 70,
+        memoryUsedBytes: 700,
+        memoryTotalBytes: 1000,
+        memoryCacheBytes: 100,
+        diskUsedBytes: 800,
+        diskTotalBytes: 1000,
+      }).run()
+
+      expect(getMetrics(3600, 'local')).toEqual([
+        expect.objectContaining({ cpuPercent: 10, memoryUsedPercent: 50, diskUsedPercent: 50 }),
+      ])
+      expect(getMetrics(3600, 'remote-1')).toEqual([
+        expect.objectContaining({ cpuPercent: 70, memoryUsedPercent: 70, diskUsedPercent: 80 }),
+      ])
+    })
   })
 
   describe('startMetricsCollector', () => {
@@ -144,6 +177,63 @@ describe('Metrics Collector', () => {
 
     test('can be stopped even if never started', () => {
       expect(() => stopMetricsCollector()).not.toThrow()
+    })
+  })
+
+  describe('host metric summaries', () => {
+    test('includes local and remote host health status', () => {
+      const now = new Date().toISOString()
+      const timestamp = Math.floor(Date.now() / 1000)
+      db.insert(hosts).values({
+        id: 'remote-1',
+        name: 'Remote One',
+        hostname: '192.0.2.10',
+        port: 22,
+        username: 'test',
+        authMethod: 'key',
+        status: 'connected',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+      db.insert(systemMetrics).values({
+        hostId: 'remote-1',
+        timestamp,
+        cpuPercent: 42,
+        memoryUsedBytes: 400,
+        memoryTotalBytes: 1000,
+        memoryCacheBytes: 100,
+        diskUsedBytes: 250,
+        diskTotalBytes: 1000,
+      }).run()
+
+      const summaries = getHostMetricSummaries()
+      expect(summaries).toContainEqual(expect.objectContaining({ id: 'local', name: 'Local', status: 'connected' }))
+      expect(summaries).toContainEqual(expect.objectContaining({
+        id: 'remote-1',
+        name: 'Remote One',
+        status: 'connected',
+        current: expect.objectContaining({ cpu: 42 }),
+      }))
+    })
+
+    test('marks remote host disconnected when host status is error', () => {
+      const now = new Date().toISOString()
+      db.insert(hosts).values({
+        id: 'remote-error',
+        name: 'Remote Error',
+        hostname: '192.0.2.11',
+        port: 22,
+        username: 'test',
+        authMethod: 'key',
+        status: 'error',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      expect(getHostMetricSummaries()).toContainEqual(expect.objectContaining({
+        id: 'remote-error',
+        status: 'disconnected',
+      }))
     })
   })
 

@@ -29,8 +29,22 @@ export interface SystemMetric {
   diskUsedPercent: number
 }
 
+export interface HostMetricSummary {
+  id: string
+  name: string
+  status: 'connected' | 'disconnected' | 'degraded'
+  lastSeenAt: number | null
+  current: {
+    cpu: number
+    memory: { total: number; used: number; cache: number; usedPercent: number; cachePercent: number }
+    disk: { total: number; used: number; usedPercent: number; path: string }
+  }
+}
+
 export interface SystemMetricsResponse {
   window: string
+  hostId: string
+  hosts: HostMetricSummary[]
   dataPoints: SystemMetric[]
   current: {
     cpu: number
@@ -48,11 +62,11 @@ export function useClaudeInstances(filter: ClaudeFilter = 'fulcrum') {
   })
 }
 
-export function useSystemMetrics(window: TimeWindow = '1h') {
+export function useSystemMetrics(window: TimeWindow = '1h', hostId = 'local') {
   return useQuery({
-    queryKey: ['monitoring', 'system-metrics', window],
+    queryKey: ['monitoring', 'system-metrics', window, hostId],
     queryFn: () =>
-      fetchJSON<SystemMetricsResponse>(`${API_BASE}/api/monitoring/system-metrics?window=${window}`),
+      fetchJSON<SystemMetricsResponse>(`${API_BASE}/api/monitoring/system-metrics?window=${window}&hostId=${encodeURIComponent(hostId)}`),
     refetchInterval: 5000, // Refresh every 5 seconds (matches collector interval)
   })
 }
