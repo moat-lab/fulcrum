@@ -144,7 +144,8 @@
     "derivedLabel": "derived"
   },
   "derivedTasks": {
-    "heading": "Derived tasks ({{count}})"
+    "heading": "Derived tasks ({{count}})",
+    "empty": "No derived tasks yet."
   },
   "initializeModal": {
     "title": "Initialize as Worktree Task",
