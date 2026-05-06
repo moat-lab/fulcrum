@@ -54,17 +54,14 @@ function destroyTerminalsForWorktree(worktreePath: string): void {
   }
 }
 
-// Allowed MIME types for attachments
-const ALLOWED_MIME_TYPES = [
+// MIME types we'll render inline via ?inline=1. Everything else is forced to
+// download regardless of the query param, so an uploaded HTML/SVG can't execute
+// in the app's origin.
+const INLINE_SAFE_MIME_TYPES = new Set([
   'application/pdf',
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
   'text/plain', 'text/markdown',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'text/csv',
-]
+])
 
 // Max file size: 50MB
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -1520,11 +1517,6 @@ app.post('/:id/attachments', async (c) => {
       return c.json({ error: 'No file provided' }, 400)
     }
 
-    // Validate MIME type
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      return c.json({ error: `File type not allowed: ${file.type}` }, 400)
-    }
-
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       return c.json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB` }, 400)
@@ -1553,7 +1545,7 @@ app.post('/:id/attachments', async (c) => {
       taskId,
       filename: file.name,
       storedPath,
-      mimeType: file.type,
+      mimeType: file.type || 'application/octet-stream',
       size: file.size,
       createdAt: now,
     }
@@ -1589,13 +1581,14 @@ app.get('/:id/attachments/:attachmentId', (c) => {
 
   // Read file and return
   const fileBuffer = fs.readFileSync(attachment.storedPath)
-  const inline = c.req.query('inline') === '1'
-  const disposition = inline ? 'inline' : 'attachment'
+  const inlineRequested = c.req.query('inline') === '1'
+  const disposition = inlineRequested && INLINE_SAFE_MIME_TYPES.has(attachment.mimeType) ? 'inline' : 'attachment'
   return new Response(fileBuffer, {
     headers: {
       'Content-Type': attachment.mimeType,
       'Content-Disposition': `${disposition}; filename="${attachment.filename}"`,
       'Content-Length': String(attachment.size),
+      'X-Content-Type-Options': 'nosniff',
     },
   })
 })

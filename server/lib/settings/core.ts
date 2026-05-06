@@ -38,6 +38,8 @@ export function getSettings(): Settings {
     _schemaVersion: CURRENT_SCHEMA_VERSION,
     server: {
       port: (fv('server.port') as number) ?? DEFAULT_SETTINGS.server.port,
+      publicDomain: (fv('server.publicDomain') as string | null) ?? DEFAULT_SETTINGS.server.publicDomain,
+      tailscaleHostname: (fv('server.tailscaleHostname') as string | null) ?? DEFAULT_SETTINGS.server.tailscaleHostname,
     },
     paths: {
       defaultGitReposDir: expandPath(
@@ -128,6 +130,7 @@ export function getSettings(): Settings {
         teamId: (fv('channels.mattermost.teamId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.teamId,
         channelId: (fv('channels.mattermost.channelId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.channelId,
         commandToken: (fv('channels.mattermost.commandToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.commandToken,
+        allowedUserIds: (fv('channels.mattermost.allowedUserIds') as string[] | null) ?? DEFAULT_SETTINGS.channels.mattermost.allowedUserIds,
       },
     },
     caldav: {
@@ -152,6 +155,8 @@ export function getSettings(): Settings {
     ...settings,
     server: {
       port: !isNaN(portEnv) && portEnv > 0 ? portEnv : settings.server.port,
+      publicDomain: settings.server.publicDomain,
+      tailscaleHostname: settings.server.tailscaleHostname,
     },
     paths: {
       defaultGitReposDir: process.env.FULCRUM_GIT_REPOS_DIR

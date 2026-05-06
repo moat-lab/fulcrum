@@ -68,11 +68,40 @@ function getConfig(): MattermostSettings {
   return getSettings().channels.mattermost
 }
 
-function getHostPort(): { host: string; port: number } {
+type FulcrumHostPort = { host: string; port: number }
+
+type FulcrumUrlResolution =
+  | { kind: 'resolved'; value: FulcrumHostPort }
+  | { kind: 'missing-callback-host'; port: number }
+
+function resolveHostPort(): FulcrumUrlResolution {
   const settings = getSettings()
-  return {
-    host: process.env.FULCRUM_HOST || settings.editor.host || 'localhost',
-    port: settings.server.port,
+  const host = process.env.FULCRUM_HOST || settings.editor.host
+
+  if (host) {
+    return { kind: 'resolved', value: { host, port: settings.server.port } }
+  }
+
+  if (settings.channels.mattermost.enabled) {
+    return { kind: 'missing-callback-host', port: settings.server.port }
+  }
+
+  return { kind: 'resolved', value: { host: 'localhost', port: settings.server.port } }
+}
+
+function getHostPort(): FulcrumHostPort {
+  const resolution = resolveHostPort()
+
+  switch (resolution.kind) {
+    case 'resolved':
+      return resolution.value
+    case 'missing-callback-host':
+      log.messaging.warn('Mattermost callback host not configured', {
+        requiredEnv: 'FULCRUM_HOST',
+        fallbackRejected: 'localhost',
+        port: resolution.port,
+      })
+      throw new Error('Mattermost callback host not configured: set FULCRUM_HOST')
   }
 }
 

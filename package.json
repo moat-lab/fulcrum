@@ -1,7 +1,7 @@
 {
   "name": "@knowsuchagency/fulcrum",
   "private": true,
-  "version": "5.1.5",
+  "version": "5.7.1",
   "description": "Harness Attention. Orchestrate Agents. Ship.",
   "license": "PolyForm-Perimeter-1.0.0",
   "type": "module",
@@ -17,7 +17,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.2.119",
+    "@anthropic-ai/claude-agent-sdk": "0.2.126",
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.7",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
     "@azurity/pure-nerd-font": "^3.0.5",
@@ -47,7 +47,9 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-serialize": "^0.14.0",
     "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/headless": "^6.0.0",
     "@xterm/xterm": "^6.0.0",
     "bun-pty": "^0.4.2",
     "citty": "^0.1.6",
