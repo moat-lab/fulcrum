@@ -10,6 +10,29 @@ function writeFileAtomicSync(filePath: string, content: string): void {
   renameSync(tmpPath, filePath)
 }
 
+function backupLegacyFnoxConfig(legacyPath: string, configDir: string): void {
+  const backupPath = join(configDir, `legacy-${basename(legacyPath)}.bak`)
+  renameSync(legacyPath, backupPath)
+  console.error(`Backed up ${basename(legacyPath)} → config/${basename(backupPath)}`)
+}
+
+function migrateLegacyFnoxConfig(fulcrumDir: string, fnoxConfigPath: string): void {
+  if (existsSync(fnoxConfigPath)) return
+
+  const configDir = dirname(fnoxConfigPath)
+  const legacyPaths = [join(fulcrumDir, '.fnox.toml'), join(fulcrumDir, 'fnox.toml')]
+  const sourcePath = legacyPaths.find(legacy => existsSync(legacy))
+  if (!sourcePath) return
+
+  mkdirSync(configDir, { recursive: true })
+  renameSync(sourcePath, fnoxConfigPath)
+  console.error(`Migrated ${basename(sourcePath)} → config/fnox.toml`)
+
+  for (const legacy of legacyPaths) {
+    if (legacy !== sourcePath && existsSync(legacy)) backupLegacyFnoxConfig(legacy, configDir)
+  }
+}
+
 /**
  * Ensure fnox is set up in the given Fulcrum directory.
  *
@@ -26,16 +49,7 @@ export function ensureFnoxSetup(fulcrumDir: string): void {
 
   // Migrate any legacy config at `<fulcrumDir>/fnox.toml` or
   // `<fulcrumDir>/.fnox.toml` into the walk-safe nested location.
-  if (!existsSync(fnoxConfigPath)) {
-    for (const legacy of [join(fulcrumDir, '.fnox.toml'), join(fulcrumDir, 'fnox.toml')]) {
-      if (existsSync(legacy)) {
-        mkdirSync(dirname(fnoxConfigPath), { recursive: true })
-        renameSync(legacy, fnoxConfigPath)
-        console.error(`Migrated ${basename(legacy)} → config/fnox.toml`)
-        break
-      }
-    }
-  }
+  migrateLegacyFnoxConfig(fulcrumDir, fnoxConfigPath)
 
   // Step 1: Generate age key if needed
   let publicKey: string

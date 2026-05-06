@@ -67,7 +67,7 @@ export class TerminalSession implements ITerminalSession {
     this._tabId = options.tabId
     this._positionInTab = options.positionInTab ?? 0
     this._taskId = options.taskId
-    this.buffer = new BufferManager()
+    this.buffer = new BufferManager(this.cols, this.rows)
     this.buffer.setTerminalId(this.id)
     this.onData = options.onData
     this.onExit = options.onExit
@@ -382,8 +382,16 @@ export class TerminalSession implements ITerminalSession {
     if (this.pty) {
       this.pty.resize(cols, rows)
     }
+    // Keep the canonical emulator in lockstep with the PTY. Without this, the
+    // serialized snapshot on next attach would be at the previous dimensions
+    // even though SIGWINCH had already gone out to the running TUI.
+    this.buffer.resize(cols, rows)
 
     this.updateDb({ cols, rows })
+  }
+
+  flushPending(): Promise<void> {
+    return this.buffer.flushPending()
   }
 
   getBuffer(): string {
