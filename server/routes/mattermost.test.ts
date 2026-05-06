@@ -2,7 +2,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
-import { apps, db, projects, repositories, tasks } from '../db'
+import { apps, db, projects, repositories, tasks, terminals } from '../db'
 import { setFnoxValue } from '../lib/settings/fnox'
 import { createTestGitRepo } from '../__tests__/fixtures/git'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
@@ -268,6 +268,80 @@ describe('Mattermost Routes', () => {
       expect(attachment?.text).toContain('[Open in Fulcrum ↗](')
       expect(attachment?.actions?.some(action => action.id === 'open' || action.name === 'Open ↗')).toBe(false)
       expect(attachment?.actions?.some(action => action.id === 'start')).toBe(true)
+    })
+  })
+
+  describe('POST /api/mattermost/commands — agent status source', () => {
+    beforeEach(() => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
+    })
+
+    test('task detail reads agent status from managed terminal records', async () => {
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'mattermost-agent-running-task',
+        title: 'Agent running task',
+        status: 'IN_PROGRESS',
+        position: 1,
+        worktreePath: '/tmp/fulcrum-agent-running',
+        agent: 'claude',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+      db.insert(terminals).values({
+        id: 'mattermost-agent-running-terminal',
+        name: 'Agent terminal',
+        cwd: '/tmp/fulcrum-agent-running',
+        cols: 80,
+        rows: 24,
+        tmuxSession: '',
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task mattermost-agent-running-task' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }> }
+      }
+      const agentField = data.props?.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
+      expect(agentField?.value).toBe('claude (running)')
+    })
+
+    test('task detail marks exited managed terminal as crashed instead of idle', async () => {
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'mattermost-agent-crashed-task',
+        title: 'Agent crashed task',
+        status: 'IN_PROGRESS',
+        position: 1,
+        worktreePath: '/tmp/fulcrum-agent-crashed',
+        agent: 'opencode',
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+      db.insert(terminals).values({
+        id: 'mattermost-agent-crashed-terminal',
+        name: 'Agent terminal',
+        cwd: '/tmp/fulcrum-agent-crashed',
+        cols: 80,
+        rows: 24,
+        tmuxSession: '',
+        status: 'exited',
+        exitCode: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task mattermost-agent-crashed-task' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }> }
+      }
+      const agentField = data.props?.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
+      expect(agentField?.value).toBe('opencode (crashed)')
     })
   })
 
