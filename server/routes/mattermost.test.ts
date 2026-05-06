@@ -229,6 +229,48 @@ describe('Mattermost Routes', () => {
     })
   })
 
+  describe('POST /api/mattermost/commands — card links', () => {
+    beforeEach(() => {
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
+    })
+
+    test('dashboard card renders an inline Fulcrum Markdown link instead of an open button', async () => {
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: '' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }> }
+      }
+      const attachment = data.props?.attachments?.[0]
+      expect(attachment?.text).toContain('[Open in Fulcrum ↗](')
+      expect(attachment?.actions?.some(action => action.id === 'open' || action.name === 'Open ↗')).toBe(false)
+    })
+
+    test('task detail card keeps task actions and renders the Fulcrum link in text', async () => {
+      const now = new Date().toISOString()
+      db.insert(tasks).values({
+        id: 'mattermost-link-task',
+        title: 'Inline link task',
+        description: 'Task description',
+        status: 'TO_DO',
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task mattermost-link-task' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }> }
+      }
+      const attachment = data.props?.attachments?.[0]
+      expect(attachment?.text).toContain('Task description')
+      expect(attachment?.text).toContain('[Open in Fulcrum ↗](')
+      expect(attachment?.actions?.some(action => action.id === 'open' || action.name === 'Open ↗')).toBe(false)
+      expect(attachment?.actions?.some(action => action.id === 'start')).toBe(true)
+    })
+  })
+
   describe('POST /api/mattermost/commands — subcommand dispatch', () => {
     beforeEach(() => {
       enableMattermost()
@@ -409,20 +451,17 @@ describe('Mattermost Routes', () => {
       expect(data.update?.props?.attachments?.[0]?.actions?.find(action => action.id === 'change_priority')?.default_option?.value).toBe('high')
     })
 
-    test('list and link actions return expected Mattermost payloads', async () => {
+    test('list and detail actions return expected Mattermost payloads', async () => {
       insertTask({ id: 'listed-task', title: 'Listed task' })
       const { post } = createTestApp()
 
       const listRes = await post('/api/mattermost/actions', { token: TOKEN, user_id: 'owner', context: { action: 'list_tasks', status: 'active' } })
       const detailRes = await post('/api/mattermost/actions', { token: TOKEN, user_id: 'owner', context: { action: 'task_detail', task_id: 'listed-task' } })
-      const linkRes = await post('/api/mattermost/actions', { token: TOKEN, user_id: 'owner', context: { action: 'open_link', url: 'http://localhost:3000/tasks/listed-task' } })
       const listData = await listRes.json() as { update?: { props?: { attachments?: Array<{ text?: string }> } } }
       const detailData = await detailRes.json() as { update?: { props?: { attachments?: Array<{ pretext?: string }> } } }
-      const linkData = await linkRes.json() as { ephemeral_text?: string }
 
       expect(listData.update?.props?.attachments?.[0]?.text).toContain('Listed task')
       expect(detailData.update?.props?.attachments?.[0]?.pretext).toContain('Listed task')
-      expect(linkData.ephemeral_text).toBe('http://localhost:3000/tasks/listed-task')
     })
   })
 

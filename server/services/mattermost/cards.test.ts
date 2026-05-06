@@ -126,7 +126,8 @@ describe('Mattermost cards', () => {
       status: 'IN_REVIEW',
     })
     expect(card.actions?.find(action => action.id === 'change_priority')?.default_option).toEqual({ text: '🔴 High', value: 'high' })
-    expect(card.actions?.find(action => action.id === 'open')?.integration?.context.url).toBe('http://localhost:9999/tasks/detail-task-123')
+    expect(card.text).toContain('[Open in Fulcrum ↗](http://localhost:9999/tasks/detail-task-123)')
+    expect(card.actions?.find(action => action.id === 'open')).toBeUndefined()
   })
 
   test('buildAppDetailCard exposes deployment actions and only running rollback options', async () => {

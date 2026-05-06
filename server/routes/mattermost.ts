@@ -444,11 +444,6 @@ app.post('/actions', async (c) => {
         return c.json({})
       }
 
-      case 'open_link': {
-        // Can't actually open a browser from Mattermost, return the link
-        return c.json({ ephemeral_text: context.url as string })
-      }
-
       default:
         return c.json({ ephemeral_text: `Unknown action: ${action}` })
     }
