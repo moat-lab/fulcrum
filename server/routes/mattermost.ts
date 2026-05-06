@@ -14,6 +14,7 @@ import { deployApp, stopApp, rollbackApp, getProjectName } from '../services/dep
 import { stackServices, serviceLogs } from '../services/docker-swarm'
 import { db, tasks, projects, repositories, apps } from '../db'
 import { eq } from 'drizzle-orm'
+import { killClaudeInTerminalsForWorktree } from '../terminal/pty-instance'
 import { createTaskRecord } from './tasks'
 import {
   buildDashboardCard,
@@ -33,6 +34,8 @@ const MATTERMOST_RESPONSE_USERNAME = 'fulcrum'
 const MATTERMOST_RESPONSE_ICON_PATH = '/icon-192.png'
 const VALID_STATUS = new Set(['TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CANCELED'])
 const VALID_PRIORITY = new Set(['high', 'medium', 'low'])
+const DESTRUCTIVE_ACTIONS = new Set(['stop_app', 'kill_agent'])
+const DESTRUCTIVE_STATUS = new Set(['CANCELED'])
 const IN_CHANNEL_SUBCOMMANDS = new Set(['', 'deploy'])
 
 type MattermostAuthResult =
@@ -285,12 +288,61 @@ async function openCreateTaskDialog(triggerId: string, prefillTitle: string) {
   await openDialog(triggerId, dialog)
 }
 
+function selectedOptionValue(body: Record<string, unknown>): string | undefined {
+  const selectedOption = body.selected_option
+  if (typeof selectedOption === 'string') return selectedOption
+  if (selectedOption && typeof selectedOption === 'object' && 'value' in selectedOption) {
+    const value = (selectedOption as { value?: unknown }).value
+    if (typeof value === 'string') return value
+  }
+  return undefined
+}
+
+function isConfirmed(context: Record<string, unknown>): boolean {
+  return context.confirm === true
+}
+
+function confirmationResponse(message: string, context: Record<string, unknown>) {
+  const cancelContext = typeof context.task_id === 'string'
+    ? { action: 'task_detail', task_id: context.task_id }
+    : typeof context.app_id === 'string'
+      ? { action: 'app_detail', app_id: context.app_id }
+      : { action: 'monitor' }
+
+  return {
+    update: {
+      props: {
+        attachments: [{
+          fallback: message,
+          color: '#EF4444',
+          text: message,
+          actions: [
+            {
+              id: 'confirm',
+              name: 'Confirm',
+              type: 'button' as const,
+              style: 'danger',
+              integration: { url: getActionsUrl(), context: { ...context, confirm: true } },
+            },
+            {
+              id: 'cancel',
+              name: 'Cancel',
+              type: 'button' as const,
+              integration: { url: getActionsUrl(), context: cancelContext },
+            },
+          ],
+        }],
+      },
+    },
+  }
+}
+
 // --- Action Handler (button/select callbacks) ---
 
 app.post('/actions', async (c) => {
-  const body = await c.req.json()
+  const body = await c.req.json() as Record<string, unknown>
   const token = body.token as string | undefined
-  const context = body.context || {}
+  const context = (body.context && typeof body.context === 'object' ? body.context : {}) as Record<string, unknown>
   const action = context.action as string
   const userId = body.user_id as string | undefined
   const _postId = body.post_id as string
@@ -325,6 +377,9 @@ app.post('/actions', async (c) => {
         if (!VALID_STATUS.has(newStatus)) {
           return c.json({ ephemeral_text: `Invalid status: ${newStatus}` })
         }
+        if (DESTRUCTIVE_STATUS.has(newStatus) && !isConfirmed(context)) {
+          return c.json(confirmationResponse('Confirm canceling this task?', context))
+        }
         await updateTaskStatus(taskId, newStatus)
         const card = await buildTaskDetailCard(taskId)
         return c.json({ update: { props: { attachments: [card] } } })
@@ -332,7 +387,7 @@ app.post('/actions', async (c) => {
 
       case 'change_priority': {
         const taskId = context.task_id as string
-        const newPriority = body.selected_option as string | undefined
+        const newPriority = selectedOptionValue(body)
         if (!newPriority || !VALID_PRIORITY.has(newPriority)) {
           return c.json({ ephemeral_text: `Invalid priority: ${newPriority ?? '(none)'}` })
         }
@@ -370,6 +425,9 @@ app.post('/actions', async (c) => {
 
       case 'stop_app': {
         const appId = context.app_id as string
+        if (DESTRUCTIVE_ACTIONS.has(action) && !isConfirmed(context)) {
+          return c.json(confirmationResponse('Confirm stopping this app?', context))
+        }
         try {
           const result = await stopApp(appId)
           if (!result.success) {
@@ -428,7 +486,7 @@ app.post('/actions', async (c) => {
 
       case 'rollback_app': {
         const appId = context.app_id as string
-        const deploymentId = body.selected_option as string | undefined
+        const deploymentId = selectedOptionValue(body)
         if (!deploymentId) {
           return c.json({ ephemeral_text: 'No deployment selected for rollback.' })
         }
@@ -449,7 +507,30 @@ app.post('/actions', async (c) => {
         return c.json({ update: { props: { attachments: [card] } } })
       }
 
+      case 'kill_agent': {
+        const taskId = context.task_id as string
+        if (!isConfirmed(context)) {
+          return c.json(confirmationResponse('Confirm killing this task agent?', context))
+        }
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) {
+          return c.json({ ephemeral_text: 'Task not found.' })
+        }
+        if (!task.worktreePath) {
+          return c.json({ ephemeral_text: 'Task has no worktree path.' })
+        }
+        const killed = killClaudeInTerminalsForWorktree(task.worktreePath)
+        const card = await buildTaskDetailCard(taskId)
+        return c.json({
+          ephemeral_text: killed > 0 ? `Killed ${killed} agent process${killed === 1 ? '' : 'es'}.` : 'No running agent process found.',
+          update: { props: { attachments: [card] } },
+        })
+      }
+
       case 'open_create_task_dialog': {
+        if (!triggerId) {
+          return c.json({ ephemeral_text: 'Cannot open create task dialog: missing Mattermost trigger_id.' })
+        }
         await openCreateTaskDialog(triggerId, '')
         return c.json({})
       }
