@@ -17,6 +17,8 @@ export interface ConfigEntry {
 export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   // Server
   'server.port': { fnoxKey: 'FULCRUM_SERVER_PORT', provider: 'plain', type: 'number' },
+  'server.publicDomain': { fnoxKey: 'FULCRUM_SERVER_PUBLIC_DOMAIN', provider: 'plain', type: 'string' },
+  'server.tailscaleHostname': { fnoxKey: 'FULCRUM_SERVER_TAILSCALE_HOSTNAME', provider: 'plain', type: 'string' },
 
   // Paths
   'paths.defaultGitReposDir': { fnoxKey: 'FULCRUM_PATHS_GIT_REPOS_DIR', provider: 'plain', type: 'string' },
