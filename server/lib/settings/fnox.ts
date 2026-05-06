@@ -173,18 +173,30 @@ function writeFileAtomicSync(filePath: string, content: string): void {
   renameSync(tmpPath, filePath)
 }
 
+function backupLegacyFnoxConfig(legacyPath: string, configDir: string): void {
+  const backupPath = join(configDir, `legacy-${basename(legacyPath)}.bak`)
+  renameSync(legacyPath, backupPath)
+  log.settings.info(`Backed up ${basename(legacyPath)} → config/${basename(backupPath)}`)
+}
+
 export function migrateLegacyFnoxConfig(fulcrumDir: string): boolean {
   const newPath = join(fulcrumDir, 'config', 'fnox.toml')
   if (existsSync(newPath)) return false
-  for (const legacy of getLegacyFnoxConfigPaths(fulcrumDir)) {
-    if (existsSync(legacy)) {
-      mkdirSync(dirname(newPath), { recursive: true })
-      renameSync(legacy, newPath)
-      log.settings.info(`Migrated ${basename(legacy)} → config/fnox.toml`)
-      return true
-    }
+
+  const configDir = dirname(newPath)
+  const legacyPaths = getLegacyFnoxConfigPaths(fulcrumDir)
+  const sourcePath = legacyPaths.find(legacy => existsSync(legacy))
+  if (!sourcePath) return false
+
+  mkdirSync(configDir, { recursive: true })
+  renameSync(sourcePath, newPath)
+  log.settings.info(`Migrated ${basename(sourcePath)} → config/fnox.toml`)
+
+  for (const legacy of legacyPaths) {
+    if (legacy !== sourcePath && existsSync(legacy)) backupLegacyFnoxConfig(legacy, configDir)
   }
-  return false
+
+  return true
 }
 
 function getFnoxKeyPath(): string {
