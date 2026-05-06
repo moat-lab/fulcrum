@@ -70,6 +70,7 @@ export interface MattermostSettings {
   teamId: string
   channelId: string // Default channel for notifications
   commandToken: string // Slash command verification token
+  allowedUserIds: string[]
 }
 
 // CalDAV OAuth tokens (for Google Calendar)
@@ -272,6 +273,7 @@ Then store the action plan as a memory tagged with: ritual, plan, evening-ritual
       teamId: '',
       channelId: '',
       commandToken: '',
+      allowedUserIds: [],
     },
   },
   caldav: {
@@ -351,6 +353,7 @@ export const VALID_SETTING_PATHS = new Set([
   'channels.mattermost.teamId',
   'channels.mattermost.channelId',
   'channels.mattermost.commandToken',
+  'channels.mattermost.allowedUserIds',
   'caldav.enabled',
   'caldav.syncIntervalMinutes',
 ])

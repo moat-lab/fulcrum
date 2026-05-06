@@ -56,6 +56,7 @@ export const CONFIG_KEYS = {
   MATTERMOST_TEAM_ID: 'channels.mattermost.teamId',
   MATTERMOST_CHANNEL_ID: 'channels.mattermost.channelId',
   MATTERMOST_COMMAND_TOKEN: 'channels.mattermost.commandToken',
+  MATTERMOST_ALLOWED_USER_IDS: 'channels.mattermost.allowedUserIds',
 } as const
 
 export type ConfigKey = (typeof CONFIG_KEYS)[keyof typeof CONFIG_KEYS]
