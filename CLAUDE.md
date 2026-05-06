@@ -275,10 +275,11 @@ Deploy Docker Compose applications with automatic routing:
 
 Multi-channel notification system:
 
-- **Channels**: Toast, desktop, sound, Slack, Discord, Pushover, WhatsApp, Telegram, Gmail
+- **Channels**: Toast, desktop, sound, Slack, Discord, Pushover, WhatsApp, Telegram, Gmail, Mattermost
 - **Slack/Discord**: Can send via webhook URL or via connected messaging channel (`useMessagingChannel`)
 - **WhatsApp/Telegram**: Require connected messaging channel
 - **Gmail**: Sends notification emails to user's own Gmail address via Gmail API
+- **Mattermost**: Sends bot-token notifications to the configured default channel
 - **Events**: Task completion, PR merge, deployment success/failure
 
 ## Messaging
@@ -289,7 +290,7 @@ Chat with the AI assistant via external messaging platforms:
 - **Discord**: Bot token auth, slash commands (`/reset`, `/help`, `/status`)
 - **Telegram**: Bot token from @BotFather, handles private chats
 - **Slack**: Socket Mode with bot + app tokens, Block Kit formatting, slash commands
-- **Mattermost**: Bot-token integration with `/f` slash command, interactive cards, dialogs, and default-channel notifications.
+- **Mattermost**: Bot-token integration with `/f` slash command, interactive cards, dialogs, and default-channel notifications. Settings → Email & Messaging stores Server URL, Bot Token, Team ID, Channel ID, Command Token, enable toggle, notification toggle, and a Test Connection check against `GET /api/v4/users/me`.
 - **Email**: Gmail API or IMAP/SMTP backends, collects all non-automated emails (observe-only, no auto-responses)
 - **Gmail**: Send emails via Gmail API (OAuth2), always sends to user's own address
 - **Session persistence**: Conversations map to `chatSessions` table, one session per user
@@ -297,9 +298,14 @@ Chat with the AI assistant via external messaging platforms:
 - **Auto-resolve recipients**: `to` parameter is optional; auto-resolves from channel state
 
 **Configuration storage:**
-- **Credentials**: `settings.json` under `channels.*` (Slack, Discord, Telegram, Email, Mattermost)
+- **Credentials**: fnox config under `channels.*` for Slack, Discord, Telegram, Email, and Mattermost bot/slash-command tokens
 - **WhatsApp**: Database (QR auth generates credentials dynamically)
 - **Runtime state**: Database (connection status, bot display names)
+
+**Mattermost deployment:**
+- Bind Fulcrum to `0.0.0.0` with `HOST=0.0.0.0` when Mattermost reaches it from another host or container.
+- Ensure the firewall permits Mattermost to reach the Fulcrum port and set `FULCRUM_HOST` to the hostname/IP Mattermost should use in card callback URLs.
+- Add Fulcrum's host or subnet to Mattermost `AllowedUntrustedInternalConnections`; Docker deployments also need bridge/NAT routing from the Mattermost container to Fulcrum.
 
 **Mattermost slash command onboarding:**
 ```bash
