@@ -283,6 +283,10 @@ export function pullLatestInWorktree(
   }
 }
 
+export function gitPull(worktreePath: string): { success: boolean; error?: string; commitsPulled?: number } {
+  return pullLatestInWorktree(worktreePath)
+}
+
 /**
  * Copy files to worktree based on glob patterns (comma-separated).
  */

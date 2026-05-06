@@ -335,6 +335,8 @@ const NULLABLE_ON_EMPTY = new Set([
 // Config key → validator function
 const CONFIG_VALIDATORS: Record<string, (value: unknown) => ValidatorResult> = {
   [CONFIG_KEYS.PORT]: portValidator,
+  [CONFIG_KEYS.PUBLIC_DOMAIN]: nullableStringValidator('Public domain'),
+  [CONFIG_KEYS.TAILSCALE_HOSTNAME]: nullableStringValidator('Tailscale hostname'),
   [CONFIG_KEYS.REMOTE_PORT]: portValidator,
   [CONFIG_KEYS.EDITOR_SSH_PORT]: portValidator,
   [CONFIG_KEYS.LANGUAGE]: (value) => {
