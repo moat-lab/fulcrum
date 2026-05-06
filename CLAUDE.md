@@ -307,6 +307,16 @@ Chat with the AI assistant via external messaging platforms:
 - Ensure the firewall permits Mattermost to reach the Fulcrum port and set `FULCRUM_HOST` to the hostname/IP Mattermost should use in card callback URLs.
 - Add Fulcrum's host or subnet to Mattermost `AllowedUntrustedInternalConnections`; Docker deployments also need bridge/NAT routing from the Mattermost container to Fulcrum.
 
+**Mattermost slash command onboarding:**
+```bash
+mmctl command create <team> \
+  --title "Fulcrum" --description "Fulcrum slash commands" --trigger-word f \
+  --url "http://<fulcrum-host>:<port>/api/mattermost/commands" \
+  --creator <mattermost-user> --autocomplete --post \
+  --response-username fulcrum --icon "http://<fulcrum-host>:<port>/icon-192.png"
+```
+Use the actual Fulcrum bot username if it differs from `fulcrum`. If the deployed Mattermost version supports a separate response icon flag, set it to the same Fulcrum icon URL so `/f` in-channel cards render as the Fulcrum bot instead of the triggering user.
+
 Enable in Settings → Email & Messaging and follow the setup instructions for each platform.
 
 ## Desktop App

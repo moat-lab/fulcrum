@@ -25,9 +25,11 @@ import {
   buildProjectsCard,
   buildSearchCard,
 } from '../services/mattermost/cards'
-import { openDialog, postMessage, getActionsUrl } from '../services/mattermost/client'
+import { openDialog, postMessage, getActionsUrl, fulcrumUrl } from '../services/mattermost/client'
 import type { MattermostDialog } from '../services/mattermost/client'
 
+const MATTERMOST_RESPONSE_USERNAME = 'fulcrum'
+const MATTERMOST_RESPONSE_ICON_PATH = '/icon-192.png'
 const VALID_STATUS = new Set(['TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CANCELED'])
 const VALID_PRIORITY = new Set(['high', 'medium', 'low'])
 const IN_CHANNEL_SUBCOMMANDS = new Set(['', 'deploy'])
@@ -78,6 +80,8 @@ app.post('/commands', async (c) => {
     const attachment = await dispatchCommand(text, triggerId, channelId, userId)
     return c.json({
       response_type: inChannel ? 'in_channel' : 'ephemeral',
+      username: MATTERMOST_RESPONSE_USERNAME,
+      icon_url: fulcrumUrl(MATTERMOST_RESPONSE_ICON_PATH),
       props: { attachments: [attachment] },
     })
   } catch (err) {
