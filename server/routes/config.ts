@@ -20,6 +20,7 @@ import {
 } from '../lib/settings'
 import { spawn } from 'child_process'
 import { testNotificationChannel, sendNotification, type NotificationPayload } from '../services/notification-service'
+import { validateConnection as validateMattermostConnection } from '../services/mattermost/client'
 
 export { CONFIG_KEYS } from '../../shared/config-keys'
 import { CONFIG_KEYS } from '../../shared/config-keys'
@@ -124,8 +125,8 @@ app.put('/notifications', async (c) => {
 
 // POST /api/config/notifications/test/:channel - Test a notification channel
 app.post('/notifications/test/:channel', async (c) => {
-  const channel = c.req.param('channel') as 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail'
-  const validChannels = ['sound', 'slack', 'discord', 'pushover', 'whatsapp', 'telegram', 'gmail']
+  const channel = c.req.param('channel') as 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail' | 'mattermost'
+  const validChannels = ['sound', 'slack', 'discord', 'pushover', 'whatsapp', 'telegram', 'gmail', 'mattermost']
 
   if (!validChannels.includes(channel)) {
     return c.json({ error: `Invalid channel: ${channel}` }, 400)
@@ -154,6 +155,16 @@ app.post('/notifications/send', async (c) => {
     return c.json({ success: true, results })
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'Failed to send notification' }, 400)
+  }
+})
+
+// POST /api/config/mattermost/test - Validate Mattermost bot credentials
+app.post('/mattermost/test', async (c) => {
+  try {
+    const result = await validateMattermostConnection()
+    return c.json({ success: true, ...result })
+  } catch (err) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed to validate Mattermost connection' }, 400)
   }
 })
 
