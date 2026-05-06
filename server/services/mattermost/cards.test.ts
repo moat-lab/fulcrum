@@ -78,7 +78,7 @@ describe('Mattermost cards', () => {
 
     const card = await buildTaskListCard()
 
-    expect(card.pretext).toBe('#### Tasks — Active (2)')
+    expect(card.pretext).toBe('#### Tasks — Active (2) · Page 1/1')
     expect(card.text?.indexOf('High later')).toBeLessThan(card.text?.indexOf('Medium late') ?? 0)
     expect(card.text).not.toContain('Done hidden')
     expect(card.actions?.[0].integration?.context).toEqual({ action: 'task_detail', task_id: 'high-later' })
@@ -96,7 +96,7 @@ describe('Mattermost cards', () => {
 
     const card = await buildTaskListCard({ status: 'doing', projectId: 'proj-1', tag: 'urgent' })
 
-    expect(card.pretext).toBe('#### Tasks — DOING (1)')
+    expect(card.pretext).toBe('#### Tasks — DOING (1) · Page 1/1')
     expect(card.text).toContain('Matched')
     expect(card.text).not.toContain('Wrong status')
     expect(card.text).not.toContain('Wrong project')
