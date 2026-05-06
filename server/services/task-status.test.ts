@@ -1,8 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { createTestGitRepo, type TestGitRepo } from '../__tests__/fixtures/git'
-import { db, tasks } from '../db'
+import { db, tasks, repositories } from '../db'
 import { eq } from 'drizzle-orm'
+import { getWorktreeBasePath } from '../lib/settings'
 import { updateTaskStatus } from './task-status'
 
 describe('Task Status Service', () => {
@@ -221,6 +224,81 @@ describe('Task Status Service', () => {
       const result = await updateTaskStatus('keep-pin-1', 'IN_REVIEW')
       expect(result?.status).toBe('IN_REVIEW')
       expect(result?.pinned).toBe(true)
+    })
+
+    describe('TO_DO -> IN_PROGRESS worktree materialization', () => {
+      function insertRepo(): string {
+        const repoId = crypto.randomUUID()
+        const now = new Date().toISOString()
+        db.insert(repositories)
+          .values({
+            id: repoId,
+            path: repo.path,
+            displayName: 'test-repo',
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+        return repoId
+      }
+
+      test('honors explicit branch and baseBranch when set', async () => {
+        const repoId = insertRepo()
+        const explicitBranch = 'stephanfitzpatrick-dat-1058-add-deep-link-from-crm-deals-to-data-manager'
+        const now = new Date().toISOString()
+        db.insert(tasks)
+          .values({
+            id: 'explicit-branch-1',
+            title: 'A task with a really long descriptive title that should not be slugified',
+            status: 'TO_DO',
+            position: 0,
+            repositoryId: repoId,
+            branch: explicitBranch,
+            baseBranch: repo.defaultBranch,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+
+        const result = await updateTaskStatus('explicit-branch-1', 'IN_PROGRESS')
+
+        expect(result).not.toBeNull()
+        expect(result!.status).toBe('IN_PROGRESS')
+        expect(result!.branch).toBe(explicitBranch)
+        expect(result!.baseBranch).toBe(repo.defaultBranch)
+
+        const expectedPath = path.join(getWorktreeBasePath(), path.basename(repo.path), explicitBranch)
+        expect(result!.worktreePath).toBe(expectedPath)
+        expect(fs.existsSync(expectedPath)).toBe(true)
+
+        // Confirm git agrees the worktree is on the explicit branch
+        const actualBranch = repo.git(`-C "${expectedPath}" rev-parse --abbrev-ref HEAD`)
+        expect(actualBranch).toBe(explicitBranch)
+      })
+
+      test('auto-generates branch when none provided', async () => {
+        const repoId = insertRepo()
+        const now = new Date().toISOString()
+        db.insert(tasks)
+          .values({
+            id: 'auto-branch-1',
+            title: 'Some Task Title',
+            status: 'TO_DO',
+            position: 0,
+            repositoryId: repoId,
+            baseBranch: repo.defaultBranch,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+
+        const result = await updateTaskStatus('auto-branch-1', 'IN_PROGRESS')
+
+        expect(result).not.toBeNull()
+        expect(result!.branch).toMatch(/^some-task-title-[a-z0-9]{4}$/)
+        expect(result!.worktreePath).toBeTruthy()
+        expect(fs.existsSync(result!.worktreePath!)).toBe(true)
+      })
     })
 
     test('same status update still updates timestamp', async () => {

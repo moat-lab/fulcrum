@@ -151,6 +151,8 @@ export async function buildDashboardCard(): Promise<MattermostAttachment> {
     })
   }
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/tasks')})`
+
   return {
     fallback: 'Fulcrum Dashboard',
     color: '#7C3AED',
@@ -162,6 +164,7 @@ export async function buildDashboardCard(): Promise<MattermostAttachment> {
       actionBtn('new_task', '➕ New Task', { action: 'open_create_task_dialog' }, 'good'),
       actionBtn('monitor', '🖥 Monitor', { action: 'monitor' }),
     ],
+    text: openLink,
   }
 }
 
@@ -249,11 +252,13 @@ export async function buildTaskListCard(filter?: {
   )
   actions.push(actionBtn('new_task', '➕ New', { action: 'open_create_task_dialog' }, 'good'))
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/tasks')})`
+
   return {
     fallback: `Tasks — ${statusLabel}`,
     color: '#3B82F6',
     pretext: `#### Tasks — ${statusLabel} (${results.length})`,
-    text: lines.join('\n') || '_No tasks found_',
+    text: [lines.join('\n') || '_No tasks found_', openLink].filter(Boolean).join('\n\n'),
     actions,
   }
 }
@@ -354,15 +359,15 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     default_option: priorityOptions.find(o => o.value === currentPriority),
   })
 
-  actions.push(actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${task.id}`) }))
-
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl(`/tasks/${task.id}`)})`
   const descText = task.description ? `\n${task.description.slice(0, 200)}${task.description.length > 200 ? '...' : ''}` : ''
+  const text = [descText.trim(), openLink].filter(Boolean).join('\n\n')
 
   return {
     fallback: `Task #${task.id.slice(0, 6)} — ${task.title}`,
     color: task.status === 'DONE' ? '#22C55E' : task.status === 'CANCELED' ? '#6B7280' : '#7C3AED',
     pretext: `#### Task #${task.id.slice(0, 6)} — ${task.title}`,
-    text: descText || undefined,
+    text: text || undefined,
     fields,
     actions,
   }
@@ -391,11 +396,13 @@ export async function buildAppsCard(): Promise<MattermostAttachment> {
     actionBtn(`app_${a.id}`, a.name, { action: 'app_detail', app_id: a.id })
   )
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/apps')})`
+
   return {
     fallback: `Applications (${allApps.length})`,
     color: '#10B981',
     pretext: `#### Applications (${allApps.length})`,
-    text: lines.join('\n'),
+    text: [lines.join('\n'), openLink].filter(Boolean).join('\n\n'),
     actions,
   }
 }
@@ -463,12 +470,13 @@ export async function buildAppDetailCard(appId: string): Promise<MattermostAttac
     })
   }
 
-  actions.push(actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl(`/apps`) }))
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/apps')})`
 
   return {
     fallback: `App — ${app.name}`,
     color: app.status === 'running' ? '#22C55E' : app.status === 'failed' ? '#EF4444' : '#6B7280',
     pretext: `#### 🚀 ${app.name}`,
+    text: openLink,
     fields,
     actions,
   }
@@ -504,6 +512,8 @@ export async function buildMonitorCard(): Promise<MattermostAttachment> {
     { short: true, title: 'RAM', value: memInfo },
   ]
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/monitoring')})`
+
   return {
     fallback: 'System Monitor',
     color: '#8B5CF6',
@@ -511,8 +521,8 @@ export async function buildMonitorCard(): Promise<MattermostAttachment> {
     fields,
     actions: [
       actionBtn('refresh', '🔄 Refresh', { action: 'monitor' }),
-      actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl('/monitoring') }),
     ],
+    text: openLink,
   }
 }
 
@@ -544,11 +554,13 @@ export async function buildProjectsCard(): Promise<MattermostAttachment> {
     actionBtn(`proj_${p.id}`, p.name, { action: 'list_tasks', project_id: p.id })
   )
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/repositories')})`
+
   return {
     fallback: `Projects (${allProjects.length})`,
     color: '#F59E0B',
     pretext: `#### Projects — Active (${allProjects.length})`,
-    text: lines.join('\n'),
+    text: [lines.join('\n'), openLink].filter(Boolean).join('\n\n'),
     actions,
   }
 }
@@ -601,11 +613,13 @@ export async function buildSearchCard(query: string): Promise<MattermostAttachme
     lines.push(`_No results for "${query}"_`)
   }
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl(`/search?q=${encodeURIComponent(query)}`)})`
+
   return {
     fallback: `Search: ${query}`,
     color: '#6366F1',
     pretext: `#### 🔍 Search: "${query}" (${results.length} results)`,
-    text: lines.join('\n'),
+    text: [lines.join('\n'), openLink].filter(Boolean).join('\n\n'),
     actions: taskActions.length > 0 ? taskActions : undefined,
   }
 }
