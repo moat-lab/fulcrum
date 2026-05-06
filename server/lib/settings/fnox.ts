@@ -17,6 +17,8 @@ export interface ConfigEntry {
 export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   // Server
   'server.port': { fnoxKey: 'FULCRUM_SERVER_PORT', provider: 'plain', type: 'number' },
+  'server.publicDomain': { fnoxKey: 'FULCRUM_SERVER_PUBLIC_DOMAIN', provider: 'plain', type: 'string' },
+  'server.tailscaleHostname': { fnoxKey: 'FULCRUM_SERVER_TAILSCALE_HOSTNAME', provider: 'plain', type: 'string' },
 
   // Paths
   'paths.defaultGitReposDir': { fnoxKey: 'FULCRUM_PATHS_GIT_REPOS_DIR', provider: 'plain', type: 'string' },
@@ -96,6 +98,7 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'channels.mattermost.teamId': { fnoxKey: 'FULCRUM_MATTERMOST_TEAM_ID', provider: 'plain', type: 'string' },
   'channels.mattermost.channelId': { fnoxKey: 'FULCRUM_MATTERMOST_CHANNEL_ID', provider: 'plain', type: 'string' },
   'channels.mattermost.commandToken': { fnoxKey: 'FULCRUM_MATTERMOST_COMMAND_TOKEN', provider: 'age', type: 'string' },
+  'channels.mattermost.allowedUserIds': { fnoxKey: 'FULCRUM_MATTERMOST_ALLOWED_USER_IDS', provider: 'plain', type: 'json' },
 
   // CalDAV
   'caldav.enabled': { fnoxKey: 'FULCRUM_CALDAV_ENABLED', provider: 'plain', type: 'boolean' },
@@ -171,18 +174,30 @@ function writeFileAtomicSync(filePath: string, content: string): void {
   renameSync(tmpPath, filePath)
 }
 
+function backupLegacyFnoxConfig(legacyPath: string, configDir: string): void {
+  const backupPath = join(configDir, `legacy-${basename(legacyPath)}.bak`)
+  renameSync(legacyPath, backupPath)
+  log.settings.info(`Backed up ${basename(legacyPath)} → config/${basename(backupPath)}`)
+}
+
 export function migrateLegacyFnoxConfig(fulcrumDir: string): boolean {
   const newPath = join(fulcrumDir, 'config', 'fnox.toml')
   if (existsSync(newPath)) return false
-  for (const legacy of getLegacyFnoxConfigPaths(fulcrumDir)) {
-    if (existsSync(legacy)) {
-      mkdirSync(dirname(newPath), { recursive: true })
-      renameSync(legacy, newPath)
-      log.settings.info(`Migrated ${basename(legacy)} → config/fnox.toml`)
-      return true
-    }
+
+  const configDir = dirname(newPath)
+  const legacyPaths = getLegacyFnoxConfigPaths(fulcrumDir)
+  const sourcePath = legacyPaths.find(legacy => existsSync(legacy))
+  if (!sourcePath) return false
+
+  mkdirSync(configDir, { recursive: true })
+  renameSync(sourcePath, newPath)
+  log.settings.info(`Migrated ${basename(sourcePath)} → config/fnox.toml`)
+
+  for (const legacy of legacyPaths) {
+    if (legacy !== sourcePath && existsSync(legacy)) backupLegacyFnoxConfig(legacy, configDir)
   }
-  return false
+
+  return true
 }
 
 function getFnoxKeyPath(): string {
@@ -192,6 +207,33 @@ function getFnoxKeyPath(): string {
 // --- Availability ---
 
 let _fnoxAvailable: boolean | null = null
+
+function requiresPersistentFnoxWrites(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.FULCRUM_FNOX_STRICT === '1'
+}
+
+function allowsInMemoryFnoxWrites(): boolean {
+  return !requiresPersistentFnoxWrites() || isTestMode() || process.env.FULCRUM_FNOX_IN_MEMORY_ONLY === '1'
+}
+
+function describeFnoxUnavailable(): string {
+  const hasCliFlag = process.env.FULCRUM_FNOX_INSTALLED === '1'
+  const configExists = existsSync(getFnoxConfigPath())
+  const keyExists = existsSync(getFnoxKeyPath())
+
+  if (!hasCliFlag) {
+    try {
+      execSync('which fnox', { stdio: 'ignore' })
+    } catch {
+      return 'fnox CLI not found in PATH'
+    }
+  }
+
+  if (!configExists && !keyExists) return 'config/fnox.toml and age.txt are missing'
+  if (!configExists) return 'config/fnox.toml is missing'
+  if (!keyExists) return 'age.txt is missing'
+  return 'fnox is not available'
+}
 
 export function isFnoxAvailable(): boolean {
   if (isTestMode()) return false
@@ -226,10 +268,10 @@ export function isFnoxAvailable(): boolean {
 /**
  * Bootstrap fnox configuration when the server starts directly (e.g. systemd)
  * without going through `fulcrum up`. Creates age.txt and config/fnox.toml if
- * missing. Skips gracefully if fnox or age-keygen binaries aren't available.
+ * missing. Test mode and explicit in-memory mode skip bootstrap.
  */
 export function ensureFnoxBootstrap(): void {
-  if (isTestMode()) return
+  if (allowsInMemoryFnoxWrites()) return
 
   const fulcrumDir = getFulcrumDir()
 
@@ -250,8 +292,7 @@ export function ensureFnoxBootstrap(): void {
     execSync('which fnox', { stdio: 'ignore' })
     execSync('which age-keygen', { stdio: 'ignore' })
   } catch {
-    log.settings.debug('fnox or age-keygen not found, skipping bootstrap')
-    return
+    throw new Error('Cannot bootstrap Fulcrum configuration: fnox and age-keygen must be installed')
   }
 
   // Generate age key if needed
@@ -262,21 +303,18 @@ export function ensureFnoxBootstrap(): void {
       const output = execSync(`age-keygen -o "${ageKeyPath}" 2>&1`, { encoding: 'utf-8' })
       const match = output.match(/Public key: (age1\S+)/)
       if (!match) {
-        log.settings.error('Could not parse public key from age-keygen output', { output })
-        return
+        throw new Error('Cannot bootstrap Fulcrum configuration: age-keygen output did not include a public key')
       }
       publicKey = match[1]
       chmodSync(ageKeyPath, 0o600)
     } catch (err) {
-      log.settings.error('Failed to generate age key', { error: String(err) })
-      return
+      throw new Error(`Cannot bootstrap Fulcrum configuration: failed to generate age key: ${String(err)}`)
     }
   } else {
     const content = readFileSync(ageKeyPath, 'utf-8')
     const match = content.match(/# public key: (age1\S+)/)
     if (!match) {
-      log.settings.error('Could not parse public key from existing age.txt')
-      return
+      throw new Error('Cannot bootstrap Fulcrum configuration: existing age.txt does not include a public key')
     }
     publicKey = match[1]
   }
@@ -446,7 +484,7 @@ export function getFnoxValue(settingsPath: string): unknown {
 
 /**
  * Set a config value by its settings path.
- * Always updates in-memory cache. Writes to fnox CLI only when available.
+ * Test mode and explicit in-memory mode update the cache without persisting.
  */
 export function setFnoxValue(settingsPath: string, value: unknown): void {
   const entry = FNOX_CONFIG_MAP[settingsPath]
@@ -454,11 +492,18 @@ export function setFnoxValue(settingsPath: string, value: unknown): void {
 
   const serialized = serializeValue(value)
   if (serialized === '') {
-    // Empty = remove the key
-    if (isFnoxAvailable()) fnoxRemove(entry.fnoxKey)
+    if (isFnoxAvailable()) {
+      fnoxRemove(entry.fnoxKey)
+    } else if (!allowsInMemoryFnoxWrites()) {
+      throw new Error(`Cannot persist Fulcrum setting ${settingsPath}: ${describeFnoxUnavailable()}`)
+    }
     configCache.delete(entry.fnoxKey)
   } else {
-    if (isFnoxAvailable()) fnoxSet(entry.fnoxKey, serialized, entry.provider)
+    if (isFnoxAvailable()) {
+      fnoxSet(entry.fnoxKey, serialized, entry.provider)
+    } else if (!allowsInMemoryFnoxWrites()) {
+      throw new Error(`Cannot persist Fulcrum setting ${settingsPath}: ${describeFnoxUnavailable()}`)
+    }
     configCache.set(entry.fnoxKey, serialized)
   }
 }
@@ -488,7 +533,11 @@ export function setFnoxSecret(settingsPath: string, value: string): void {
 export function removeFnoxSecret(settingsPath: string): void {
   const entry = FNOX_CONFIG_MAP[settingsPath]
   if (!entry) return
-  if (isFnoxAvailable()) fnoxRemove(entry.fnoxKey)
+  if (isFnoxAvailable()) {
+    fnoxRemove(entry.fnoxKey)
+  } else if (!allowsInMemoryFnoxWrites()) {
+    throw new Error(`Cannot persist Fulcrum setting ${settingsPath}: ${describeFnoxUnavailable()}`)
+  }
   configCache.delete(entry.fnoxKey)
 }
 

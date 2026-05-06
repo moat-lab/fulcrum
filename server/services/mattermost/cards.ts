@@ -4,11 +4,12 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { db, tasks, apps, deployments, projects, tags, taskTags, taskLinks, taskRelationships } from '../../db'
+import { db, tasks, apps, deployments, projects, tags, taskTags, taskLinks, taskRelationships, terminals } from '../../db'
 import { eq, desc, and } from 'drizzle-orm'
 import { listJobs } from '../job-service'
 import { getActionsUrl, fulcrumUrl } from './client'
 import type { MattermostAttachment, MattermostAction, MattermostField } from './client'
+import { getPTYManager } from '../../terminal/pty-instance'
 
 // --- Helpers ---
 
@@ -44,6 +45,43 @@ function actionBtn(id: string, name: string, context: Record<string, unknown>, s
       context,
     },
   }
+}
+
+type AgentRuntimeStatus = 'running' | 'idle' | 'crashed'
+
+function getAgentRuntimeStatusFromDb(worktreePath: string): AgentRuntimeStatus {
+  const terminalRecord = db
+    .select({ status: terminals.status })
+    .from(terminals)
+    .where(eq(terminals.cwd, worktreePath))
+    .get()
+
+  if (!terminalRecord) {
+    return 'idle'
+  }
+
+  return terminalRecord.status === 'running' ? 'running' : 'crashed'
+}
+
+function getAgentRuntimeStatus(worktreePath: string): AgentRuntimeStatus {
+  try {
+    const managedTerminal = getPTYManager().listTerminals().find((terminal) => terminal.cwd === worktreePath)
+    if (managedTerminal) {
+      return managedTerminal.status === 'running' ? 'running' : 'crashed'
+    }
+  } catch {
+    return getAgentRuntimeStatusFromDb(worktreePath)
+  }
+
+  return getAgentRuntimeStatusFromDb(worktreePath)
+}
+
+function formatAgentStatus(agent: string, taskStatus: string, worktreePath: string | null): string {
+  if (taskStatus !== 'IN_PROGRESS' || !worktreePath) {
+    return agent
+  }
+
+  return `${agent} (${getAgentRuntimeStatus(worktreePath)})`
 }
 
 function formatDate(dateStr: string | null): string {
@@ -142,6 +180,8 @@ export async function buildDashboardCard(): Promise<MattermostAttachment> {
     })
   }
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/tasks')})`
+
   return {
     fallback: 'Fulcrum Dashboard',
     color: '#7C3AED',
@@ -153,6 +193,7 @@ export async function buildDashboardCard(): Promise<MattermostAttachment> {
       actionBtn('new_task', '➕ New Task', { action: 'open_create_task_dialog' }, 'good'),
       actionBtn('monitor', '🖥 Monitor', { action: 'monitor' }),
     ],
+    text: openLink,
   }
 }
 
@@ -259,11 +300,13 @@ export async function buildTaskListCard(filter?: {
   }
   actions.push(actionBtn('new_task', '➕ New', { action: 'open_create_task_dialog' }, 'good'))
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/tasks')})`
+
   return {
     fallback: `Tasks — ${statusLabel}`,
     color: '#3B82F6',
     pretext: `#### Tasks — ${statusLabel} (${results.length}) · Page ${currentPage}/${totalPages}`,
-    text: lines.join('\n') || '_No tasks found_',
+    text: [lines.join('\n') || '_No tasks found_', openLink].filter(Boolean).join('\n\n'),
     actions,
   }
 }
@@ -315,17 +358,7 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     fields.push({ short: true, title: 'Estimate', value: `${task.timeEstimate}h` })
   }
   if (task.agent) {
-    let agentStatus = task.agent
-    // Check if an agent process is running for this task's worktree
-    if (task.worktreePath && task.status === 'IN_PROGRESS') {
-      try {
-        const result = execFileSync('pgrep', ['-f', task.worktreePath], { encoding: 'utf-8', timeout: 2000 }).trim()
-        agentStatus = result ? `${task.agent} (running)` : `${task.agent} (idle)`
-      } catch {
-        agentStatus = `${task.agent} (idle)`
-      }
-    }
-    fields.push({ short: true, title: 'Agent', value: agentStatus })
+    fields.push({ short: true, title: 'Agent', value: formatAgentStatus(task.agent, task.status, task.worktreePath) })
   }
   if (tagStr) {
     fields.push({ short: false, title: 'Tags', value: tagStr })
@@ -398,15 +431,15 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     default_option: priorityOptions.find(o => o.value === currentPriority),
   })
 
-  actions.push(actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${task.id}`) }))
-
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl(`/tasks/${task.id}`)})`
   const descText = task.description ? `\n${task.description.slice(0, 200)}${task.description.length > 200 ? '...' : ''}` : ''
+  const text = [descText.trim(), openLink].filter(Boolean).join('\n\n')
 
   return {
     fallback: `Task #${task.id.slice(0, 6)} — ${task.title}`,
     color: task.status === 'DONE' ? '#22C55E' : task.status === 'CANCELED' ? '#6B7280' : '#7C3AED',
     pretext: `#### Task #${task.id.slice(0, 6)} — ${task.title}`,
-    text: descText || undefined,
+    text: text || undefined,
     fields,
     actions,
   }
@@ -435,11 +468,13 @@ export async function buildAppsCard(): Promise<MattermostAttachment> {
     actionBtn(`app_${a.id}`, a.name, { action: 'app_detail', app_id: a.id })
   )
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/apps')})`
+
   return {
     fallback: `Applications (${allApps.length})`,
     color: '#10B981',
     pretext: `#### Applications (${allApps.length})`,
-    text: lines.join('\n'),
+    text: [lines.join('\n'), openLink].filter(Boolean).join('\n\n'),
     actions,
   }
 }
@@ -507,12 +542,13 @@ export async function buildAppDetailCard(appId: string): Promise<MattermostAttac
     })
   }
 
-  actions.push(actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl(`/apps`) }))
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/apps')})`
 
   return {
     fallback: `App — ${app.name}`,
     color: app.status === 'running' ? '#22C55E' : app.status === 'failed' ? '#EF4444' : '#6B7280',
     pretext: `#### 🚀 ${app.name}`,
+    text: openLink,
     fields,
     actions,
   }
@@ -555,6 +591,8 @@ export async function buildMonitorCard(): Promise<MattermostAttachment> {
     value: agentProcesses.length > 0 ? agentProcesses.map(line => `\`${line.slice(0, 120)}\``).join('\n') : '_No Claude/OpenCode processes found_',
   })
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/monitoring')})`
+
   return {
     fallback: 'System Monitor',
     color: '#8B5CF6',
@@ -562,8 +600,8 @@ export async function buildMonitorCard(): Promise<MattermostAttachment> {
     fields,
     actions: [
       actionBtn('refresh', '🔄 Refresh', { action: 'monitor' }),
-      actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl('/monitoring') }),
     ],
+    text: openLink,
   }
 }
 
@@ -631,11 +669,13 @@ export async function buildProjectsCard(): Promise<MattermostAttachment> {
     actionBtn(`proj_${p.id}`, p.name, { action: 'list_tasks', project_id: p.id })
   )
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/repositories')})`
+
   return {
     fallback: `Projects (${allProjects.length})`,
     color: '#F59E0B',
     pretext: `#### Projects — Active (${allProjects.length})`,
-    text: lines.join('\n'),
+    text: [lines.join('\n'), openLink].filter(Boolean).join('\n\n'),
     actions,
   }
 }
@@ -688,11 +728,13 @@ export async function buildSearchCard(query: string): Promise<MattermostAttachme
     lines.push(`_No results for "${query}"_`)
   }
 
+  const openLink = `[Open in Fulcrum ↗](${fulcrumUrl(`/search?q=${encodeURIComponent(query)}`)})`
+
   return {
     fallback: `Search: ${query}`,
     color: '#6366F1',
     pretext: `#### 🔍 Search: "${query}" (${results.length} results)`,
-    text: lines.join('\n'),
+    text: [lines.join('\n'), openLink].filter(Boolean).join('\n\n'),
     actions: taskActions.length > 0 ? taskActions : undefined,
   }
 }

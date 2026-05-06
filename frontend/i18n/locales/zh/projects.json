@@ -177,7 +177,7 @@
     "uploading": "上传中...",
     "dropOrClick": "拖放文件到此处或点击上传",
     "dropOrClickShort": "拖放或点击",
-    "attachmentTypes": "PDF、图片、文档、压缩包（最大 10MB）",
+    "attachmentTypes": "任何文件（最大 10MB）",
     "noAttachments": "暂无附件",
     "noTags": "暂无标签",
     "searchOrCreateTag": "搜索或创建标签...",

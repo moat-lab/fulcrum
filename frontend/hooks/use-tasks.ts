@@ -97,7 +97,20 @@ export function useUpdateTaskStatus() {
         method: 'PATCH',
         body: JSON.stringify({ status, position }),
       }),
-    onSuccess: () => {
+    onMutate: async ({ taskId, status, position }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      const previous = queryClient.getQueryData<Task[]>(['tasks'])
+      queryClient.setQueryData<Task[]>(['tasks'], (old) =>
+        old?.map((t) => (t.id === taskId ? { ...t, status, position } : t)),
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['tasks'], context.previous)
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['task-dependencies'] })
     },
