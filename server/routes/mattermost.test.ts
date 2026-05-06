@@ -2,7 +2,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
-import { apps, db, projects, repositories, tasks, terminals } from '../db'
+import { apps, db, projects, repositories, tasks, taskLinks, taskRelationships, terminals } from '../db'
 import { setFnoxValue } from '../lib/settings/fnox'
 import { createTestGitRepo } from '../__tests__/fixtures/git'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
@@ -484,6 +484,97 @@ describe('Mattermost Routes', () => {
       })
       const data = await res.json() as { ephemeral_text?: string }
       expect(data.ephemeral_text).toContain('No deployment selected')
+    })
+  })
+
+  describe('POST /api/mattermost/commands — slash cards', () => {
+    beforeEach(() => {
+      enableMattermost()
+    })
+
+    test('jobs subcommand returns the scheduled jobs card', async () => {
+      const client = createTestApp()
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'jobs' })
+      const data = await res.json() as { props?: { attachments?: Array<{ pretext?: string }> } }
+      expect(data.props?.attachments?.[0]?.pretext).toContain('Scheduled Jobs')
+    })
+
+    test('tasks list paginates results beyond the first 10 tasks', async () => {
+      const client = createTestApp()
+      const now = new Date().toISOString()
+      for (let i = 0; i < 11; i++) {
+        db.insert(tasks).values({
+          id: `task-${i}`,
+          title: `Task ${i}`,
+          status: 'TO_DO',
+          position: i,
+          agent: 'claude',
+          priority: 'medium',
+          createdAt: now,
+          updatedAt: now,
+        }).run()
+      }
+
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'tasks' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ pretext?: string; actions?: Array<{ name: string }> }> }
+      }
+      const attachment = data.props?.attachments?.[0]
+      expect(attachment?.pretext).toContain('Page 1/2')
+      expect(attachment?.actions?.some(action => action.name === 'Next →')).toBe(true)
+    })
+
+    test('task detail includes PR, links, and dependency fields', async () => {
+      const client = createTestApp()
+      const now = new Date().toISOString()
+      db.insert(tasks).values([
+        {
+          id: 'main-task',
+          title: 'Main task',
+          status: 'TO_DO',
+          position: 1,
+          agent: 'claude',
+          priority: 'medium',
+          prUrl: 'https://github.com/Mouriya-Emma/fulcrum/pull/123',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'dep-task',
+          title: 'Dependency task',
+          status: 'TO_DO',
+          position: 2,
+          agent: 'claude',
+          priority: 'medium',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]).run()
+      db.insert(taskLinks).values({
+        id: 'link-1',
+        taskId: 'main-task',
+        url: 'https://example.com/spec',
+        label: 'Spec',
+        type: 'docs',
+        createdAt: now,
+      }).run()
+      db.insert(taskRelationships).values({
+        id: 'rel-1',
+        taskId: 'main-task',
+        relatedTaskId: 'dep-task',
+        type: 'depends_on',
+        source: 'manual',
+        createdAt: now,
+      }).run()
+
+      const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task main-task' })
+      const data = await res.json() as {
+        props?: { attachments?: Array<{ fields?: Array<{ title: string; value: string }> }> }
+      }
+      const fields = data.props?.attachments?.[0]?.fields ?? []
+      expect(fields.some(field => field.title === 'PR' && field.value.includes('/pull/123'))).toBe(true)
+      expect(fields.some(field => field.title === 'Links' && field.value.includes('Spec'))).toBe(true)
+      expect(fields.some(field => field.title === 'Depends On' && field.value.includes('Dependency task'))).toBe(true)
     })
   })
 

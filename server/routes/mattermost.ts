@@ -22,6 +22,7 @@ import {
   buildAppsCard,
   buildAppDetailCard,
   buildMonitorCard,
+  buildJobsCard,
   buildProjectsCard,
   buildSearchCard,
 } from '../services/mattermost/cards'
@@ -139,6 +140,9 @@ async function dispatchCommand(text: string, triggerId: string, _channelId: stri
     case 'monitor':
       return buildMonitorCard()
 
+    case 'jobs':
+      return buildJobsCard()
+
     case 'projects':
       return buildProjectsCard()
 
@@ -154,7 +158,7 @@ async function dispatchCommand(text: string, triggerId: string, _channelId: stri
 }
 
 function parseTaskFilter(args: string) {
-  const filter: { status?: string; priority?: string; projectId?: string; tag?: string } = {}
+  const filter: { status?: string; priority?: string; projectId?: string; tag?: string; page?: number } = {}
   if (!args) return { status: 'active' }
 
   const parts = args.split(/\s+/)
@@ -166,6 +170,8 @@ function parseTaskFilter(args: string) {
       filter.priority = lower
     } else if (part.startsWith('#')) {
       filter.tag = part.slice(1)
+    } else if (/^page=\d+$/i.test(part)) {
+      filter.page = Number(part.split('=')[1])
     } else if (part.startsWith('@')) {
       // Find project by name
       const name = part.slice(1)
@@ -192,7 +198,8 @@ function buildHelpCard() {
       '`/f deploy <app>` — App deployment',
       '`/f apps` — All applications',
       '`/f search <keywords>` — Search tasks & projects',
-      '`/f monitor` — System resources',
+      '`/f monitor` — System resources and agents',
+      '`/f jobs` — Scheduled jobs',
       '`/f projects` — Project list',
     ].join('\n'),
   }
@@ -297,9 +304,12 @@ app.post('/actions', async (c) => {
   try {
     switch (action) {
       case 'list_tasks': {
-        const filter: Record<string, string> = {}
+        const filter: { status?: string; priority?: string; projectId?: string; tag?: string; page?: number } = {}
         if (context.status) filter.status = context.status as string
+        if (context.priority) filter.priority = context.priority as string
         if (context.project_id) filter.projectId = context.project_id as string
+        if (context.tag) filter.tag = context.tag as string
+        if (context.page) filter.page = Number(context.page)
         const card = await buildTaskListCard(filter)
         return c.json({ update: { props: { attachments: [card] } } })
       }

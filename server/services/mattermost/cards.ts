@@ -3,8 +3,10 @@
  * Each function returns a Mattermost attachment (card) with fields and action buttons.
  */
 
-import { db, tasks, apps, deployments, projects, tags, taskTags, terminals } from '../../db'
+import { execFileSync } from 'node:child_process'
+import { db, tasks, apps, deployments, projects, tags, taskTags, taskLinks, taskRelationships, terminals } from '../../db'
 import { eq, desc, and } from 'drizzle-orm'
+import { listJobs } from '../job-service'
 import { getActionsUrl, fulcrumUrl } from './client'
 import type { MattermostAttachment, MattermostAction, MattermostField } from './client'
 import { getPTYManager } from '../../terminal/pty-instance'
@@ -99,6 +101,33 @@ function timeAgo(dateStr: string | null): string {
   return `${days}d ago`
 }
 
+function formatJobTime(dateStr: string | null): string {
+  if (!dateStr) return '—'
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return dateStr
+  return date.toLocaleString()
+}
+
+function listClaudeAgentProcesses(): string[] {
+  try {
+    const output = execFileSync('pgrep', ['-fl', 'claude|opencode'], { encoding: 'utf-8', timeout: 2000 }).trim()
+    if (!output) return []
+    return output.split('\n').filter(line => !line.includes('pgrep')).slice(0, 5)
+  } catch {
+    return []
+  }
+}
+
+function formatRelationshipLine(taskId: string): string {
+  const related = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+  return related ? `#${related.id.slice(0, 6)} ${related.title}` : `#${taskId.slice(0, 6)}`
+}
+
+function formatLinkLine(link: { label: string | null; url: string; type: string | null }): string {
+  const label = link.label || link.type || link.url
+  return `[${label}](${link.url})`
+}
+
 // --- Dashboard Card ---
 
 export async function buildDashboardCard(): Promise<MattermostAttachment> {
@@ -175,6 +204,7 @@ export async function buildTaskListCard(filter?: {
   priority?: string
   projectId?: string
   tag?: string
+  page?: number
 }): Promise<MattermostAttachment> {
   // Build conditions
   const conditions: ReturnType<typeof eq>[] = []
@@ -234,7 +264,11 @@ export async function buildTaskListCard(filter?: {
     return 0
   })
 
-  const limited = results.slice(0, 10)
+  const pageSize = 10
+  const page = Math.max(1, filter?.page || 1)
+  const totalPages = Math.max(1, Math.ceil(results.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const limited = results.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   const statusLabel = filter?.status
     ? (filter.status === 'active' ? 'Active' : filter.status.toUpperCase())
     : 'Active'
@@ -250,6 +284,20 @@ export async function buildTaskListCard(filter?: {
   const actions: MattermostAction[] = limited.slice(0, 5).map(t =>
     actionBtn(`task_${t.id}`, `#${t.id.slice(0, 6)}`, { action: 'task_detail', task_id: t.id })
   )
+
+  const pageContext = {
+    action: 'list_tasks',
+    status: filter?.status || 'active',
+    priority: filter?.priority,
+    project_id: filter?.projectId,
+    tag: filter?.tag,
+  }
+  if (currentPage > 1) {
+    actions.push(actionBtn('prev_page', '← Prev', { ...pageContext, page: currentPage - 1 }))
+  }
+  if (currentPage < totalPages) {
+    actions.push(actionBtn('next_page', 'Next →', { ...pageContext, page: currentPage + 1 }, 'primary'))
+  }
   actions.push(actionBtn('new_task', '➕ New', { action: 'open_create_task_dialog' }, 'good'))
 
   const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/tasks')})`
@@ -257,7 +305,7 @@ export async function buildTaskListCard(filter?: {
   return {
     fallback: `Tasks — ${statusLabel}`,
     color: '#3B82F6',
-    pretext: `#### Tasks — ${statusLabel} (${results.length})`,
+    pretext: `#### Tasks — ${statusLabel} (${results.length}) · Page ${currentPage}/${totalPages}`,
     text: [lines.join('\n') || '_No tasks found_', openLink].filter(Boolean).join('\n\n'),
     actions,
   }
@@ -314,6 +362,30 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
   }
   if (tagStr) {
     fields.push({ short: false, title: 'Tags', value: tagStr })
+  }
+
+  if (task.prUrl) {
+    fields.push({ short: false, title: 'PR', value: `[${task.prUrl}](${task.prUrl})` })
+  }
+
+  const links = db.select().from(taskLinks).where(eq(taskLinks.taskId, task.id)).all()
+  if (links.length > 0) {
+    fields.push({ short: false, title: 'Links', value: links.slice(0, 5).map(formatLinkLine).join('\n') })
+  }
+
+  const outgoingRelationships = db.select().from(taskRelationships)
+    .where(eq(taskRelationships.taskId, task.id))
+    .all()
+  const incomingRelationships = db.select().from(taskRelationships)
+    .where(eq(taskRelationships.relatedTaskId, task.id))
+    .all()
+  const dependencies = outgoingRelationships.filter(r => r.type === 'depends_on')
+  const dependents = incomingRelationships.filter(r => r.type === 'depends_on')
+  if (dependencies.length > 0) {
+    fields.push({ short: false, title: 'Depends On', value: dependencies.slice(0, 5).map(r => formatRelationshipLine(r.relatedTaskId)).join('\n') })
+  }
+  if (dependents.length > 0) {
+    fields.push({ short: false, title: 'Blocked By This', value: dependents.slice(0, 5).map(r => formatRelationshipLine(r.taskId)).join('\n') })
   }
 
   // Build status transition buttons based on current status
@@ -512,6 +584,13 @@ export async function buildMonitorCard(): Promise<MattermostAttachment> {
     { short: true, title: 'RAM', value: memInfo },
   ]
 
+  const agentProcesses = listClaudeAgentProcesses()
+  fields.push({
+    short: false,
+    title: `Agent Processes (${agentProcesses.length})`,
+    value: agentProcesses.length > 0 ? agentProcesses.map(line => `\`${line.slice(0, 120)}\``).join('\n') : '_No Claude/OpenCode processes found_',
+  })
+
   const openLink = `[Open in Fulcrum ↗](${fulcrumUrl('/monitoring')})`
 
   return {
@@ -523,6 +602,42 @@ export async function buildMonitorCard(): Promise<MattermostAttachment> {
       actionBtn('refresh', '🔄 Refresh', { action: 'monitor' }),
     ],
     text: openLink,
+  }
+}
+
+// --- Jobs Card ---
+
+export async function buildJobsCard(): Promise<MattermostAttachment> {
+  const jobs = listJobs('all')
+
+  if (jobs.length === 0) {
+    return {
+      fallback: 'Scheduled Jobs',
+      color: '#6B7280',
+      pretext: '#### Scheduled Jobs',
+      text: '_No scheduled jobs found or jobs are unavailable on this platform._',
+      actions: [actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl('/jobs') })],
+    }
+  }
+
+  const stateEmoji: Record<string, string> = {
+    active: '✅',
+    inactive: '⏸',
+    failed: '❌',
+    waiting: '⏳',
+  }
+  const lines = jobs.slice(0, 10).map(job => {
+    const emoji = stateEmoji[job.state] || '•'
+    const enabled = job.enabled ? 'enabled' : 'disabled'
+    return `${emoji} **${job.name}** · ${job.scope} · ${enabled} · next ${formatJobTime(job.nextRun)}`
+  })
+
+  return {
+    fallback: `Scheduled Jobs (${jobs.length})`,
+    color: '#0EA5E9',
+    pretext: `#### Scheduled Jobs (${jobs.length})`,
+    text: lines.join('\n'),
+    actions: [actionBtn('open', 'Open ↗', { action: 'open_link', url: fulcrumUrl('/jobs') })],
   }
 }
 
