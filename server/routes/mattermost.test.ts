@@ -846,6 +846,7 @@ describe('Mattermost Routes', () => {
       setFnoxValue('channels.mattermost.enabled', true)
       setFnoxValue('channels.mattermost.serverUrl', 'https://mattermost.example.test')
       setFnoxValue('channels.mattermost.botToken', 'bot-token')
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
       setFnoxValue('channels.mattermost.channelId', 'default-channel')
       globalThis.fetch = async () => new Response(JSON.stringify({ id: 'post-id' }), { status: 200 })
     })
@@ -853,6 +854,7 @@ describe('Mattermost Routes', () => {
     test('create_task creates a task with optional tags and posts a card', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/dialogs', {
+        token: TOKEN,
         callback_id: 'create_task',
         channel_id: 'mattermost-channel',
         submission: {
@@ -879,6 +881,7 @@ describe('Mattermost Routes', () => {
     test('create_task rejects invalid date text', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/dialogs', {
+        token: TOKEN,
         callback_id: 'create_task',
         submission: { title: 'Bad date task', due_date: 'tomorrow' },
       })
@@ -893,6 +896,7 @@ describe('Mattermost Routes', () => {
       setFnoxValue('channels.mattermost.commandToken', 'existing-command-token')
       const { post } = createTestApp()
       const res = await post('/api/mattermost/dialogs', {
+        token: 'existing-command-token',
         callback_id: 'configure_settings',
         submission: {
           server_url: 'https://mattermost.internal',
