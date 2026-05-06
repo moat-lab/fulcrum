@@ -500,6 +500,8 @@ describe('Mattermost Routes', () => {
 
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'change_priority', task_id: 'priority-test-1' },
         selected_option: { value: 'high' },
       })
@@ -522,6 +524,8 @@ describe('Mattermost Routes', () => {
 
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'status_change', task_id: 'cancel-test-1', status: 'CANCELED' },
       })
       const data = await res.json() as { update?: { props?: { attachments?: Array<{ text?: string }> } } }
@@ -533,6 +537,8 @@ describe('Mattermost Routes', () => {
     test('kill_agent validates task existence after confirmation', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'kill_agent', task_id: 'missing-task', confirm: true },
       })
       const data = await res.json() as { ephemeral_text?: string }
@@ -542,6 +548,8 @@ describe('Mattermost Routes', () => {
     test('open_create_task_dialog rejects callbacks without trigger_id', async () => {
       const { post } = createTestApp()
       const res = await post('/api/mattermost/actions', {
+        token: TOKEN,
+        user_id: 'owner',
         context: { action: 'open_create_task_dialog' },
       })
       const data = await res.json() as { ephemeral_text?: string }
