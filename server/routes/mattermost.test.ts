@@ -3,6 +3,11 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { setFnoxValue } from '../lib/settings/fnox'
+import { db, repositories, tasks } from '../db'
+import { createTestGitRepo } from '../__tests__/fixtures/git'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fulcrumUrl, getActionsUrl } from '../services/mattermost/client'
 
 describe('Mattermost callback URLs', () => {
@@ -248,12 +253,71 @@ describe('Mattermost Routes', () => {
     })
   })
 
-  describe('POST /api/mattermost/dialogs — gating', () => {
-    test('returns disabled when channels.mattermost.enabled is false', async () => {
-      const { post } = createTestApp()
-      const res = await post('/api/mattermost/dialogs', { callback_id: 'create_task' })
-      const data = await res.json() as { errors?: Record<string, string> }
-      expect(data.errors?.['']).toContain('disabled')
+  describe('POST /api/mattermost/dialogs — create_task worktree', () => {
+    test('creates worktree task through shared task creation path with generated worktree info', async () => {
+      const repo = createTestGitRepo()
+      const worktreesDir = mkdtempSync(join(tmpdir(), 'fulcrum-mattermost-worktrees-'))
+      const now = new Date().toISOString()
+      db.insert(repositories)
+        .values({
+          id: 'repo-1',
+          path: repo.path,
+          displayName: 'Test Repo',
+          lastBaseBranch: repo.defaultBranch,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+
+      setFnoxValue('channels.mattermost.enabled', true)
+      setFnoxValue('channels.mattermost.channelId', 'default-channel')
+      setFnoxValue('channels.mattermost.serverUrl', 'https://mattermost.test')
+      setFnoxValue('channels.mattermost.botToken', 'test-bot-token')
+      setFnoxValue('channels.mattermost.commandToken', TOKEN)
+      setFnoxValue('paths.worktrees', worktreesDir)
+
+      const client = createTestApp()
+      const originalFetch = globalThis.fetch
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === 'https://mattermost.test/api/v4/posts' && init?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'post-1' }), { status: 201, headers: { 'Content-Type': 'application/json' } })
+        }
+        return originalFetch(input, init)
+      }) as typeof fetch
+      try {
+        const res = await client.post('/api/mattermost/dialogs', {
+          token: TOKEN,
+          callback_id: 'create_task',
+          channel_id: 'channel-1',
+          submission: {
+            title: 'Worktree Task',
+            type: 'worktree',
+            repository_id: 'repo-1',
+            priority: 'high',
+            due_date: '2026-05-04',
+          },
+        })
+
+        const created = db.select().from(tasks).all()
+        expect(res.status).toBe(200)
+        expect(await res.json()).toBeNull()
+        expect(created).toHaveLength(1)
+        expect(created[0].title).toBe('Worktree Task')
+        expect(created[0].type).toBe('worktree')
+        expect(created[0].repoPath).toBe(repo.path)
+        expect(created[0].repoName).toBe('Test Repo')
+        expect(created[0].baseBranch).toBe(repo.defaultBranch)
+        expect(created[0].branch).toContain('worktree-task-')
+        expect(created[0].worktreePath).toContain('worktree-task-')
+        expect(existsSync(created[0].worktreePath!)).toBe(true)
+        expect(created[0].status).toBe('TO_DO')
+        expect(created[0].startedAt).toBeNull()
+      } finally {
+        globalThis.fetch = originalFetch
+        repo.cleanup()
+        rmSync(worktreesDir, { recursive: true, force: true })
+      }
     })
 
     test('refuses when commandToken is empty', async () => {
@@ -273,4 +337,5 @@ describe('Mattermost Routes', () => {
       expect(data.errors?.['']).toBe('Invalid command token.')
     })
   })
+
 })
