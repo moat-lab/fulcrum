@@ -70,6 +70,7 @@ export interface MattermostSettings {
   teamId: string
   channelId: string // Default channel for notifications
   commandToken: string // Slash command verification token
+  allowedUserIds: string[]
 }
 
 // CalDAV OAuth tokens (for Google Calendar)
@@ -109,6 +110,10 @@ export interface Settings {
   _schemaVersion?: number
   server: {
     port: number
+    /** Public domain reaching this Fulcrum server through Cloudflare Tunnel (e.g. "citadel.fulcrum.example.com"). Set by `fulcrum expose`. */
+    publicDomain: string | null
+    /** Tailscale hostname for this machine (e.g. "citadel.tail-abcd.ts.net"). Used by the frontend to rewrite localhost preview URLs to a tailnet-reachable address. */
+    tailscaleHostname: string | null
   }
   paths: {
     defaultGitReposDir: string
@@ -166,6 +171,8 @@ export const DEFAULT_SETTINGS: Settings = {
   _schemaVersion: CURRENT_SCHEMA_VERSION,
   server: {
     port: 7777,
+    publicDomain: null,
+    tailscaleHostname: null,
   },
   paths: {
     defaultGitReposDir: os.homedir(),
@@ -266,6 +273,7 @@ Then store the action plan as a memory tagged with: ritual, plan, evening-ritual
       teamId: '',
       channelId: '',
       commandToken: '',
+      allowedUserIds: [],
     },
   },
   caldav: {
@@ -288,6 +296,8 @@ export const OLD_DEFAULT_PORT = 3333
 // This ensures we don't silently write to unknown paths
 export const VALID_SETTING_PATHS = new Set([
   'server.port',
+  'server.publicDomain',
+  'server.tailscaleHostname',
   'paths.defaultGitReposDir',
   'editor.app',
   'editor.host',
@@ -343,6 +353,7 @@ export const VALID_SETTING_PATHS = new Set([
   'channels.mattermost.teamId',
   'channels.mattermost.channelId',
   'channels.mattermost.commandToken',
+  'channels.mattermost.allowedUserIds',
   'caldav.enabled',
   'caldav.syncIntervalMinutes',
 ])

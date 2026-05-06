@@ -14,7 +14,7 @@ import { deployApp, stopApp, rollbackApp, getProjectName } from '../services/dep
 import { stackServices, serviceLogs } from '../services/docker-swarm'
 import { db, tasks, projects, repositories, apps } from '../db'
 import { eq } from 'drizzle-orm'
-import { nanoid } from 'nanoid'
+import { createTaskRecord } from './tasks'
 import {
   buildDashboardCard,
   buildTaskListCard,
@@ -25,36 +25,52 @@ import {
   buildProjectsCard,
   buildSearchCard,
 } from '../services/mattermost/cards'
-import { openDialog, postMessage, getActionsUrl } from '../services/mattermost/client'
+import { openDialog, postMessage, getActionsUrl, fulcrumUrl } from '../services/mattermost/client'
 import type { MattermostDialog } from '../services/mattermost/client'
 
+const MATTERMOST_RESPONSE_USERNAME = 'fulcrum'
+const MATTERMOST_RESPONSE_ICON_PATH = '/icon-192.png'
 const VALID_STATUS = new Set(['TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CANCELED'])
 const VALID_PRIORITY = new Set(['high', 'medium', 'low'])
 const IN_CHANNEL_SUBCOMMANDS = new Set(['', 'deploy'])
 
+type MattermostAuthResult =
+  | { ok: true }
+  | { ok: false; message: string }
+
 const app = new Hono()
+
+function authorizeMattermostRequest(token: string | undefined, userId: string | undefined): MattermostAuthResult {
+  const config = getSettings().channels.mattermost
+  if (!config.enabled) {
+    return { ok: false, message: 'Mattermost integration disabled.' }
+  }
+  if (!config.commandToken) {
+    log.messaging.error('Mattermost commandToken not configured — refusing callback')
+    return { ok: false, message: 'Mattermost commandToken not configured.' }
+  }
+  if (token !== config.commandToken) {
+    return { ok: false, message: 'Invalid command token.' }
+  }
+  if (config.allowedUserIds.length > 0 && (!userId || !config.allowedUserIds.includes(userId))) {
+    return { ok: false, message: 'Mattermost user not allowed.' }
+  }
+  return { ok: true }
+}
 
 // --- Slash Command Handler ---
 // Mattermost sends application/x-www-form-urlencoded
 app.post('/commands', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ response_type: 'ephemeral', text: 'Mattermost integration disabled.' })
-  }
-  if (!config.commandToken) {
-    log.messaging.error('Mattermost commandToken not configured — refusing command')
-    return c.json({ response_type: 'ephemeral', text: 'Mattermost commandToken not configured.' })
-  }
-
   const body = await c.req.parseBody()
-  const token = body.token as string
+  const token = body.token as string | undefined
   const text = (body.text as string || '').trim()
   const triggerId = body.trigger_id as string
   const channelId = body.channel_id as string
-  const userId = body.user_id as string
+  const userId = body.user_id as string | undefined
 
-  if (token !== config.commandToken) {
-    return c.json({ response_type: 'ephemeral', text: 'Invalid command token.' })
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ response_type: 'ephemeral', text: auth.message })
   }
 
   const subcommand = text.split(/\s+/)[0]?.toLowerCase() || ''
@@ -64,6 +80,8 @@ app.post('/commands', async (c) => {
     const attachment = await dispatchCommand(text, triggerId, channelId, userId)
     return c.json({
       response_type: inChannel ? 'in_channel' : 'ephemeral',
+      username: MATTERMOST_RESPONSE_USERNAME,
+      icon_url: fulcrumUrl(MATTERMOST_RESPONSE_ICON_PATH),
       props: { attachments: [attachment] },
     })
   } catch (err) {
@@ -263,17 +281,18 @@ async function openCreateTaskDialog(triggerId: string, prefillTitle: string) {
 // --- Action Handler (button/select callbacks) ---
 
 app.post('/actions', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ ephemeral_text: 'Mattermost integration disabled.' })
-  }
-
   const body = await c.req.json()
+  const token = body.token as string | undefined
   const context = body.context || {}
   const action = context.action as string
-  const _userId = body.user_id as string
+  const userId = body.user_id as string | undefined
   const _postId = body.post_id as string
   const triggerId = body.trigger_id as string
+
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ ephemeral_text: auth.message })
+  }
 
   try {
     switch (action) {
@@ -437,16 +456,17 @@ app.post('/actions', async (c) => {
 // --- Dialog Submission Handler ---
 
 app.post('/dialogs', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ errors: { '': 'Mattermost integration disabled.' } })
-  }
-
   const body = await c.req.json()
+  const token = body.token as string | undefined
   const callbackId = body.callback_id as string
   const submission = body.submission || {}
   const channelId = body.channel_id as string
-  const _userId = body.user_id as string
+  const userId = body.user_id as string | undefined
+
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ errors: { '': auth.message } })
+  }
 
   try {
     switch (callbackId) {
@@ -456,42 +476,36 @@ app.post('/dialogs', async (c) => {
           return c.json({ errors: { title: 'Title is required' } })
         }
 
-        const taskId = nanoid()
-        const now = new Date().toISOString()
-
-        // Get max position for ordering
-        const maxPos = db.select().from(tasks).all()
-          .reduce((max, t) => Math.max(max, t.position), 0)
-
         const taskType = submission.type === 'manual' ? null : (submission.type || null)
-
-        const defaultAgent = getSettings().agent.defaultAgent || 'claude'
-
-        db.insert(tasks).values({
-          id: taskId,
+        const repositoryId = submission.repository_id || null
+        const selectedRepo = repositoryId ? db.select().from(repositories).where(eq(repositories.id, repositoryId)).get() : null
+        const result = await createTaskRecord({
           title,
           description: submission.description || null,
           status: 'TO_DO',
-          position: maxPos + 1,
           priority: submission.priority || 'medium',
           type: taskType,
           projectId: submission.project_id || null,
-          repositoryId: submission.repository_id || null,
+          repositoryId,
           dueDate: submission.due_date || null,
-          agent: defaultAgent,
-          createdAt: now,
-          updatedAt: now,
-        }).run()
+          agent: getSettings().agent.defaultAgent || 'claude',
+          repoPath: selectedRepo?.path || null,
+          repoName: selectedRepo?.displayName || null,
+          baseBranch: selectedRepo?.lastBaseBranch || null,
+          startedAt: new Date().toISOString(),
+        })
 
-        // Post the new task card to the channel
-        const config = getSettings().channels.mattermost
-        const card = await buildTaskDetailCard(taskId)
+        if ('error' in result) {
+          return c.json({ errors: { '': result.error } })
+        }
+
+        const card = await buildTaskDetailCard(result.taskId)
         await postMessage({
-          channel_id: channelId || config.channelId,
+          channel_id: channelId || getSettings().channels.mattermost.channelId,
           props: { attachments: [card] },
         })
 
-        return c.json(null) // null = success, no errors
+        return c.json(null)
       }
 
       default:

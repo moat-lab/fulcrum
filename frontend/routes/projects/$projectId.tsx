@@ -598,7 +598,6 @@ function InlineAttachments({ projectId }: { projectId: string }) {
           multiple
           className="hidden"
           onChange={(e) => handleFileSelect(e.target.files)}
-          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.md,.doc,.docx,.xls,.xlsx,.json,.zip,.gz,.tar"
         />
         <button
           onClick={() => fileInputRef.current?.click()}

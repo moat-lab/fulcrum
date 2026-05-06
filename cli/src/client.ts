@@ -695,6 +695,38 @@ export class FulcrumClient {
     return this.fetch(`/api/hosts/${id}/check-env`, { method: 'POST' })
   }
 
+  // Server expose (Cloudflare Tunnel for the Fulcrum UI)
+  async getServerExpose(): Promise<{
+    publicDomain: string | null
+    tailscaleHostname: string | null
+    detectedTailscaleHostname: string | null
+    tunnelAvailable: boolean
+    tunnelId: string | null
+    tunnelStatus: string | null
+  }> {
+    return this.fetch('/api/server/expose')
+  }
+
+  async createServerExpose(input: { subdomain: string; domain: string }): Promise<{
+    success: boolean
+    publicDomain: string
+    tunnelId: string
+    tunnelName: string
+    tunnelToken: string | null
+    reusedExisting: boolean
+    accessSetupUrl: string
+  }> {
+    return this.fetch('/api/server/expose', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  }
+
+  async deleteServerExpose(removeTunnel?: boolean): Promise<{ success: boolean; tunnelDeleted?: boolean }> {
+    const query = removeTunnel ? '?removeTunnel=true' : ''
+    return this.fetch(`/api/server/expose${query}`, { method: 'DELETE' })
+  }
+
   // Developer mode
   async getDeveloperMode(): Promise<{ enabled: boolean }> {
     return this.fetch('/api/config/developer-mode')
