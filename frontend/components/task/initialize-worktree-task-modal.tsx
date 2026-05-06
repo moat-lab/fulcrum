@@ -547,6 +547,12 @@ export function InitializeWorktreeTaskModal({ task, open, onOpenChange }: Initia
               </Field>
             </FieldGroup>
 
+            {isSubmitting && pullToLatest && (
+              <p className="text-xs text-muted-foreground italic" aria-live="polite">
+                {t('initializeModal.pullingFromRemoteHint')}
+              </p>
+            )}
+
             <DialogFooter className="mt-4 shrink-0">
               <DialogClose render={<Button variant="outline" type="button" />}>
                 Cancel

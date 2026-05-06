@@ -26,6 +26,7 @@ export const TerminalModel = types
     createdAt: types.number,
     tabId: types.maybeNull(types.string),
     positionInTab: types.optional(types.number, 0),
+    hostId: types.maybe(types.string),
   })
   .volatile(() => ({
     /** The xterm.js terminal instance */
@@ -72,6 +73,7 @@ export const TerminalModel = types
       if (data.rows !== undefined) self.rows = data.rows
       if (data.tabId !== undefined) self.tabId = data.tabId
       if (data.positionInTab !== undefined) self.positionInTab = data.positionInTab
+      if (data.hostId !== undefined) self.hostId = data.hostId
     },
 
     /** Set the xterm.js terminal instance */
