@@ -278,10 +278,24 @@ export const terminalWebSocketHandlers: WSEvents = {
         }
 
         case 'terminal:attach': {
-          const terminalId = message.payload.terminalId
+          const { terminalId, cols, rows } = message.payload
           // Ensure terminal is attached to dtach (connects PTY if not already)
           // This is async because it polls for the socket to exist (race condition fix)
           await ptyManager.attach(terminalId)
+
+          // Resize the PTY to the client's current dimensions BEFORE capturing
+          // the replay buffer. This SIGWINCHes any running TUI so it redraws at
+          // the size the client will render at, and resizes the canonical
+          // emulator so its serialization is at matching dimensions.
+          if (typeof cols === 'number' && typeof rows === 'number') {
+            ptyManager.resize(terminalId, cols, rows)
+          }
+          // Wait for the emulator to drain pending writes so the snapshot is
+          // consistent. Replaces the previous 60 ms setTimeout guess with a
+          // deterministic boundary — works regardless of how slowly the TUI
+          // emits its post-SIGWINCH redraw.
+          await ptyManager.flushPending(terminalId)
+
           const buffer = ptyManager.getBuffer(terminalId)
           log.ws.info('terminal:attach adding to attachedTerminals', {
             terminalId,

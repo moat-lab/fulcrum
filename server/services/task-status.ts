@@ -193,18 +193,30 @@ export async function updateTaskStatus(
     if (existing.repositoryId && !existing.worktreePath) {
       const repo = db.select().from(repositories).where(eq(repositories.id, existing.repositoryId)).get()
       if (repo) {
-        const { worktreePath, branch } = generateWorktreeInfo(repo.path, existing.title, existing.prefix)
+        // Honor explicit branch if provided, otherwise auto-generate
+        let branch: string
+        let worktreePath: string
+        if (existing.branch) {
+          branch = existing.branch
+          const worktreesDir = getWorktreeBasePath()
+          const repoName = path.basename(repo.path)
+          worktreePath = path.join(worktreesDir, repoName, branch)
+        } else {
+          ;({ worktreePath, branch } = generateWorktreeInfo(repo.path, existing.title, existing.prefix))
+        }
 
-        // Get base branch (default to 'main')
-        let baseBranch = 'main'
-        try {
-          const defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
-            cwd: repo.path,
-            encoding: 'utf-8',
-          }).trim().replace('refs/remotes/origin/', '')
-          if (defaultBranch) baseBranch = defaultBranch
-        } catch {
-          // Fallback to 'main' if can't detect
+        // Honor explicit baseBranch if provided, otherwise auto-detect (default 'main')
+        let baseBranch = existing.baseBranch ?? 'main'
+        if (!existing.baseBranch) {
+          try {
+            const defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
+              cwd: repo.path,
+              encoding: 'utf-8',
+            }).trim().replace('refs/remotes/origin/', '')
+            if (defaultBranch) baseBranch = defaultBranch
+          } catch {
+            // Fallback to 'main' if can't detect
+          }
         }
 
         const result = createGitWorktree(repo.path, worktreePath, branch, baseBranch)
