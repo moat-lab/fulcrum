@@ -1,7 +1,7 @@
 // Mattermost route tests using standard test environment
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
-import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
+import { setupTestEnv, withEnv, type TestEnv } from '../__tests__/utils/env'
 import { apps, db, projects, repositories, tags, taskTags, tasks, taskLinks, taskRelationships, terminals } from '../db'
 import { setFnoxValue } from '../lib/settings/fnox'
 import { getSettings } from '../lib/settings'
@@ -12,22 +12,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fulcrumUrl, getActionsUrl } from '../services/mattermost/client'
 
-describe('Mattermost callback URLs', () => {
+describe.serial('Mattermost callback URLs', () => {
   let testEnv: TestEnv
-  let originalFulcrumHost: string | undefined
 
   beforeEach(() => {
     testEnv = setupTestEnv()
-    originalFulcrumHost = process.env.FULCRUM_HOST
-    delete process.env.FULCRUM_HOST
   })
 
   afterEach(() => {
-    if (originalFulcrumHost === undefined) {
-      delete process.env.FULCRUM_HOST
-    } else {
-      process.env.FULCRUM_HOST = originalFulcrumHost
-    }
     testEnv.cleanup()
   })
 
@@ -44,10 +36,11 @@ describe('Mattermost callback URLs', () => {
 
   test('uses FULCRUM_HOST for Mattermost callback URLs when configured', () => {
     setFnoxValue('channels.mattermost.enabled', true)
-    process.env.FULCRUM_HOST = 'fulcrum.example.test'
 
-    expect(getActionsUrl()).toBe('http://fulcrum.example.test:7777/api/mattermost/actions')
-    expect(fulcrumUrl('/tasks')).toBe('http://fulcrum.example.test:7777/tasks')
+    withEnv({ FULCRUM_HOST: 'fulcrum.example.test' }, () => {
+      expect(getActionsUrl()).toBe('http://fulcrum.example.test:7777/api/mattermost/actions')
+      expect(fulcrumUrl('/tasks')).toBe('http://fulcrum.example.test:7777/tasks')
+    })
   })
 })
 
@@ -114,25 +107,18 @@ function insertApp(overrides: Partial<typeof apps.$inferInsert> & { id: string; 
   }).run()
 }
 
-describe('Mattermost Routes', () => {
+describe.serial('Mattermost Routes', () => {
   let testEnv: TestEnv
   let originalFetch: typeof global.fetch
-  let originalFulcrumHost: string | undefined
 
   beforeEach(() => {
     testEnv = setupTestEnv()
     originalFetch = global.fetch
-    originalFulcrumHost = process.env.FULCRUM_HOST
     process.env.FULCRUM_HOST = 'fulcrum.example.test'
   })
 
   afterEach(() => {
     global.fetch = originalFetch
-    if (originalFulcrumHost === undefined) {
-      delete process.env.FULCRUM_HOST
-    } else {
-      process.env.FULCRUM_HOST = originalFulcrumHost
-    }
     testEnv.cleanup()
   })
 

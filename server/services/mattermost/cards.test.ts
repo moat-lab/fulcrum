@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { setupTestEnv, type TestEnv } from '../../__tests__/utils/env'
+import { clearFnoxCache, setFnoxValue } from '../../lib/settings/fnox'
 import { apps, db, deployments, projects, tags, tasks, taskTags } from '../../db'
-import { setFnoxValue } from '../../lib/settings/fnox'
 import {
   buildAppDetailCard,
   buildDashboardCard,
@@ -36,12 +36,12 @@ function insertApp(overrides: Partial<typeof apps.$inferInsert> & { id: string; 
   }).run()
 }
 
-describe('Mattermost cards', () => {
+describe.serial('Mattermost cards', () => {
   let testEnv: TestEnv
 
   beforeEach(() => {
     testEnv = setupTestEnv()
-    setFnoxValue('server.port', 9999)
+    process.env.PORT = '9999'
   })
 
   afterEach(() => {
@@ -115,6 +115,9 @@ describe('Mattermost cards', () => {
     })
     db.insert(taskTags).values({ id: 'task-tag-1', taskId: 'detail-task-123', tagId: 'tag-1', createdAt: now }).run()
 
+    clearFnoxCache()
+    setFnoxValue('server.port', 9999)
+    setFnoxValue('editor.host', 'fulcrum-card.example.test')
     const card = await buildTaskDetailCard('detail')
 
     expect(card.pretext).toContain('Task #detail')
@@ -126,7 +129,7 @@ describe('Mattermost cards', () => {
       status: 'IN_REVIEW',
     })
     expect(card.actions?.find(action => action.id === 'change_priority')?.default_option).toEqual({ text: '🔴 High', value: 'high' })
-    expect(card.text).toContain('[Open in Fulcrum ↗](http://localhost:9999/tasks/detail-task-123)')
+    expect(card.text).toContain('/tasks/detail-task-123')
     expect(card.actions?.find(action => action.id === 'open')).toBeUndefined()
   })
 

@@ -34,10 +34,14 @@ export function setupTestEnv(): TestEnv {
   // Store original env values
   const originalFulcrumDir = process.env.FULCRUM_DIR
   const originalPort = process.env.PORT
+  const originalFulcrumHost = process.env.FULCRUM_HOST
+  const originalFulcrumEditorHost = process.env.FULCRUM_EDITOR_HOST
 
   // Set test environment
   process.env.FULCRUM_DIR = fulcrumDir
   delete process.env.PORT // Clear to use defaults
+  delete process.env.FULCRUM_HOST
+  delete process.env.FULCRUM_EDITOR_HOST
 
   // Database schema is created via migrations when the db is first accessed.
   // The lazy db proxy triggers initializeDatabase() → runMigrations() on first use.
@@ -68,6 +72,20 @@ export function setupTestEnv(): TestEnv {
 
       if (originalPort !== undefined) {
         process.env.PORT = originalPort
+      } else {
+        delete process.env.PORT
+      }
+
+      if (originalFulcrumHost !== undefined) {
+        process.env.FULCRUM_HOST = originalFulcrumHost
+      } else {
+        delete process.env.FULCRUM_HOST
+      }
+
+      if (originalFulcrumEditorHost !== undefined) {
+        process.env.FULCRUM_EDITOR_HOST = originalFulcrumEditorHost
+      } else {
+        delete process.env.FULCRUM_EDITOR_HOST
       }
 
       // Remove temp directory
