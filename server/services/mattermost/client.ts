@@ -4,7 +4,7 @@
 
 import { getSettings } from '../../lib/settings'
 import { log } from '../../lib/logger'
-import type { MattermostSettings } from '../../lib/settings/types'
+import type { MattermostSettings, Settings } from '../../lib/settings/types'
 
 export interface MattermostPost {
   channel_id: string
@@ -83,13 +83,23 @@ function getConfig(): MattermostSettings {
 
 type FulcrumHostPort = { host: string; port: number }
 
+type FulcrumUrlEnvironment = {
+  fulcrumHost?: string
+}
+
+type FulcrumUrlSettings = Pick<Settings, 'server' | 'editor'> & {
+  channels: Pick<Settings['channels'], 'mattermost'>
+}
+
 type FulcrumUrlResolution =
   | { kind: 'resolved'; value: FulcrumHostPort }
   | { kind: 'missing-callback-host'; port: number }
 
-function resolveHostPort(): FulcrumUrlResolution {
-  const settings = getSettings()
-  const host = process.env.FULCRUM_HOST || settings.editor.host
+export function resolveFulcrumUrlHostPort(
+  settings: FulcrumUrlSettings,
+  environment: FulcrumUrlEnvironment
+): FulcrumUrlResolution {
+  const host = environment.fulcrumHost || settings.editor.host
 
   if (host) {
     return { kind: 'resolved', value: { host, port: settings.server.port } }
@@ -100,6 +110,10 @@ function resolveHostPort(): FulcrumUrlResolution {
   }
 
   return { kind: 'resolved', value: { host: 'localhost', port: settings.server.port } }
+}
+
+function resolveHostPort(): FulcrumUrlResolution {
+  return resolveFulcrumUrlHostPort(getSettings(), { fulcrumHost: process.env.FULCRUM_HOST })
 }
 
 function getHostPort(): FulcrumHostPort {
