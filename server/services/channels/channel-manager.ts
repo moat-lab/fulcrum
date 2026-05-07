@@ -16,6 +16,7 @@ import { WhatsAppChannel } from './whatsapp-channel'
 import { DiscordChannel } from './discord-channel'
 import { TelegramChannel } from './telegram-channel'
 import { SlackChannel } from './slack-channel'
+import { MattermostChannel } from './mattermost-channel'
 import { EmailChannel } from './email-channel'
 import { GmailBackend } from './gmail-backend'
 import type {
@@ -62,16 +63,27 @@ async function validateSlackTokensDefault(
   }
 }
 
+async function validateMattermostConfigDefault(serverUrl: string, botToken: string): Promise<void> {
+  const res = await fetch(`${serverUrl}/api/v4/users/me`, {
+    headers: { 'Authorization': `Bearer ${botToken}` },
+  })
+  if (!res.ok) {
+    throw new Error(`auth test failed with status ${res.status}`)
+  }
+}
+
 // Default channel factory using real implementations
 const defaultChannelFactory: ChannelFactory = {
   createWhatsAppChannel: (id) => new WhatsAppChannel(id),
   createDiscordChannel: (id) => new DiscordChannel(id),
   createTelegramChannel: (id) => new TelegramChannel(id),
   createSlackChannel: (id) => new SlackChannel(id),
+  createMattermostChannel: (id) => new MattermostChannel(id),
   createEmailChannel: (id, authState) => new EmailChannel(id, authState),
   validateDiscordToken: validateDiscordTokenDefault,
   validateTelegramToken: validateTelegramTokenDefault,
   validateSlackTokens: validateSlackTokensDefault,
+  validateMattermostConfig: validateMattermostConfigDefault,
 }
 
 // Current factory (can be overridden for testing)
@@ -103,9 +115,11 @@ export const SLACK_CONNECTION_ID = 'slack-channel'
 export const DISCORD_CONNECTION_ID = 'discord-channel'
 export const TELEGRAM_CONNECTION_ID = 'telegram-channel'
 export const EMAIL_CONNECTION_ID = 'email-channel'
+export const MATTERMOST_CONNECTION_ID = 'mattermost-channel'
 
 // Track active settings-based channels (internal state)
 let _activeSlackChannel: SlackChannel | null = null
+let _activeMattermostChannel: MattermostChannel | null = null
 let _activeDiscordChannel: DiscordChannel | null = null
 let _activeTelegramChannel: TelegramChannel | null = null
 let _activeEmailChannel: EmailChannel | null = null
@@ -114,6 +128,10 @@ let _activeGmailBackend: GmailBackend | null = null
 // Getter functions for active channels
 export function getActiveSlackChannel(): SlackChannel | null {
   return _activeSlackChannel
+}
+
+export function getActiveMattermostChannel(): MattermostChannel | null {
+  return _activeMattermostChannel
 }
 
 export function getActiveDiscordChannel(): DiscordChannel | null {
@@ -237,6 +255,9 @@ export async function startChannel(conn: MessagingConnection): Promise<void> {
     case 'slack':
       channel = channelFactory.createSlackChannel(conn.id)
       break
+    case 'mattermost':
+      channel = channelFactory.createMattermostChannel(conn.id)
+      break
     case 'email':
       channel = channelFactory.createEmailChannel(conn.id, conn.authState as EmailAuthState | undefined)
       break
@@ -321,6 +342,48 @@ export async function stopSlackChannel(): Promise<void> {
     _activeSlackChannel = null
     activeChannels.delete(SLACK_CONNECTION_ID)
     log.messaging.info('Slack channel stopped')
+  }
+}
+
+export async function startMattermostChannel(): Promise<void> {
+  const settings = getSettings()
+  const mattermostConfig = settings.channels.mattermost
+
+  if (!mattermostConfig.enabled) {
+    log.messaging.debug('Mattermost channel not enabled')
+    return
+  }
+
+  if (!mattermostConfig.serverUrl || !mattermostConfig.botToken) {
+    log.messaging.warn('Mattermost enabled but credentials incomplete')
+    return
+  }
+
+  if (!messageHandler) {
+    throw new Error('Message handler not initialized')
+  }
+
+  const channel = channelFactory.createMattermostChannel(MATTERMOST_CONNECTION_ID) as MattermostChannel
+
+  await channel.initialize({
+    onMessage: (msg) => messageHandler!(msg),
+    onConnectionChange: (status) => handleConnectionChange(MATTERMOST_CONNECTION_ID, status),
+    onAuthRequired: (data) => handleAuthRequired(MATTERMOST_CONNECTION_ID, data),
+    onDisplayNameChange: (name) => handleDisplayNameChange(MATTERMOST_CONNECTION_ID, name),
+  })
+
+  _activeMattermostChannel = channel
+  activeChannels.set(MATTERMOST_CONNECTION_ID, channel)
+
+  log.messaging.info('Mattermost channel started from settings')
+}
+
+export async function stopMattermostChannel(): Promise<void> {
+  if (_activeMattermostChannel) {
+    await _activeMattermostChannel.shutdown()
+    _activeMattermostChannel = null
+    activeChannels.delete(MATTERMOST_CONNECTION_ID)
+    log.messaging.info('Mattermost channel stopped')
   }
 }
 
@@ -539,6 +602,17 @@ export async function startMessagingChannels(): Promise<void> {
     }
   }
 
+  // Start Mattermost if enabled in settings
+  if (settings.channels.mattermost.enabled) {
+    try {
+      await startMattermostChannel()
+    } catch (err) {
+      log.messaging.error('Failed to start Mattermost channel', {
+        error: String(err),
+      })
+    }
+  }
+
   // Start Discord if enabled in settings
   if (settings.channels.discord.enabled) {
     try {
@@ -582,6 +656,7 @@ export async function startMessagingChannels(): Promise<void> {
   log.messaging.info('Started messaging channels', {
     emailEnabled: settings.channels.email.enabled,
     slackEnabled: settings.channels.slack.enabled,
+    mattermostEnabled: settings.channels.mattermost.enabled,
     discordEnabled: settings.channels.discord.enabled,
     telegramEnabled: settings.channels.telegram.enabled,
     whatsappEnabled: whatsappConn?.enabled ?? false,
@@ -615,6 +690,7 @@ export async function stopMessagingChannels(): Promise<void> {
 
   // Clear references to active channels
   _activeSlackChannel = null
+  _activeMattermostChannel = null
   _activeDiscordChannel = null
   _activeTelegramChannel = null
   _activeEmailChannel = null

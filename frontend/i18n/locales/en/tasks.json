@@ -144,12 +144,14 @@
     "derivedLabel": "derived"
   },
   "derivedTasks": {
-    "heading": "Derived tasks ({{count}})"
+    "heading": "Derived tasks ({{count}})",
+    "empty": "No derived tasks yet."
   },
   "initializeModal": {
     "title": "Initialize as Worktree Task",
     "description": "Create a git worktree and start a coding session for \"{{taskTitle}}\"",
     "branchName": "Branch Name",
+    "pullingFromRemoteHint": "Pulling from remote — initializing the worktree may take a moment.",
     "errors": {
       "initFailed": "Failed to initialize worktree task"
     }

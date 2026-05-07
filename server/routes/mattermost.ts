@@ -7,14 +7,15 @@
  */
 
 import { Hono } from 'hono'
-import { getSettings } from '../lib/settings'
+import { getSettings, updateSettingByPath } from '../lib/settings'
 import { log } from '../lib/logger'
 import { updateTaskStatus } from '../services/task-status'
 import { deployApp, stopApp, rollbackApp, getProjectName } from '../services/deployment'
 import { stackServices, serviceLogs } from '../services/docker-swarm'
 import { db, tasks, projects, repositories, apps } from '../db'
 import { eq } from 'drizzle-orm'
-import { nanoid } from 'nanoid'
+import { killClaudeInTerminalsForWorktree } from '../terminal/pty-instance'
+import { createTaskRecord } from './tasks'
 import {
   buildDashboardCard,
   buildTaskListCard,
@@ -23,19 +24,90 @@ import {
   buildAppsCard,
   buildAppDetailCard,
   buildMonitorCard,
+  buildJobsCard,
   buildProjectsCard,
   buildSearchCard,
   buildDeployFailedCard,
 } from '../services/mattermost/cards'
-import { openDialog, postMessage, updatePost, getActionsUrl } from '../services/mattermost/client'
+import { openDialog, postMessage, updatePost, getActionsUrl, fulcrumUrl } from '../services/mattermost/client'
 import { getPTYManager } from '../terminal/pty-instance'
 import type { MattermostAttachment, MattermostDialog } from '../services/mattermost/client'
 
+const MATTERMOST_RESPONSE_USERNAME = 'fulcrum'
+const MATTERMOST_RESPONSE_ICON_PATH = '/icon-192.png'
 const VALID_STATUS = new Set(['TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CANCELED'])
 const VALID_PRIORITY = new Set(['high', 'medium', 'low'])
+const VALID_TASK_TYPE = new Set(['worktree', 'scratch', 'manual'])
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DESTRUCTIVE_ACTIONS = new Set(['stop_app', 'kill_agent'])
+const DESTRUCTIVE_STATUS = new Set(['CANCELED'])
 const IN_CHANNEL_SUBCOMMANDS = new Set(['', 'deploy'])
 
 type MattermostPostUpdateTarget = { postId: string } | { postId: null }
+
+type MattermostDialogSubmission =
+  | { callbackId: 'create_task'; submission: CreateTaskSubmission; channelId: string }
+  | { callbackId: 'configure_settings'; submission: ConfigureSettingsSubmission }
+
+type CreateTaskSubmission = {
+  title?: string
+  description?: string
+  priority?: string
+  type?: string
+  project_id?: string
+  repository_id?: string
+  due_date?: string
+  tags?: string
+}
+
+type ConfigureSettingsSubmission = {
+  server_url?: string
+  bot_token?: string
+  team_id?: string
+  channel_id?: string
+  command_token?: string
+}
+
+type DialogValidationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; errors: Record<string, string> }
+
+function parseDialogSubmission(body: Record<string, unknown>): DialogValidationResult<MattermostDialogSubmission> {
+  const callbackId = body.callback_id
+  const submission = (body.submission ?? {}) as Record<string, unknown>
+
+  switch (callbackId) {
+    case 'create_task':
+      return {
+        ok: true,
+        value: {
+          callbackId,
+          submission: submission as CreateTaskSubmission,
+          channelId: typeof body.channel_id === 'string' ? body.channel_id : '',
+        },
+      }
+    case 'configure_settings':
+      return { ok: true, value: { callbackId, submission: submission as ConfigureSettingsSubmission } }
+    default:
+      return { ok: false, errors: { '': `Unknown dialog: ${String(callbackId)}` } }
+  }
+}
+
+function parseMattermostTags(input: string | undefined): string[] {
+  if (!input) return []
+  return Array.from(new Set(input.split(',').map(tag => tag.trim()).filter(Boolean)))
+}
+
+function normalizeDueDate(input: string | undefined): DialogValidationResult<string | null> {
+  const value = input?.trim()
+  if (!value) return { ok: true, value: null }
+  if (!DATE_PATTERN.test(value)) return { ok: false, errors: { due_date: 'Use YYYY-MM-DD' } }
+  return { ok: true, value }
+}
+
+type MattermostAuthResult =
+  | { ok: true }
+  | { ok: false; message: string }
 
 const app = new Hono()
 
@@ -60,27 +132,37 @@ function buildDeploymentProgressCard(appName: string, progress: { stage: string;
   }
 }
 
+function authorizeMattermostRequest(token: string | undefined, userId: string | undefined): MattermostAuthResult {
+  const config = getSettings().channels.mattermost
+  if (!config.enabled) {
+    return { ok: false, message: 'Mattermost integration disabled.' }
+  }
+  if (!config.commandToken) {
+    log.messaging.error('Mattermost commandToken not configured — refusing callback')
+    return { ok: false, message: 'Mattermost commandToken not configured.' }
+  }
+  if (token !== config.commandToken) {
+    return { ok: false, message: 'Invalid command token.' }
+  }
+  if (config.allowedUserIds.length > 0 && (!userId || !config.allowedUserIds.includes(userId))) {
+    return { ok: false, message: 'Mattermost user not allowed.' }
+  }
+  return { ok: true }
+}
+
 // --- Slash Command Handler ---
 // Mattermost sends application/x-www-form-urlencoded
 app.post('/commands', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ response_type: 'ephemeral', text: 'Mattermost integration disabled.' })
-  }
-  if (!config.commandToken) {
-    log.messaging.error('Mattermost commandToken not configured — refusing command')
-    return c.json({ response_type: 'ephemeral', text: 'Mattermost commandToken not configured.' })
-  }
-
   const body = await c.req.parseBody()
-  const token = body.token as string
+  const token = body.token as string | undefined
   const text = (body.text as string || '').trim()
   const triggerId = body.trigger_id as string
   const channelId = body.channel_id as string
-  const userId = body.user_id as string
+  const userId = body.user_id as string | undefined
 
-  if (token !== config.commandToken) {
-    return c.json({ response_type: 'ephemeral', text: 'Invalid command token.' })
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ response_type: 'ephemeral', text: auth.message })
   }
 
   const subcommand = text.split(/\s+/)[0]?.toLowerCase() || ''
@@ -90,6 +172,8 @@ app.post('/commands', async (c) => {
     const attachment = await dispatchCommand(text, triggerId, channelId, userId)
     return c.json({
       response_type: inChannel ? 'in_channel' : 'ephemeral',
+      username: MATTERMOST_RESPONSE_USERNAME,
+      icon_url: fulcrumUrl(MATTERMOST_RESPONSE_ICON_PATH),
       props: { attachments: [attachment] },
     })
   } catch (err) {
@@ -147,6 +231,14 @@ async function dispatchCommand(text: string, triggerId: string, _channelId: stri
     case 'monitor':
       return buildMonitorCard()
 
+    case 'settings': {
+      await openConfigureSettingsDialog(triggerId)
+      return { text: '_Opening Mattermost settings dialog..._', color: '#7C3AED' }
+    }
+
+    case 'jobs':
+      return buildJobsCard()
+
     case 'projects':
       return buildProjectsCard()
 
@@ -162,7 +254,7 @@ async function dispatchCommand(text: string, triggerId: string, _channelId: stri
 }
 
 function parseTaskFilter(args: string) {
-  const filter: { status?: string; priority?: string; projectId?: string; tag?: string } = {}
+  const filter: { status?: string; priority?: string; projectId?: string; tag?: string; page?: number } = {}
   if (!args) return { status: 'active' }
 
   const parts = args.split(/\s+/)
@@ -174,6 +266,8 @@ function parseTaskFilter(args: string) {
       filter.priority = lower
     } else if (part.startsWith('#')) {
       filter.tag = part.slice(1)
+    } else if (/^page=\d+$/i.test(part)) {
+      filter.page = Number(part.split('=')[1])
     } else if (part.startsWith('@')) {
       // Find project by name
       const name = part.slice(1)
@@ -200,7 +294,9 @@ function buildHelpCard() {
       '`/f deploy <app>` — App deployment',
       '`/f apps` — All applications',
       '`/f search <keywords>` — Search tasks & projects',
-      '`/f monitor` — System resources',
+      '`/f monitor` — System resources and agents',
+      '`/f settings` — Configure Mattermost integration',
+      '`/f jobs` — Scheduled jobs',
       '`/f projects` — Project list',
     ].join('\n'),
   }
@@ -280,33 +376,143 @@ async function openCreateTaskDialog(triggerId: string, prefillTitle: string) {
         optional: true,
         placeholder: '2026-04-15',
       },
+      {
+        display_name: 'Tags (comma-separated)',
+        name: 'tags',
+        type: 'text',
+        optional: true,
+        placeholder: 'bug, urgent',
+      },
     ],
   }
 
   await openDialog(triggerId, dialog)
 }
 
+async function openConfigureSettingsDialog(triggerId: string) {
+  const config = getSettings().channels.mattermost
+  const dialog: MattermostDialog = {
+    callback_id: 'configure_settings',
+    title: 'Configure Mattermost',
+    submit_label: 'Save',
+    elements: [
+      {
+        display_name: 'Server URL',
+        name: 'server_url',
+        type: 'text',
+        default: config.serverUrl || undefined,
+        placeholder: 'https://mattermost.example.com',
+      },
+      {
+        display_name: 'Bot Token',
+        name: 'bot_token',
+        type: 'text',
+        subtype: 'password',
+        optional: true,
+        placeholder: config.botToken ? 'Leave blank to keep current token' : 'Mattermost bot token',
+      },
+      {
+        display_name: 'Team ID',
+        name: 'team_id',
+        type: 'text',
+        default: config.teamId || undefined,
+        placeholder: 'Mattermost team ID',
+      },
+      {
+        display_name: 'Default Channel ID',
+        name: 'channel_id',
+        type: 'text',
+        default: config.channelId || undefined,
+        placeholder: 'Channel ID for posts/notifications',
+      },
+      {
+        display_name: 'Slash Command Token',
+        name: 'command_token',
+        type: 'text',
+        subtype: 'password',
+        optional: true,
+        placeholder: config.commandToken ? 'Leave blank to keep current token' : 'Slash command token',
+      },
+    ],
+  }
+
+  await openDialog(triggerId, dialog)
+}
+
+function selectedOptionValue(body: Record<string, unknown>): string | undefined {
+  const selectedOption = body.selected_option
+  if (typeof selectedOption === 'string') return selectedOption
+  if (selectedOption && typeof selectedOption === 'object' && 'value' in selectedOption) {
+    const value = (selectedOption as { value?: unknown }).value
+    if (typeof value === 'string') return value
+  }
+  return undefined
+}
+
+function isConfirmed(context: Record<string, unknown>): boolean {
+  return context.confirm === true
+}
+
+function confirmationResponse(message: string, context: Record<string, unknown>) {
+  const cancelContext = typeof context.task_id === 'string'
+    ? { action: 'task_detail', task_id: context.task_id }
+    : typeof context.app_id === 'string'
+      ? { action: 'app_detail', app_id: context.app_id }
+      : { action: 'monitor' }
+
+  return {
+    update: {
+      props: {
+        attachments: [{
+          fallback: message,
+          color: '#EF4444',
+          text: message,
+          actions: [
+            {
+              id: 'confirm',
+              name: 'Confirm',
+              type: 'button' as const,
+              style: 'danger',
+              integration: { url: getActionsUrl(), context: { ...context, confirm: true } },
+            },
+            {
+              id: 'cancel',
+              name: 'Cancel',
+              type: 'button' as const,
+              integration: { url: getActionsUrl(), context: cancelContext },
+            },
+          ],
+        }],
+      },
+    },
+  }
+}
+
 // --- Action Handler (button/select callbacks) ---
 
 app.post('/actions', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ ephemeral_text: 'Mattermost integration disabled.' })
-  }
-
-  const body = await c.req.json()
-  const context = body.context || {}
+  const body = await c.req.json() as Record<string, unknown>
+  const token = body.token as string | undefined
+  const context = (body.context && typeof body.context === 'object' ? body.context : {}) as Record<string, unknown>
   const action = context.action as string
-  const _userId = body.user_id as string
+  const userId = body.user_id as string | undefined
   const _postId = body.post_id as string
   const triggerId = body.trigger_id as string
+
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ ephemeral_text: auth.message })
+  }
 
   try {
     switch (action) {
       case 'list_tasks': {
-        const filter: Record<string, string> = {}
+        const filter: { status?: string; priority?: string; projectId?: string; tag?: string; page?: number } = {}
         if (context.status) filter.status = context.status as string
+        if (context.priority) filter.priority = context.priority as string
         if (context.project_id) filter.projectId = context.project_id as string
+        if (context.tag) filter.tag = context.tag as string
+        if (context.page) filter.page = Number(context.page)
         const card = await buildTaskListCard(filter)
         return c.json({ update: { props: { attachments: [card] } } })
       }
@@ -322,6 +528,9 @@ app.post('/actions', async (c) => {
         if (!VALID_STATUS.has(newStatus)) {
           return c.json({ ephemeral_text: `Invalid status: ${newStatus}` })
         }
+        if (DESTRUCTIVE_STATUS.has(newStatus) && !isConfirmed(context)) {
+          return c.json(confirmationResponse('Confirm canceling this task?', context))
+        }
         await updateTaskStatus(taskId, newStatus)
         const card = await buildTaskDetailCard(taskId)
         return c.json({ update: { props: { attachments: [card] } } })
@@ -329,7 +538,7 @@ app.post('/actions', async (c) => {
 
       case 'change_priority': {
         const taskId = context.task_id as string
-        const newPriority = body.selected_option as string | undefined
+        const newPriority = selectedOptionValue(body)
         if (!newPriority || !VALID_PRIORITY.has(newPriority)) {
           return c.json({ ephemeral_text: `Invalid priority: ${newPriority ?? '(none)'}` })
         }
@@ -405,6 +614,9 @@ app.post('/actions', async (c) => {
 
       case 'stop_app': {
         const appId = context.app_id as string
+        if (DESTRUCTIVE_ACTIONS.has(action) && !isConfirmed(context)) {
+          return c.json(confirmationResponse('Confirm stopping this app?', context))
+        }
         try {
           const result = await stopApp(appId)
           if (!result.success) {
@@ -463,7 +675,7 @@ app.post('/actions', async (c) => {
 
       case 'rollback_app': {
         const appId = context.app_id as string
-        const deploymentId = body.selected_option as string | undefined
+        const deploymentId = selectedOptionValue(body)
         if (!deploymentId) {
           return c.json({ ephemeral_text: 'No deployment selected for rollback.' })
         }
@@ -507,13 +719,40 @@ app.post('/actions', async (c) => {
         return c.json({ update: { props: { attachments: [card] } } })
       }
 
+      case 'kill_agent': {
+        const taskId = context.task_id as string
+        if (!isConfirmed(context)) {
+          return c.json(confirmationResponse('Confirm killing this task agent?', context))
+        }
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) {
+          return c.json({ ephemeral_text: 'Task not found.' })
+        }
+        if (!task.worktreePath) {
+          return c.json({ ephemeral_text: 'Task has no worktree path.' })
+        }
+        const killed = killClaudeInTerminalsForWorktree(task.worktreePath)
+        const card = await buildTaskDetailCard(taskId)
+        return c.json({
+          ephemeral_text: killed > 0 ? `Killed ${killed} agent process${killed === 1 ? '' : 'es'}.` : 'No running agent process found.',
+          update: { props: { attachments: [card] } },
+        })
+      }
+
+      case 'open_configure_settings_dialog': {
+        await openConfigureSettingsDialog(triggerId)
+        return c.json({})
+      }
+
       case 'open_create_task_dialog': {
+        if (!triggerId) {
+          return c.json({ ephemeral_text: 'Cannot open create task dialog: missing Mattermost trigger_id.' })
+        }
         await openCreateTaskDialog(triggerId, '')
         return c.json({})
       }
 
       case 'open_link': {
-        // Can't actually open a browser from Mattermost, return the link
         return c.json({ ephemeral_text: context.url as string })
       }
 
@@ -529,68 +768,88 @@ app.post('/actions', async (c) => {
 // --- Dialog Submission Handler ---
 
 app.post('/dialogs', async (c) => {
-  const config = getSettings().channels.mattermost
-  if (!config.enabled) {
-    return c.json({ errors: { '': 'Mattermost integration disabled.' } })
+  const body = await c.req.json<Record<string, unknown>>()
+  const token = body.token as string | undefined
+  const userId = body.user_id as string | undefined
+
+  const auth = authorizeMattermostRequest(token, userId)
+  if (!auth.ok) {
+    return c.json({ errors: { '': auth.message } })
   }
 
-  const body = await c.req.json()
-  const callbackId = body.callback_id as string
-  const submission = body.submission || {}
-  const channelId = body.channel_id as string
-  const _userId = body.user_id as string
+  const parsed = parseDialogSubmission(body)
+  if (!parsed.ok) return c.json({ errors: parsed.errors })
 
   try {
-    switch (callbackId) {
+    switch (parsed.value.callbackId) {
       case 'create_task': {
-        const title = submission.title as string
-        if (!title) {
-          return c.json({ errors: { title: 'Title is required' } })
-        }
+        const submission = parsed.value.submission
+        const title = submission.title?.trim()
+        if (!title) return c.json({ errors: { title: 'Title is required' } })
 
-        const taskId = nanoid()
-        const now = new Date().toISOString()
+        const priority = submission.priority || 'medium'
+        if (!VALID_PRIORITY.has(priority)) return c.json({ errors: { priority: `Invalid priority: ${priority}` } })
 
-        // Get max position for ordering
-        const maxPos = db.select().from(tasks).all()
-          .reduce((max, t) => Math.max(max, t.position), 0)
+        const selectedType = submission.type || getSettings().tasks.defaultTaskType
+        if (!VALID_TASK_TYPE.has(selectedType)) return c.json({ errors: { type: `Invalid type: ${selectedType}` } })
 
-        const taskType = submission.type === 'manual' ? null : (submission.type || null)
+        const dueDate = normalizeDueDate(submission.due_date)
+        if (!dueDate.ok) return c.json({ errors: dueDate.errors })
 
-        const defaultAgent = getSettings().agent.defaultAgent || 'claude'
-
-        db.insert(tasks).values({
-          id: taskId,
+        const taskType = selectedType === 'manual' ? null : selectedType
+        const repositoryId = submission.repository_id || null
+        const selectedRepo = repositoryId ? db.select().from(repositories).where(eq(repositories.id, repositoryId)).get() : null
+        const result = await createTaskRecord({
           title,
-          description: submission.description || null,
+          description: submission.description?.trim() || null,
           status: 'TO_DO',
-          position: maxPos + 1,
-          priority: submission.priority || 'medium',
+          priority,
           type: taskType,
           projectId: submission.project_id || null,
-          repositoryId: submission.repository_id || null,
-          dueDate: submission.due_date || null,
-          agent: defaultAgent,
-          createdAt: now,
-          updatedAt: now,
-        }).run()
+          repositoryId,
+          dueDate: dueDate.value,
+          agent: getSettings().agent.defaultAgent || 'claude',
+          repoPath: selectedRepo?.path || null,
+          repoName: selectedRepo?.displayName || null,
+          baseBranch: selectedRepo?.lastBaseBranch || null,
+          startedAt: new Date().toISOString(),
+          tags: parseMattermostTags(submission.tags),
+        })
 
-        // Post the new task card to the channel
-        const config = getSettings().channels.mattermost
-        const card = await buildTaskDetailCard(taskId)
+        if ('error' in result) {
+          return c.json({ errors: { '': result.error } })
+        }
+
+        const card = await buildTaskDetailCard(result.taskId)
         await postMessage({
-          channel_id: channelId || config.channelId,
+          channel_id: parsed.value.channelId || getSettings().channels.mattermost.channelId,
           props: { attachments: [card] },
         })
 
-        return c.json(null) // null = success, no errors
+        return c.json(null)
       }
 
-      default:
-        return c.json({ errors: { '': `Unknown dialog: ${callbackId}` } })
+      case 'configure_settings': {
+        const submission = parsed.value.submission
+        const serverUrl = submission.server_url?.trim()
+        const teamId = submission.team_id?.trim()
+        const channelId = submission.channel_id?.trim()
+        if (!serverUrl) return c.json({ errors: { server_url: 'Server URL is required' } })
+        if (!teamId) return c.json({ errors: { team_id: 'Team ID is required' } })
+        if (!channelId) return c.json({ errors: { channel_id: 'Default Channel ID is required' } })
+
+        updateSettingByPath('channels.mattermost.serverUrl', serverUrl)
+        updateSettingByPath('channels.mattermost.teamId', teamId)
+        updateSettingByPath('channels.mattermost.channelId', channelId)
+        updateSettingByPath('channels.mattermost.enabled', true)
+        if (submission.bot_token?.trim()) updateSettingByPath('channels.mattermost.botToken', submission.bot_token.trim())
+        if (submission.command_token?.trim()) updateSettingByPath('channels.mattermost.commandToken', submission.command_token.trim())
+
+        return c.json(null)
+      }
     }
   } catch (err) {
-    log.messaging.error('Mattermost dialog error', { callbackId, error: String(err) })
+    log.messaging.error('Mattermost dialog error', { callbackId: parsed.value.callbackId, error: String(err) })
     return c.json({ errors: { '': `Error: ${err instanceof Error ? err.message : String(err)}` } })
   }
 })

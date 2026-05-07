@@ -129,7 +129,6 @@ export function ProjectAttachmentsManager({ projectId }: ProjectAttachmentsManag
           multiple
           className="hidden"
           onChange={(e) => handleFileSelect(e.target.files)}
-          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.md,.doc,.docx,.xls,.xlsx,.json,.zip,.gz,.tar"
         />
         <HugeiconsIcon icon={Upload02Icon} size={20} className="mx-auto text-muted-foreground mb-1" />
         <p className="text-xs text-muted-foreground">

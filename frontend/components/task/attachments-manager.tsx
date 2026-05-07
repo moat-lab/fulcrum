@@ -188,14 +188,13 @@ export function AttachmentsManager({ taskId }: AttachmentsManagerProps) {
           multiple
           className="hidden"
           onChange={(e) => handleFileSelect(e.target.files)}
-          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.md,.doc,.docx,.xls,.xlsx,.csv"
         />
         <HugeiconsIcon icon={Upload02Icon} size={20} className="mx-auto text-muted-foreground mb-1" />
         <p className="text-xs text-muted-foreground">
           {uploadMutation.isPending ? 'Uploading...' : 'Drop files here or click to upload'}
         </p>
         <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-          PDF, images, documents, spreadsheets (max 50MB)
+          Any file (max 50MB)
         </p>
       </div>
 

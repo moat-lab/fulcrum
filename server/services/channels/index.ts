@@ -13,7 +13,7 @@ import { log } from '../../lib/logger'
 import { db } from '../../db'
 import { messagingConnections, messagingSessionMappings } from '../../db/schema'
 import { eq, desc } from 'drizzle-orm'
-import { activeChannels, DISCORD_CONNECTION_ID, TELEGRAM_CONNECTION_ID, SLACK_CONNECTION_ID } from './channel-manager'
+import { activeChannels, DISCORD_CONNECTION_ID, TELEGRAM_CONNECTION_ID, SLACK_CONNECTION_ID, MATTERMOST_CONNECTION_ID } from './channel-manager'
 import { storeChannelMessage } from './message-storage'
 import {
   getWhatsAppStatus,
@@ -28,6 +28,9 @@ import {
 import {
   getSlackStatus,
 } from './api/slack'
+import {
+  getMattermostStatus,
+} from './api/mattermost'
 // Import message-handler to register the handler with channel-manager
 import './message-handler'
 
@@ -51,6 +54,7 @@ export {
   stopMessagingChannels,
   listConnections,
   SLACK_CONNECTION_ID,
+  MATTERMOST_CONNECTION_ID,
   DISCORD_CONNECTION_ID,
   TELEGRAM_CONNECTION_ID,
   EMAIL_CONNECTION_ID,
@@ -100,6 +104,15 @@ export {
   getSlackConfig,
 } from './api/slack'
 
+export {
+  configureMattermost,
+  enableMattermost,
+  disableMattermost,
+  disconnectMattermost,
+  getMattermostStatus,
+  getMattermostConfig,
+} from './api/mattermost'
+
 // Re-export Email API
 export {
   configureEmail,
@@ -116,6 +129,7 @@ export {
 // Maps session-based channels to their connection IDs for recipient lookup
 const SESSION_CHANNEL_IDS: Record<string, string> = {
   slack: SLACK_CONNECTION_ID,
+  mattermost: MATTERMOST_CONNECTION_ID,
   discord: DISCORD_CONNECTION_ID,
   telegram: TELEGRAM_CONNECTION_ID,
 }
@@ -156,6 +170,7 @@ const ACTIVE_CHANNEL_CONFIG: Record<string, {
   discord: { connectionId: DISCORD_CONNECTION_ID, getStatus: getDiscordStatus },
   telegram: { connectionId: TELEGRAM_CONNECTION_ID, getStatus: getTelegramStatus },
   slack: { connectionId: SLACK_CONNECTION_ID, getStatus: getSlackStatus },
+  mattermost: { connectionId: MATTERMOST_CONNECTION_ID, getStatus: getMattermostStatus },
 }
 
 // Shared send logic for discord, telegram, and slack (all use activeChannels pattern)
@@ -248,7 +263,7 @@ function buildSlackMetadata(
  * The recipient is always auto-resolved from stored channel state (the user who configured the channel).
  */
 export async function sendMessageToChannel(
-  channel: 'email' | 'whatsapp' | 'discord' | 'telegram' | 'slack',
+  channel: 'email' | 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'mattermost',
   body?: string,
   options?: {
     subject?: string
@@ -278,6 +293,7 @@ export async function sendMessageToChannel(
 
     case 'discord':
     case 'telegram':
+    case 'mattermost':
       return sendViaActiveChannel(channel, resolvedTo, body)
 
     case 'slack': {

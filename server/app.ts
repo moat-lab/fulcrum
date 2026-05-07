@@ -43,6 +43,7 @@ import searchRoutes from './routes/search'
 import draftItemsRoutes from './routes/draft-items'
 import scratchDirsRoutes from './routes/scratch-dirs'
 import mattermostRoutes from './routes/mattermost'
+import serverExposeRoutes from './routes/server-expose'
 import { writeEntry } from './lib/logger'
 import type { LogEntry } from '../shared/logger'
 
@@ -100,6 +101,7 @@ export function createApp() {
   app.route('/api/copier', copierRoutes)
   app.route('/api/github', githubRoutes)
   app.route('/api/monitoring', monitoringRoutes)
+  app.route('/api/server/expose', serverExposeRoutes)
   app.route('/api/system', systemRoutes)
   app.route('/api/exec', execRoutes)
   app.route('/api/apps', appsRoutes)

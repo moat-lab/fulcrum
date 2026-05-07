@@ -32,6 +32,7 @@ export interface TerminalInfo {
   createdAt: number
   tabId?: string
   positionInTab?: number
+  hostId?: string
 }
 
 interface UseTerminalWSOptions {
@@ -132,6 +133,7 @@ function toTerminalInfo(terminal: ITerminal): TerminalInfo {
     createdAt: terminal.createdAt,
     tabId: terminal.tabId ?? undefined,
     positionInTab: terminal.positionInTab,
+    hostId: terminal.hostId,
   }
 }
 

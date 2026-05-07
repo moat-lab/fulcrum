@@ -10,10 +10,11 @@ import { Terminal } from './terminal'
 import { TerminalStatusBar } from './terminal-status'
 import { Button } from '@/components/ui/button'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Cancel01Icon, PlusSignIcon, Loading03Icon, Maximize02Icon, ArrowShrink02Icon } from '@hugeicons/core-free-icons'
+import { Cancel01Icon, PlusSignIcon, Loading03Icon, Maximize02Icon, ArrowShrink02Icon, ComputerIcon } from '@hugeicons/core-free-icons'
 import { TaskTerminalHeader } from './task-terminal-header'
 import { RepoTerminalHeader } from './repo-terminal-header'
 import type { TerminalInfo } from '@/hooks/use-terminal-ws'
+import type { Host } from '@/types'
 import type { Terminal as XTerm } from '@xterm/xterm'
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { MobileTerminalControls } from './mobile-terminal-controls'
@@ -57,6 +58,8 @@ interface TerminalGridProps {
   taskInfoByCwd?: Map<string, TaskInfo>
   /** Map terminal cwd to repo info for navigation and display */
   repoInfoByCwd?: Map<string, RepoInfo>
+  /** Map host id to host info for remote terminal badges */
+  hostById?: Map<string, Host>
   /** Custom message to show when there are no terminals */
   emptyMessage?: string
 }
@@ -65,6 +68,7 @@ interface TerminalPaneProps {
   terminal: TerminalInfo
   taskInfo?: TaskInfo
   repoInfo?: RepoInfo
+  host?: Host
   isMobile?: boolean
   onClose?: () => void
   onReady?: (xterm: XTerm) => void
@@ -79,7 +83,21 @@ interface TerminalPaneProps {
   canMaximize?: boolean
 }
 
-const TerminalPane = observer(function TerminalPane({ terminal, taskInfo, repoInfo, isMobile, onClose, onReady, onResize, onRename, onContainerReady, setupImagePaste, onFocus, sendInputToTerminal, isMaximized, onMaximize, onMinimize, canMaximize }: TerminalPaneProps & { sendInputToTerminal?: (terminalId: string, text: string) => void }) {
+const formatHostTooltip = (host: Host) => `${host.name} (${host.username}@${host.hostname}:${host.port})`
+
+function TerminalHostBadge({ host }: { host: Host }) {
+  return (
+    <span
+      className="inline-flex max-w-36 shrink-0 items-center gap-1 truncate rounded-sm bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:ring-blue-900"
+      title={formatHostTooltip(host)}
+    >
+      <HugeiconsIcon icon={ComputerIcon} size={12} strokeWidth={2} />
+      <span className="truncate">{host.name}</span>
+    </span>
+  )
+}
+
+const TerminalPane = observer(function TerminalPane({ terminal, taskInfo, repoInfo, host, isMobile, onClose, onReady, onResize, onRename, onContainerReady, setupImagePaste, onFocus, sendInputToTerminal, isMaximized, onMaximize, onMinimize, canMaximize }: TerminalPaneProps & { sendInputToTerminal?: (terminalId: string, text: string) => void }) {
   const store = useStore()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -140,6 +158,7 @@ const TerminalPane = observer(function TerminalPane({ terminal, taskInfo, repoIn
           onRename={onRename}
         />
         <div className="flex items-center gap-1 mr-1">
+          {host && <TerminalHostBadge host={host} />}
           {canMaximize && (
             <Button
               variant="ghost"
@@ -271,6 +290,7 @@ export function TerminalGrid({
   sendInputToTerminal,
   taskInfoByCwd,
   repoInfoByCwd,
+  hostById,
   emptyMessage,
 }: TerminalGridProps) {
   const isMobile = useIsMobile()
@@ -325,6 +345,7 @@ export function TerminalGrid({
   const renderTerminalPane = (terminal: TerminalInfo) => {
     const taskInfo = terminal.cwd ? taskInfoByCwd?.get(terminal.cwd) : undefined
     const repoInfo = terminal.cwd ? repoInfoByCwd?.get(terminal.cwd) : undefined
+    const host = terminal.hostId ? hostById?.get(terminal.hostId) : undefined
     // Regular and repo terminals can be maximized when there are multiple terminals (not task terminals)
     const canMaximize = !taskInfo && terminals.length > 1
     return (
@@ -332,6 +353,7 @@ export function TerminalGrid({
         terminal={terminal}
         taskInfo={taskInfo}
         repoInfo={repoInfo}
+        host={host}
         isMobile={isMobile}
         onClose={onTerminalClose ? () => onTerminalClose(terminal.id) : undefined}
         onReady={onTerminalReady ? (xterm) => onTerminalReady(terminal.id, xterm) : undefined}

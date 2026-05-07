@@ -38,11 +38,13 @@ import {
   useAutoScrollToBottom,
   useClaudeCodePath,
   useTriggerUpdate,
+  useConfig,
   useUpdateConfig,
   useResetConfig,
   useNotificationSettings,
   useUpdateNotificationSettings,
   useTestNotificationChannel,
+  useTestMattermostConnection,
   useZAiSettings,
   useUpdateZAiSettings,
   useDeveloperMode,
@@ -148,6 +150,12 @@ function SettingsPage() {
   const { data: autoScrollToBottom, isLoading: autoScrollLoading } = useAutoScrollToBottom()
   const { data: claudeCodePath } = useClaudeCodePath()
   const { data: notificationSettings, isLoading: notificationsLoading } = useNotificationSettings()
+  const mattermostEnabledConfig = useConfig(CONFIG_KEYS.MATTERMOST_ENABLED)
+  const mattermostServerUrlConfig = useConfig(CONFIG_KEYS.MATTERMOST_SERVER_URL)
+  const mattermostBotTokenConfig = useConfig(CONFIG_KEYS.MATTERMOST_BOT_TOKEN)
+  const mattermostTeamIdConfig = useConfig(CONFIG_KEYS.MATTERMOST_TEAM_ID)
+  const mattermostChannelIdConfig = useConfig(CONFIG_KEYS.MATTERMOST_CHANNEL_ID)
+  const mattermostCommandTokenConfig = useConfig(CONFIG_KEYS.MATTERMOST_COMMAND_TOKEN)
   const { data: zAiSettings, isLoading: zAiLoading } = useZAiSettings()
   const { data: deploymentSettings, isLoading: deploymentLoading } = useDeploymentSettings()
   const updateDeploymentSettings = useUpdateDeploymentSettings()
@@ -180,6 +188,7 @@ function SettingsPage() {
   const updateNotifications = useUpdateNotificationSettings()
   const updateZAi = useUpdateZAiSettings()
   const testChannel = useTestNotificationChannel()
+  const testMattermostConnection = useTestMattermostConnection()
   const googleAccountsQuery = useGoogleAccounts()
   const gmailEnabledAccounts = (googleAccountsQuery.data ?? []).filter((a) => a.gmailEnabled)
   const queryClient = useQueryClient()
@@ -217,8 +226,16 @@ function SettingsPage() {
   const [telegramNotifEnabled, setTelegramNotifEnabled] = useState(false)
   const [gmailNotifEnabled, setGmailNotifEnabled] = useState(false)
   const [gmailNotifAccountId, setGmailNotifAccountId] = useState('')
+  const [mattermostNotifEnabled, setMattermostNotifEnabled] = useState(false)
   const [slackUseMessaging, setSlackUseMessaging] = useState(false)
   const [discordUseMessaging, setDiscordUseMessaging] = useState(false)
+  const [mattermostEnabled, setMattermostEnabled] = useState(false)
+  const [mattermostServerUrl, setMattermostServerUrl] = useState('')
+  const [mattermostBotToken, setMattermostBotToken] = useState('')
+  const [mattermostTeamId, setMattermostTeamId] = useState('')
+  const [mattermostChannelId, setMattermostChannelId] = useState('')
+  const [mattermostCommandToken, setMattermostCommandToken] = useState('')
+  const [mattermostConnection, setMattermostConnection] = useState<string | null>(null)
 
   // z.ai settings local state
   const [zAiEnabled, setZAiEnabled] = useState(false)
@@ -299,10 +316,21 @@ function SettingsPage() {
       setTelegramNotifEnabled(notificationSettings.telegram?.enabled ?? false)
       setGmailNotifEnabled(notificationSettings.gmail?.enabled ?? false)
       setGmailNotifAccountId(notificationSettings.gmail?.googleAccountId ?? '')
+      setMattermostNotifEnabled(notificationSettings.mattermost?.enabled ?? false)
       setSlackUseMessaging(notificationSettings.slack?.useMessagingChannel ?? false)
       setDiscordUseMessaging(notificationSettings.discord?.useMessagingChannel ?? false)
+      setMattermostNotifEnabled(notificationSettings.mattermost?.enabled ?? false)
     }
   }, [notificationSettings])
+
+  useEffect(() => {
+    if (mattermostEnabledConfig.data) setMattermostEnabled(Boolean(mattermostEnabledConfig.data.value))
+    if (mattermostServerUrlConfig.data) setMattermostServerUrl((mattermostServerUrlConfig.data.value as string) ?? '')
+    if (mattermostBotTokenConfig.data) setMattermostBotToken((mattermostBotTokenConfig.data.value as string) ?? '')
+    if (mattermostTeamIdConfig.data) setMattermostTeamId((mattermostTeamIdConfig.data.value as string) ?? '')
+    if (mattermostChannelIdConfig.data) setMattermostChannelId((mattermostChannelIdConfig.data.value as string) ?? '')
+    if (mattermostCommandTokenConfig.data) setMattermostCommandToken((mattermostCommandTokenConfig.data.value as string) ?? '')
+  }, [mattermostEnabledConfig.data, mattermostServerUrlConfig.data, mattermostBotTokenConfig.data, mattermostTeamIdConfig.data, mattermostChannelIdConfig.data, mattermostCommandTokenConfig.data])
 
   // Sync z.ai settings
   useEffect(() => {
@@ -365,7 +393,7 @@ function SettingsPage() {
   ])
 
   const isLoading =
-    portLoading || reposDirLoading || editorAppLoading || editorHostLoading || editorSshPortLoading || githubPatLoading || defaultAgentLoading || opcodeModelLoading || opcodeDefaultAgentLoading || opencodePlanAgentLoading || autoScrollLoading || notificationsLoading || zAiLoading || deploymentLoading || taskTypeLoading || startImmediatelyLoading || scratchStartupScriptLoading || timezoneLoading || assistantProviderLoading || assistantModelLoading || assistantObserverModelLoading || assistantDocumentsDirLoading ||
+    portLoading || reposDirLoading || editorAppLoading || editorHostLoading || editorSshPortLoading || githubPatLoading || defaultAgentLoading || opcodeModelLoading || opcodeDefaultAgentLoading || opencodePlanAgentLoading || autoScrollLoading || notificationsLoading || mattermostEnabledConfig.isLoading || mattermostServerUrlConfig.isLoading || mattermostBotTokenConfig.isLoading || mattermostTeamIdConfig.isLoading || mattermostChannelIdConfig.isLoading || mattermostCommandTokenConfig.isLoading || zAiLoading || deploymentLoading || taskTypeLoading || startImmediatelyLoading || scratchStartupScriptLoading || timezoneLoading || assistantProviderLoading || assistantModelLoading || assistantObserverModelLoading || assistantDocumentsDirLoading ||
     ritualsEnabledLoading || morningTimeLoading || morningPromptLoading || eveningTimeLoading || eveningPromptLoading
 
   const hasZAiChanges = zAiSettings && (
@@ -428,8 +456,17 @@ function SettingsPage() {
     whatsappNotifEnabled !== (notificationSettings.whatsapp?.enabled ?? false) ||
     telegramNotifEnabled !== (notificationSettings.telegram?.enabled ?? false) ||
     gmailNotifEnabled !== (notificationSettings.gmail?.enabled ?? false) ||
-    gmailNotifAccountId !== (notificationSettings.gmail?.googleAccountId ?? '')
+    gmailNotifAccountId !== (notificationSettings.gmail?.googleAccountId ?? '') ||
+    mattermostNotifEnabled !== (notificationSettings.mattermost?.enabled ?? false)
   )
+
+  const hasMattermostChanges =
+    mattermostEnabled !== Boolean(mattermostEnabledConfig.data?.value) ||
+    mattermostServerUrl !== ((mattermostServerUrlConfig.data?.value as string | undefined) ?? '') ||
+    mattermostBotToken !== ((mattermostBotTokenConfig.data?.value as string | undefined) ?? '') ||
+    mattermostTeamId !== ((mattermostTeamIdConfig.data?.value as string | undefined) ?? '') ||
+    mattermostChannelId !== ((mattermostChannelIdConfig.data?.value as string | undefined) ?? '') ||
+    mattermostCommandToken !== ((mattermostCommandTokenConfig.data?.value as string | undefined) ?? '')
 
   const hasEditorChanges =
     localEditorApp !== editorApp ||
@@ -452,6 +489,7 @@ function SettingsPage() {
     hasAgentChanges ||
     hasEditorChanges ||
     hasNotificationChanges ||
+    hasMattermostChanges ||
     hasZAiChanges ||
     hasDeploymentChanges ||
     hasTaskDefaultsChanges ||
@@ -652,6 +690,7 @@ function SettingsPage() {
               whatsapp: { enabled: whatsappNotifEnabled },
               telegram: { enabled: telegramNotifEnabled },
               gmail: { enabled: gmailNotifEnabled, googleAccountId: gmailNotifAccountId || undefined },
+              mattermost: { enabled: mattermostNotifEnabled },
               _updatedAt: notificationSettings?._updatedAt, // Include timestamp for conflict detection
             },
             {
@@ -667,6 +706,21 @@ function SettingsPage() {
           )
         })
       )
+    }
+
+    // Save Mattermost channel settings
+    if (hasMattermostChanges) {
+      const mattermostUpdates: Array<{ key: string; value: string | boolean }> = [
+        { key: CONFIG_KEYS.MATTERMOST_ENABLED, value: mattermostEnabled },
+        { key: CONFIG_KEYS.MATTERMOST_SERVER_URL, value: mattermostServerUrl },
+        { key: CONFIG_KEYS.MATTERMOST_BOT_TOKEN, value: mattermostBotToken },
+        { key: CONFIG_KEYS.MATTERMOST_TEAM_ID, value: mattermostTeamId },
+        { key: CONFIG_KEYS.MATTERMOST_CHANNEL_ID, value: mattermostChannelId },
+        { key: CONFIG_KEYS.MATTERMOST_COMMAND_TOKEN, value: mattermostCommandToken },
+      ]
+      promises.push(...mattermostUpdates.map((update) => new Promise((resolve) => {
+        updateConfig.mutate(update, { onSettled: resolve })
+      })))
     }
 
     // Save z.ai settings
@@ -964,7 +1018,7 @@ function SettingsPage() {
     })
   }
 
-  const handleTestChannel = async (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail') => {
+  const handleTestChannel = async (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail' | 'mattermost') => {
     testChannel.mutate(channel, {
       onSuccess: (result) => {
         if (result.success) {
@@ -2624,6 +2678,37 @@ function SettingsPage() {
                     )}
                   </div>
 
+                  {/* Mattermost */}
+                  <div className="space-y-2 pl-4">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={mattermostNotifEnabled}
+                        onCheckedChange={setMattermostNotifEnabled}
+                        disabled={isLoading || !notificationsEnabled}
+                      />
+                      <label className="text-sm text-muted-foreground">Mattermost</label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="ml-auto h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => handleTestChannel('mattermost')}
+                        disabled={isLoading || !notificationsEnabled || !mattermostNotifEnabled || testChannel.isPending}
+                        title="Mattermost"
+                      >
+                        {testChannel.isPending ? (
+                          <HugeiconsIcon icon={Loading03Icon} size={14} strokeWidth={2} className="animate-spin" />
+                        ) : (
+                          <HugeiconsIcon icon={TestTube01Icon} size={14} strokeWidth={2} />
+                        )}
+                      </Button>
+                    </div>
+                    {mattermostNotifEnabled && (
+                      <p className="ml-10 text-xs text-muted-foreground">
+                        Sends rich notification cards with context fields and action buttons to the configured Mattermost channel.
+                      </p>
+                    )}
+                  </div>
+
                   {/* Gmail */}
                   <div className="space-y-2 pl-4">
                     <div className="flex items-center gap-2">
@@ -2674,6 +2759,37 @@ function SettingsPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Mattermost */}
+                  <div className="space-y-2 pl-4">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={mattermostNotifEnabled}
+                        onCheckedChange={setMattermostNotifEnabled}
+                        disabled={isLoading || !notificationsEnabled}
+                      />
+                      <label className="text-sm text-muted-foreground">Mattermost</label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="ml-auto h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => handleTestChannel('mattermost')}
+                        disabled={isLoading || !notificationsEnabled || !mattermostNotifEnabled || testChannel.isPending}
+                        title="Mattermost"
+                      >
+                        {testChannel.isPending ? (
+                          <HugeiconsIcon icon={Loading03Icon} size={14} strokeWidth={2} className="animate-spin" />
+                        ) : (
+                          <HugeiconsIcon icon={TestTube01Icon} size={14} strokeWidth={2} />
+                        )}
+                      </Button>
+                    </div>
+                    {mattermostNotifEnabled && (
+                      <p className="ml-10 text-xs text-muted-foreground">
+                        Sends via the configured Mattermost bot and default channel below.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </SettingsSection>
 
@@ -2687,6 +2803,56 @@ function SettingsPage() {
                   <DiscordSetup isLoading={isLoading} />
                   <TelegramSetup isLoading={isLoading} />
                   <SlackSetup isLoading={isLoading} />
+                  <div className="rounded-lg border border-border p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-medium">Mattermost</h3>
+                        <p className="text-xs text-muted-foreground">Slash commands, interactive cards, and notifications.</p>
+                      </div>
+                      <Switch checked={mattermostEnabled} onCheckedChange={setMattermostEnabled} disabled={isLoading} />
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Input value={mattermostServerUrl} onChange={(e) => setMattermostServerUrl(e.target.value)} placeholder="https://mattermost.example.com" disabled={isLoading} className="font-mono text-sm" />
+                      <Input type="password" value={mattermostBotToken} onChange={(e) => setMattermostBotToken(e.target.value)} placeholder="Bot token" disabled={isLoading} className="font-mono text-sm" />
+                      <Input value={mattermostTeamId} onChange={(e) => setMattermostTeamId(e.target.value)} placeholder="Team ID" disabled={isLoading} className="font-mono text-sm" />
+                      <Input value={mattermostChannelId} onChange={(e) => setMattermostChannelId(e.target.value)} placeholder="Default channel ID" disabled={isLoading} className="font-mono text-sm" />
+                      <Input type="password" value={mattermostCommandToken} onChange={(e) => setMattermostCommandToken(e.target.value)} placeholder="Slash command token" disabled={isLoading} className="font-mono text-sm md:col-span-2" />
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          testMattermostConnection.mutate(undefined, {
+                            onSuccess: (result) => {
+                              const botName = result.bot?.displayName ?? result.bot?.username ?? 'Mattermost bot'
+                              const teamName = result.team?.displayName ?? 'configured server'
+                              setMattermostConnection(`${botName} connected${result.team ? ` to ${teamName}` : ''}`)
+                              toast.success('Mattermost connection validated')
+                            },
+                            onError: (error) => {
+                              setMattermostConnection(null)
+                              toast.error(`Mattermost validation failed: ${error.message}`)
+                            },
+                          })
+                        }}
+                        disabled={isLoading || !mattermostServerUrl || !mattermostBotToken || testMattermostConnection.isPending}
+                      >
+                        {testMattermostConnection.isPending ? <HugeiconsIcon icon={Loading03Icon} size={14} strokeWidth={2} className="animate-spin" /> : <HugeiconsIcon icon={TestTube01Icon} size={14} strokeWidth={2} />}
+                        Test Connection
+                      </Button>
+                      {mattermostConnection && <span className="text-xs text-green-600 dark:text-green-400">{mattermostConnection}</span>}
+                    </div>
+                    <div className="mt-4 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">First-run setup</p>
+                      <ol className="mt-2 list-decimal space-y-1 pl-4">
+                        <li>Create a Mattermost bot account and generate a personal access token.</li>
+                        <li>Create or choose a dedicated channel, then copy the team and channel IDs here.</li>
+                        <li>Register the <code className="rounded bg-muted px-1">/f</code> slash command against your Fulcrum URL and paste its token.</li>
+                        <li>Allow the Mattermost server to reach Fulcrum via firewall and AllowedUntrustedInternalConnections.</li>
+                      </ol>
+                    </div>
+                  </div>
                 </div>
               </SettingsSection>
             </div>
