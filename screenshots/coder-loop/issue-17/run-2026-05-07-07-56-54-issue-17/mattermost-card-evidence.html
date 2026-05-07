@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Issue 17 Mattermost Card Evidence</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #111827; color: #f9fafb; }
+    body { margin: 0; padding: 32px; background: linear-gradient(135deg, #111827 0%, #1f2937 100%); }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .subtitle { margin: 0 0 28px; color: #cbd5e1; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(360px, 1fr)); gap: 20px; align-items: start; }
+    .panel { background: #0f172a; border: 1px solid #334155; border-radius: 14px; padding: 18px; box-shadow: 0 20px 50px rgb(0 0 0 / 0.28); }
+    .panel h2 { margin: 0 0 6px; font-size: 16px; color: #e2e8f0; }
+    .proof { margin: 0 0 14px; color: #94a3b8; font-size: 13px; }
+    .post { border-left: 4px solid var(--accent, #7c3aed); background: #1e293b; border-radius: 10px; padding: 14px; }
+    .pretext { font-weight: 700; font-size: 15px; margin-bottom: 10px; color: #f8fafc; }
+    .text { white-space: pre-wrap; line-height: 1.45; color: #e5e7eb; margin-bottom: 12px; }
+    .fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+    .field { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 8px; }
+    .field b { display: block; color: #93c5fd; font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .btn { border: 1px solid #475569; background: #334155; color: #f8fafc; border-radius: 6px; padding: 7px 10px; font-size: 13px; font-weight: 600; }
+    .primary { background: #2563eb; border-color: #3b82f6; }
+    .good { background: #15803d; border-color: #22c55e; }
+    .danger { background: #b91c1c; border-color: #ef4444; }
+    .warning { background: #b45309; border-color: #f59e0b; }
+    code { color: #bae6fd; background: #020617; padding: 1px 4px; border-radius: 4px; }
+    .bar { display: inline-block; color: #fbbf24; letter-spacing: 1px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Issue #17 — Mattermost card workflow evidence</h1>
+  <p class="subtitle">Static browser-visible rendering of the implemented card states/actions in PR #98 for review evidence when no live Mattermost instance is available.</p>
+  <main class="grid">
+    <section class="panel">
+      <h2>Deployment live progress</h2>
+      <p class="proof">Proves deploy progress cards update the same post with lifecycle stage, message, progress bar, and final/recovery actions.</p>
+      <div class="post" style="--accent:#f59e0b">
+        <div class="pretext">#### 🔨 Deploying myapp</div>
+        <div class="text"><strong>building</strong> — Building image layers…<br><span class="bar">██████░░░░ 60%</span></div>
+        <div class="actions"><span class="btn danger">Cancel Deploy</span></div>
+      </div>
+      <br>
+      <div class="post" style="--accent:#22c55e">
+        <div class="pretext">#### ✅ Deploy Succeeded — myapp</div>
+        <div class="text"><code>abc1234</code> → <code>xyz9876</code> · 18s</div>
+        <div class="actions"><span class="btn">Logs</span><span class="btn">Rollback</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Inline diff preview</h2>
+      <p class="proof">Proves View Diff returns inline file-level summary instead of only linking to the web UI, with review/PR/merge closure actions.</p>
+      <div class="post" style="--accent:#3b82f6">
+        <div class="pretext">#### Task #task-d — Preview diff in Mattermost</div>
+        <div class="text">#### Diff — issue-17-run (3 files, +42 -18)
+- <code>server/auth.ts</code> (+28 -12)
+- <code>server/middleware.ts</code> (+10 -4)
+- <code>tests/auth.test.ts</code> (+4 -2)</div>
+        <div class="actions"><span class="btn primary">→ Review</span><span class="btn">Create PR</span><span class="btn good">Merge</span><span class="btn">Open Full Diff ↗</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Agent operation chain</h2>
+      <p class="proof">Proves task cards expose Start Agent, running/crashed agent state, Restart Agent, View Diff, and Review transitions.</p>
+      <div class="post" style="--accent:#7c3aed">
+        <div class="pretext">#### Task #agent — Run agent chain</div>
+        <div class="fields"><div class="field"><b>Status</b>📋 TO_DO</div><div class="field"><b>Agent</b>claude</div></div>
+        <div class="actions"><span class="btn primary">🤖 Start Agent</span><span class="btn">▶ Start</span><span class="btn danger">✕ Cancel</span></div>
+      </div>
+      <br>
+      <div class="post" style="--accent:#7c3aed">
+        <div class="pretext">#### Task #agent — Run agent chain</div>
+        <div class="fields"><div class="field"><b>Status</b>🔄 IN_PROGRESS</div><div class="field"><b>Agent</b>claude crashed</div></div>
+        <div class="actions"><span class="btn primary">🤖 Restart Agent</span><span class="btn primary">→ Review</span><span class="btn">View Diff</span><span class="btn danger">✕ Cancel</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Notification operation closure</h2>
+      <p class="proof">Proves notification cards carry enough context/actions for agent completed, PR merged, and deploy failed workflows.</p>
+      <div class="post" style="--accent:#22c55e">
+        <div class="pretext">#### 🤖 Agent completed — Task #agent</div>
+        <div class="text">Diff summary is shown inline, then the user can continue the workflow without leaving Mattermost.</div>
+        <div class="actions"><span class="btn primary">→ Review</span><span class="btn">Create PR</span><span class="btn good">Merge</span></div>
+      </div>
+      <br>
+      <div class="post" style="--accent:#22c55e">
+        <div class="pretext">#### ✅ PR merged</div>
+        <div class="text">Branch <code>issue-17-run</code> is ready for cleanup.</div>
+        <div class="actions"><span class="btn good">→ Done</span><span class="btn danger">Delete Worktree</span><span class="btn">Open Task ↗</span></div>
+      </div>
+      <br>
+      <div class="post" style="--accent:#ef4444">
+        <div class="pretext">#### ❌ Deploy failed — myapp</div>
+        <div class="text"><code>docker compose up failed: service web exited with code 1</code></div>
+        <div class="actions"><span class="btn primary">Retry</span><span class="btn warning">Rollback</span><span class="btn">View Full Log</span></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
