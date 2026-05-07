@@ -19,6 +19,7 @@ import type { ITerminal, ITab } from '@/stores'
 import { useTasks } from '@/hooks/use-tasks'
 import { useRepositories } from '@/hooks/use-repositories'
 import { useProjects } from '@/hooks/use-projects'
+import { useHosts } from '@/hooks/use-hosts'
 import { useTerminalViewState } from '@/hooks/use-terminal-view-state'
 import { useHotkeys } from '@/hooks/use-hotkeys'
 import { useRemoteOnlyMode } from '@/hooks/use-config'
@@ -44,6 +45,7 @@ function toTerminalInfo(terminal: ITerminal): TerminalInfo {
     createdAt: terminal.createdAt,
     tabId: terminal.tabId ?? undefined,
     positionInTab: terminal.positionInTab,
+    hostId: terminal.hostId,
   }
 }
 
@@ -217,8 +219,15 @@ const TerminalsView = observer(function TerminalsView() {
   const { data: tasks = [], status: tasksStatus } = useTasks()
   const { data: repositories = [] } = useRepositories()
   const { data: projects = [] } = useProjects()
+  const { data: hosts = [] } = useHosts()
 
-  // Map repository path to repository id for linking
+  const hostById = useMemo(() => {
+    const map = new Map<string, (typeof hosts)[number]>()
+    for (const host of hosts) {
+      map.set(host.id, host)
+    }
+    return map
+  }, [hosts])
   const repoIdByPath = useMemo(() => {
     const map = new Map<string, string>()
     for (const repo of repositories) {
@@ -1005,6 +1014,7 @@ const TerminalsView = observer(function TerminalsView() {
           sendInputToTerminal={sendInputToTerminal}
           taskInfoByCwd={activeTabId === ALL_TASKS_TAB_ID ? taskInfoByCwd : undefined}
           repoInfoByCwd={activeTabId === ALL_REPOS_TAB_ID ? repoInfoByCwd : undefined}
+          hostById={hostById}
           emptyMessage={activeTabId === ALL_REPOS_TAB_ID ? t('emptyRepos') : activeTabId === ALL_TASKS_TAB_ID ? t('emptyTasks') : undefined}
         />
       </div>

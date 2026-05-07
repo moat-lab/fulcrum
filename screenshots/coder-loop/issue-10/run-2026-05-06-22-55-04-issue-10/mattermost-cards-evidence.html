@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Issue #10 Mattermost slash/card evidence</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f5f7; color: #17212b; }
+    body { margin: 0; padding: 32px; }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    .subtitle { margin: 0 0 24px; color: #5b6673; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(420px, 1fr)); gap: 18px; }
+    .card { background: white; border-left: 5px solid var(--accent); border-radius: 8px; box-shadow: 0 2px 10px rgba(15, 23, 42, .12); padding: 18px; }
+    .command { display: inline-block; margin-bottom: 10px; padding: 4px 8px; border-radius: 6px; background: #eef2ff; color: #3730a3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    h2 { margin: 0 0 12px; font-size: 20px; }
+    .line { margin: 6px 0; }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+    .field { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }
+    .field.full { grid-column: 1 / -1; }
+    .field-title { font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .03em; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .button { border: 1px solid #cbd5e1; border-radius: 5px; padding: 6px 10px; background: #f8fafc; font-size: 13px; }
+    .primary { background: #2563eb; border-color: #2563eb; color: white; }
+    .good { background: #16a34a; border-color: #16a34a; color: white; }
+    .danger { background: #dc2626; border-color: #dc2626; color: white; }
+    .negative { margin-top: 18px; background: #fff7ed; border-left: 5px solid #f97316; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Issue #10 — Mattermost slash command engine & card builders</h1>
+  <p class="subtitle">Reviewer-visible local harness rendering the actual response-card states covered by <code>server/routes/mattermost.test.ts</code>.</p>
+
+  <section class="grid">
+    <article class="card" style="--accent:#0ea5e9">
+      <span class="command">/f jobs</span>
+      <h2>#### Scheduled Jobs</h2>
+      <p class="line"><em>No scheduled jobs found or jobs are unavailable on this platform.</em></p>
+      <div class="buttons"><span class="button">Open ↗</span></div>
+    </article>
+
+    <article class="card" style="--accent:#3b82f6">
+      <span class="command">/f tasks</span>
+      <h2>#### Tasks — Active (11) · Page 1/2</h2>
+      <p class="line">📋 🟡 <strong>#task-0</strong> Task 0</p>
+      <p class="line">📋 🟡 <strong>#task-1</strong> Task 1</p>
+      <p class="line">📋 🟡 <strong>#task-2</strong> Task 2</p>
+      <p class="line">… first 10 tasks shown …</p>
+      <div class="buttons"><span class="button">#task-0</span><span class="button">#task-1</span><span class="button primary">Next →</span><span class="button good">➕ New</span></div>
+    </article>
+
+    <article class="card" style="--accent:#7c3aed">
+      <span class="command">/f task main-task</span>
+      <h2>#### Task #main-t — Main task</h2>
+      <div class="field-grid">
+        <div class="field"><div class="field-title">Status</div>📋 TO_DO</div>
+        <div class="field"><div class="field-title">Priority</div>🟡 medium</div>
+        <div class="field full"><div class="field-title">PR</div>https://github.com/Mouriya-Emma/fulcrum/pull/123</div>
+        <div class="field full"><div class="field-title">Links</div>Spec — https://example.com/spec</div>
+        <div class="field full"><div class="field-title">Depends On</div>#dep-ta Dependency task</div>
+      </div>
+      <div class="buttons"><span class="button primary">▶ Start</span><span class="button danger">✕ Cancel</span><span class="button">Priority</span><span class="button">Open ↗</span></div>
+    </article>
+
+    <article class="card" style="--accent:#8b5cf6">
+      <span class="command">/f monitor</span>
+      <h2>#### 🖥 System Monitor</h2>
+      <div class="field-grid">
+        <div class="field"><div class="field-title">CPU</div>runtime percentage</div>
+        <div class="field"><div class="field-title">RAM</div>runtime usage</div>
+        <div class="field full"><div class="field-title">Agent Processes (N)</div>Claude/OpenCode process summary or <em>No Claude/OpenCode processes found</em></div>
+      </div>
+      <div class="buttons"><span class="button">🔄 Refresh</span><span class="button">Open ↗</span></div>
+    </article>
+  </section>
+
+  <article class="card negative" style="--accent:#f97316">
+    <span class="command">unknown slash command / invalid action</span>
+    <h2>Negative / error states covered</h2>
+    <p class="line"><strong>/f randomgarbagesubcommand</strong> returns the Fulcrum Commands help card instead of greedily matching a task id.</p>
+    <p class="line"><strong>status_change GARBAGE</strong> returns ephemeral error text: <code>Invalid status: GARBAGE</code>.</p>
+    <p class="line"><strong>change_priority without selected_option</strong> returns ephemeral error text: <code>Invalid priority: (none)</code>.</p>
+  </article>
+</body>
+</html>

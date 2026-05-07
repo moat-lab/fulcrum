@@ -2,7 +2,7 @@
 
 **Harness Attention. Orchestrate Agents. Leverage Your Time Wisely.**
 
-![Fulcrum Kanban Board with AI Assistant](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/kanban-with-assistant-dark.png)
+![Fulcrum Kanban Board with AI Assistant](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/kanban-with-assistant-dark.jpg)
 
 ## What It Does
 
@@ -122,7 +122,7 @@ claude plugin install fulcrum@fulcrum --scope user
 
 Track tasks from planning to done. Set priority levels (high/medium/low), pin important tasks to the top of lists, and set up recurring tasks that auto-create the next occurrence when completed. The built-in AI assistant has full context of everything you're tracking—tasks, projects, apps—and can help with planning, documentation, or running MCP tools.
 
-![Kanban Board with AI Assistant](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/kanban-with-assistant-dark.png)
+![Kanban Board with AI Assistant](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/kanban-with-assistant-dark.jpg)
 
 ### Task Types
 
@@ -138,31 +138,31 @@ Three task types for different workflows:
 
 Run multiple AI coding agents simultaneously across different tasks. Git tasks get isolated worktrees, Scratch tasks get isolated directories. Monitor and interact with all sessions from one screen.
 
-![Parallel Agent Terminals](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/parallel-agent-terminals-dark.png)
+![Parallel Agent Terminals](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/parallel-agent-terminals-dark.jpg)
 
 ### Projects
 
 Unified view of repositories and deployments. Link repos, manage tasks, configure default agents, and see active work at a glance.
 
-![Projects List](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/projects-list-dark.png)
+![Projects List](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/projects-list-dark.jpg)
 
 ### Project Workspace
 
 Terminal with integrated file browser. Direct access to project files alongside your agent sessions.
 
-![Project Workspace](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/project-workspace-dark.png)
+![Project Workspace](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/project-workspace-dark.jpg)
 
 ### Task Dependencies
 
 Define prerequisite tasks that must complete before others can start. Visualize with an interactive dependency graph.
 
-![Task Dependency Graph](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/task-dependency-graph-dark.png)
+![Task Dependency Graph](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/task-dependency-graph-dark.jpg)
 
 ### AI Assistant
 
 Create documents with live preview. Generate charts and visualizations. The assistant uses the same MCP tools available to external agents.
 
-![AI Assistant Editor](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/assistant-editor-dark.png)
+![AI Assistant Editor](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/assistant-editor-dark.jpg)
 
 ### Calendar Integration
 
@@ -218,7 +218,7 @@ A two-tier memory system gives agents both always-on context and on-demand recal
 
 Track CPU, memory, and disk usage while your agents work. Jobs is a top-level page (`/jobs`, Cmd+6) for managing systemd (Linux) or launchd (macOS) timers. The Messages tab under Monitoring shows all channel messages (WhatsApp, Discord, Telegram, Slack, Email) with filtering by channel and direction. The Observer tab tracks every observe-only message processing attempt with circuit breaker status, aggregate stats, and a filterable invocations list.
 
-![System Monitoring](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/system-monitoring-dark.png)
+![System Monitoring](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/system-monitoring-dark.jpg)
 
 ## Supported Agents
 

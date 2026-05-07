@@ -103,7 +103,10 @@ fi
 [tasks.dev]
 description = "Start frontend and backend dev servers"
 depends = ["install"]
-usage = 'flag "--host" help="Bind to all network interfaces (0.0.0.0)"'
+usage = '''
+flag "--host" help="Bind frontend to all network interfaces (0.0.0.0)"
+flag "--tailnet" help="Bind frontend to the tailscale IP only (backend stays on loopback)"
+'''
 run = """
 # Ensure child processes are killed when this script exits
 cleanup() {
@@ -119,8 +122,22 @@ FULCRUM_DIR="${FULCRUM_DIR:-$HOME/tmp/fulcrum}"
 # If you encounter "Address already in use", set PORT=8888 or similar in .env
 PORT="${PORT:-8888}"
 
-# Determine host binding
-if [ "$usage_host" = "true" ]; then
+# Determine host binding. --tailnet wins if both are set: it's the safer option
+# (only the tailscale interface, not the LAN). Backend always stays on
+# loopback — Vite proxies /api and /ws to it.
+if [ "$usage_tailnet" = "true" ]; then
+  if ! command -v tailscale >/dev/null 2>&1; then
+    echo "ERROR: --tailnet requires the tailscale CLI to be installed" >&2
+    exit 1
+  fi
+  TS_IP="$(tailscale ip -4 2>/dev/null | head -n1)"
+  if [ -z "$TS_IP" ]; then
+    echo "ERROR: --tailnet requires tailscale to be running and logged in" >&2
+    exit 1
+  fi
+  VITE_HOST="--host $TS_IP"
+  echo "Tailnet mode: frontend on http://$TS_IP:${FRONTEND_PORT:-5173}/" >&2
+elif [ "$usage_host" = "true" ]; then
   VITE_HOST="--host"
 else
   VITE_HOST=""
@@ -131,7 +148,7 @@ DEBUG="1"
 # --kill-others ensures if one process dies, all are killed
 bunx concurrently --kill-others -n server,client -c blue,green \
   "FULCRUM_DIR=$FULCRUM_DIR PORT=$PORT mise run server" \
-  "DEBUG=$DEBUG VITE_BACKEND_PORT=$VITE_BACKEND_PORT VITE_HOST=$VITE_HOST mise run client"
+  "DEBUG=$DEBUG VITE_BACKEND_PORT=$VITE_BACKEND_PORT VITE_HOST=\\"$VITE_HOST\\" mise run client"
 """
 
 [tasks.server]
@@ -209,10 +226,10 @@ echo "[test] Isolated environment: HOME=$HOME FULCRUM_DIR=$FULCRUM_DIR" >&2
 # Run tests serially to avoid env var conflicts between test files
 echo "Running tests..." >&2
 if [ "$usage_verbose" = "true" ]; then
-  bun test --max-concurrency=1
+  bun test
 else
   # Filter to show only failures and summary (exclude diff lines starting with +/-)
-  bun test --max-concurrency=1 2>&1 | grep -v '^[+-]' | grep -E '(^bun test|[(]fail[)]|✗|expect[(]received[)]|^ *[0-9]+ (pass|fail|skip)|^Ran [0-9]+ tests)' || [ ${PIPESTATUS[0]} -eq 0 ]
+  bun test 2>&1 | grep -v '^[+-]' | grep -E '(^bun test|[(]fail[)]|✗|expect[(]received[)]|^ *[0-9]+ (pass|fail|skip)|^Ran [0-9]+ tests)' || [ ${PIPESTATUS[0]} -eq 0 ]
 fi
 """
 

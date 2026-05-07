@@ -52,6 +52,30 @@ export function usePort() {
   }
 }
 
+// Tailscale hostname for this Fulcrum host. Populated by `fulcrum expose`.
+// When non-null and the UI is served from a non-localhost host, the task
+// browser preview rewrites `localhost:<port>` URLs to this hostname.
+export function useTailscaleHostname() {
+  const query = useConfig(CONFIG_KEYS.TAILSCALE_HOSTNAME)
+
+  return {
+    ...query,
+    data: (query.data?.value as string | null) ?? null,
+    isDefault: query.data?.isDefault ?? true,
+  }
+}
+
+// Public domain serving this Fulcrum instance through Cloudflare Tunnel.
+export function usePublicDomain() {
+  const query = useConfig(CONFIG_KEYS.PUBLIC_DOMAIN)
+
+  return {
+    ...query,
+    data: (query.data?.value as string | null) ?? null,
+    isDefault: query.data?.isDefault ?? true,
+  }
+}
+
 // Read-only: derived from FULCRUM_DIR on server
 export function useWorktreeBasePath() {
   const query = useConfig(CONFIG_KEYS.WORKTREE_BASE_PATH)
@@ -468,6 +492,7 @@ export interface NotificationSettings {
   whatsapp: { enabled: boolean }
   telegram: { enabled: boolean }
   gmail: { enabled: boolean; googleAccountId?: string }
+  mattermost: { enabled: boolean }
   _updatedAt?: number // Timestamp for optimistic locking
 }
 
@@ -530,8 +555,24 @@ export function useUpdateNotificationSettings() {
 
 export function useTestNotificationChannel() {
   return useMutation({
-    mutationFn: (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail') =>
+    mutationFn: (channel: 'sound' | 'slack' | 'discord' | 'pushover' | 'whatsapp' | 'telegram' | 'gmail' | 'mattermost') =>
       fetchJSON<NotificationTestResult>(`${API_BASE}/api/config/notifications/test/${channel}`, {
+        method: 'POST',
+      }),
+  })
+}
+
+export interface MattermostConnectionInfo {
+  success: boolean
+  bot?: { id: string; username: string; displayName: string }
+  team?: { id: string; name: string; displayName: string } | null
+  error?: string
+}
+
+export function useTestMattermostConnection() {
+  return useMutation({
+    mutationFn: () =>
+      fetchJSON<MattermostConnectionInfo>(`${API_BASE}/api/config/mattermost/test`, {
         method: 'POST',
       }),
   })

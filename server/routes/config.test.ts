@@ -519,6 +519,39 @@ describe('Config Routes', () => {
     })
   })
 
+  describe('POST /api/config/mattermost/test', () => {
+    test('validates bot and team metadata', async () => {
+      const { post } = createTestApp()
+      const originalFetch = global.fetch
+      setFnoxValue('channels.mattermost.serverUrl', 'https://mattermost.example.test')
+      setFnoxValue('channels.mattermost.botToken', 'bot-token')
+      setFnoxValue('channels.mattermost.teamId', 'team-1')
+
+      global.fetch = async (url: string | URL | Request) => {
+        const urlString = typeof url === 'string' ? url : url.toString()
+        if (urlString.endsWith('/api/v4/users/me')) {
+          return Response.json({ id: 'bot-1', username: 'fulcrum', nickname: 'Fulcrum Bot' })
+        }
+        if (urlString.endsWith('/api/v4/teams/team-1')) {
+          return Response.json({ id: 'team-1', name: 'engineering', display_name: 'Engineering' })
+        }
+        return new Response('not found', { status: 404 })
+      }
+
+      try {
+        const res = await post('/api/config/mattermost/test')
+        const body = await res.json()
+
+        expect(res.status).toBe(200)
+        expect(body.success).toBe(true)
+        expect(body.bot.displayName).toBe('Fulcrum Bot')
+        expect(body.team.displayName).toBe('Engineering')
+      } finally {
+        global.fetch = originalFetch
+      }
+    })
+  })
+
   describe('GET /api/config/z-ai', () => {
     test('returns z.ai settings', async () => {
       const { get } = createTestApp()
