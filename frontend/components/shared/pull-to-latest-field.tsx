@@ -37,41 +37,42 @@ export function PullToLatestField({
 }: PullToLatestFieldProps) {
   const { t } = useTranslation('tasks')
 
+  const noRemoteBranches = remoteBranches.length === 0
   const blockedByUnpushed = unpushedCommits > 0
-  const toggleDisabled = disabled || blockedByUnpushed
+  const blockedMessage = noRemoteBranches
+    ? t('createModal.pullToLatestNoRemoteBranches')
+    : blockedByUnpushed
+      ? t('createModal.pullToLatestBlockedByUnpushed', { count: unpushedCommits, branch: baseBranch })
+      : undefined
+  const toggleDisabled = disabled || noRemoteBranches || blockedByUnpushed
 
-  // Avoid the "ON but rejected" third state — if the user had pullToLatest=true
-  // and a switch in the source repo introduces unpushed commits, force it back
-  // to OFF so submit reads a coherent value.
   useEffect(() => {
-    if (blockedByUnpushed && pullToLatest) {
+    if ((noRemoteBranches || blockedByUnpushed) && pullToLatest) {
       onPullToLatestChange(false)
     }
-  }, [blockedByUnpushed, pullToLatest, onPullToLatestChange])
-
-  if (remoteBranches.length === 0) return null
+  }, [noRemoteBranches, blockedByUnpushed, pullToLatest, onPullToLatestChange])
 
   return (
     <Field data-disabled={toggleDisabled || undefined}>
       <div
         className="flex items-center justify-between"
-        title={blockedByUnpushed ? t('createModal.pullToLatestBlockedByUnpushed', { count: unpushedCommits, branch: baseBranch }) : undefined}
+        title={blockedMessage}
       >
         <FieldLabel>{t('createModal.pullToLatest')}</FieldLabel>
         <Switch
-          checked={pullToLatest && !blockedByUnpushed}
+          checked={pullToLatest && !noRemoteBranches && !blockedByUnpushed}
           onCheckedChange={onPullToLatestChange}
           disabled={toggleDisabled}
           aria-disabled={toggleDisabled}
           size="sm"
         />
       </div>
-      {blockedByUnpushed && (
+      {blockedMessage && (
         <p className="text-sm text-destructive">
-          {t('createModal.pullToLatestBlockedByUnpushed', { count: unpushedCommits, branch: baseBranch })}
+          {blockedMessage}
         </p>
       )}
-      {pullToLatest && !blockedByUnpushed && (
+      {pullToLatest && !noRemoteBranches && !blockedByUnpushed && (
         <Select
           value={pullRemoteBranch}
           onValueChange={(v) => onPullRemoteBranchChange(v ?? '')}

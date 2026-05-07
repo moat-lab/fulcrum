@@ -124,6 +124,7 @@
     "pullToLatest": "Pull to Latest",
     "pullToLatestHint": "Pull latest changes from remote after creating worktree.",
     "pullToLatestBlockedByUnpushed": "{{count}} unpushed commit(s) on \"{{branch}}\" — push first to use Pull to Latest",
+    "pullToLatestNoRemoteBranches": "No remote branches available. Push to a remote first to enable this feature.",
     "uncommittedFilesNotice": "{{count}} uncommitted file(s) in source repo (will not be in worktree)",
     "selectPullBranch": "Select remote branch",
     "startImmediately": "Start work immediately",

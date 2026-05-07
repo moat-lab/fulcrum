@@ -124,6 +124,7 @@
     "pullToLatest": "拉取最新代码",
     "pullToLatestHint": "创建工作树后从远程拉取最新更改。",
     "pullToLatestBlockedByUnpushed": "\"{{branch}}\" 有 {{count}} 个未推送的提交 - 请先推送后再使用拉取最新代码",
+    "pullToLatestNoRemoteBranches": "没有可用的远程分支。请先推送到远程仓库再启用此功能。",
     "uncommittedFilesNotice": "源仓库有 {{count}} 个未提交的文件（不会包含在工作树中）",
     "selectPullBranch": "选择远程分支",
     "startImmediately": "立即开始工作",
