@@ -17,6 +17,7 @@ import { getTerminalTheme } from './terminal-theme'
 import { buildAgentCommand, matchesAgentNotFound } from '@/lib/agent-commands'
 import { AGENT_DISPLAY_NAMES, AGENT_INSTALL_COMMANDS, AGENT_DOC_URLS, type AgentType } from '@/types'
 import { useOpencodeDefaultAgent, useOpencodePlanAgent } from '@/hooks/use-config'
+import { waitForShellPrompt } from './shell-readiness'
 import type { AnyTerminal } from './terminal-types'
 
 interface TaskTerminalProps {
@@ -415,16 +416,6 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
         isScratch: currentIsScratch,
       } = pendingStartup
 
-      // 1. Run startup script first (e.g., mise trust, mkdir .fulcrum, export FULCRUM_DIR)
-      // Use source with heredoc so exports persist in the current shell
-      if (currentStartupScript) {
-        setTimeout(() => {
-          const delimiter = 'FULCRUM_STARTUP_' + Date.now()
-          const wrappedScript = `source /dev/stdin <<'${delimiter}'\n${currentStartupScript}\n${delimiter}`
-          writeToTerminalRef.current(actualTerminalId, wrappedScript + '\r')
-        }, 100)
-      }
-
       // 2. Build the agent command using the command builder abstraction
       // Fetch upstream drafts (if any) and build the prompt with draft context
       const buildAndSendAgentCommand = async () => {
@@ -503,14 +494,26 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
         }
       }
 
-      // Wait longer for startup script to complete before sending agent command
-      // 5 seconds should be enough for most scripts (mise trust, mkdir, export, etc.)
-      setTimeout(() => {
-        buildAndSendAgentCommand().catch((err) => {
-          console.error('Failed to start agent:', err)
-          setIsStartingAgent(false)
-        })
-      }, currentStartupScript ? 5000 : 100)
+      const runStartupAndAgentCommand = async () => {
+        const term = termRef.current
+        if (term) {
+          await waitForShellPrompt(term)
+        }
+
+        if (currentStartupScript) {
+          const delimiter = 'FULCRUM_STARTUP_' + Date.now()
+          const wrappedScript = `source /dev/stdin <<'${delimiter}'\n${currentStartupScript}\n${delimiter}`
+          writeToTerminalRef.current(actualTerminalId, wrappedScript + '\r')
+          await new Promise((resolve) => setTimeout(resolve, 5000))
+        }
+
+        await buildAndSendAgentCommand()
+      }
+
+      runStartupAndAgentCommand().catch((err) => {
+        console.error('Failed to start agent:', err)
+        setIsStartingAgent(false)
+      })
     }
 
     const cleanup = attachXtermRef.current(terminalId, termRef.current, { onAttached })
