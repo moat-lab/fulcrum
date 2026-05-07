@@ -358,6 +358,7 @@ export interface Host {
   username: string
   authMethod: HostAuthMethod
   privateKeyPath: string | null
+  password: string | null
   defaultDirectory: string | null
   fulcrumUrl: string | null
   hostFingerprint: string | null

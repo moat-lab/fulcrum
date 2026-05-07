@@ -14,6 +14,7 @@ export const tasks = sqliteTable('tasks', {
   worktreePath: text('worktree_path'),
   viewState: text('view_state'), // JSON: { activeTab, browserUrl, diffOptions }
   prUrl: text('pr_url'), // GitHub PR URL for auto-completion tracking
+  prAutoClosedAt: text('pr_auto_closed_at'), // ISO timestamp; once set, PR monitor never auto-closes this task again
   startupScript: text('startup_script'), // Command to run after worktree creation
   agent: text('agent').notNull().default('claude'), // AI agent: 'claude' | 'opencode'
   aiMode: text('ai_mode'), // 'default' | 'plan' | null - AI mode for agent startup
@@ -590,6 +591,7 @@ export const hosts = sqliteTable('hosts', {
   username: text('username').notNull(),
   authMethod: text('auth_method').notNull().default('key'), // 'key' | 'password'
   privateKeyPath: text('private_key_path'), // Path to SSH private key file
+  password: text('password'), // SSH password for password auth
   defaultDirectory: text('default_directory'), // Default remote cwd for tasks
   fulcrumUrl: text('fulcrum_url'), // Override FULCRUM_URL for this host (e.g., http://192.168.1.100:7777)
   hostFingerprint: text('host_fingerprint'), // SSH host key fingerprint (TOFU)

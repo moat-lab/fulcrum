@@ -76,6 +76,7 @@ export class PTYManager {
           username: host.username,
           authMethod: host.authMethod as 'key' | 'password',
           privateKeyPath: host.privateKeyPath ?? undefined,
+          password: host.password ?? undefined,
           hostFingerprint: host.hostFingerprint ?? undefined,
         }
         const fulcrumUrl = host.fulcrumUrl
@@ -235,6 +236,7 @@ export class PTYManager {
         username: host.username,
         authMethod: host.authMethod as 'key' | 'password',
         privateKeyPath: host.privateKeyPath ?? undefined,
+        password: host.password ?? undefined,
         hostFingerprint: host.hostFingerprint ?? undefined,
       }
       const fulcrumUrl = host.fulcrumUrl
@@ -419,6 +421,12 @@ export class PTYManager {
     }
 
     return session.getBuffer()
+  }
+
+  async flushPending(terminalId: string): Promise<void> {
+    const session = this.sessions.get(terminalId)
+    if (!session) return
+    await session.flushPending()
   }
 
   clearBuffer(terminalId: string): boolean {

@@ -277,13 +277,14 @@ function collectMetrics(): void {
   })
 }
 
-function hostToSshConfig(host: typeof hosts.$inferSelect): SSHConnectionConfig {
+export function hostToSshConfig(host: typeof hosts.$inferSelect): SSHConnectionConfig {
   return {
     host: host.hostname,
     port: host.port,
     username: host.username,
     authMethod: host.authMethod as 'key' | 'password',
     privateKeyPath: host.privateKeyPath ?? undefined,
+    password: host.password ?? undefined,
     hostFingerprint: host.hostFingerprint ?? undefined,
   }
 }

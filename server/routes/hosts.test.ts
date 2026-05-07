@@ -138,6 +138,7 @@ describe('Hosts API', () => {
         port: 2222,
         username: 'deploy',
         authMethod: 'password',
+        password: 'secret-password',
         defaultDirectory: '/opt/work',
         fulcrumUrl: 'http://192.168.1.1:7777',
       })
@@ -145,8 +146,11 @@ describe('Hosts API', () => {
       const body = await res.json()
       expect(body.port).toBe(2222)
       expect(body.authMethod).toBe('password')
+      expect(body.password).toBe('••••••••')
       expect(body.defaultDirectory).toBe('/opt/work')
       expect(body.fulcrumUrl).toBe('http://192.168.1.1:7777')
+      const saved = db.select().from(hosts).where(eq(hosts.id, body.id)).get()
+      expect(saved!.password).toBe('secret-password')
     })
 
     test('returns 400 when required fields missing', async () => {

@@ -6,7 +6,7 @@ import { detectLinkType } from '../lib/link-utils'
 import { execSync } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
-import { getFulcrumDir, getScratchBasePath } from '../lib/settings'
+import { getFulcrumDir, getScratchBasePath, getWorktreeBasePath } from '../lib/settings'
 import {
   getPTYManager,
   destroyTerminalAndBroadcast,
@@ -54,17 +54,14 @@ function destroyTerminalsForWorktree(worktreePath: string): void {
   }
 }
 
-// Allowed MIME types for attachments
-const ALLOWED_MIME_TYPES = [
+// MIME types we'll render inline via ?inline=1. Everything else is forced to
+// download regardless of the query param, so an uploaded HTML/SVG can't execute
+// in the app's origin.
+const INLINE_SAFE_MIME_TYPES = new Set([
   'application/pdf',
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
   'text/plain', 'text/markdown',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'text/csv',
-]
+])
 
 // Max file size: 50MB
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -92,6 +89,331 @@ function deleteTaskAttachments(taskId: string): void {
 }
 
 const app = new Hono()
+
+function generateWorktreeInfo(repoPath: string, taskTitle: string, prefix?: string | null): { worktreePath: string; branch: string } {
+  const worktreesDir = getWorktreeBasePath()
+  const slugifiedTitle = taskTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 50)
+  const suffix = Math.random().toString(36).slice(2, 6)
+  const cleanPrefix = prefix?.replace(/\/+$/, '')
+  const branch = cleanPrefix ? `${cleanPrefix}/${slugifiedTitle}-${suffix}` : `${slugifiedTitle}-${suffix}`
+  const worktreeName = branch
+  const repoName = path.basename(repoPath)
+  const worktreePath = path.join(worktreesDir, repoName, worktreeName)
+  return { worktreePath, branch }
+}
+
+export async function createTaskRecord(body: Omit<NewTask, 'id' | 'createdAt' | 'updatedAt'> & {
+  copyFiles?: string
+  startupScript?: string
+  agent?: string
+  agentOptions?: Record<string, string> | null
+  opencodeModel?: string | null
+  tags?: string[]
+  blockedByTaskIds?: string[]
+  derivedFromTaskId?: string | null
+  type?: 'worktree' | 'scratch' | 'draft' | null
+  prefix?: string | null
+  hostId?: string | null
+  pullToLatest?: boolean
+  pullRemoteBranch?: string | null
+}): { taskId: string; warnings: string[]; derivation: { parentBlocked: boolean; propagatedTo: string[]; guidance?: string } } | { error: string; status?: number } {
+  const existingTasks = db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.status, body.status || 'IN_PROGRESS'))
+    .all()
+  const maxPosition = existingTasks.reduce((max, t) => Math.max(max, t.position), -1)
+
+  const now = new Date().toISOString()
+  const startedAt = body.status === 'TO_DO' ? null : (body.startedAt || now)
+  const worktreeInfo = body.repoPath && body.worktreePath === undefined && body.type === 'worktree'
+    ? generateWorktreeInfo(body.repoPath, body.title, body.prefix)
+    : null
+
+  const newTask: NewTask = {
+    id: crypto.randomUUID(),
+    title: body.title,
+    description: body.description || null,
+    status: body.status || 'IN_PROGRESS',
+    position: maxPosition + 1,
+    repoPath: body.repoPath || null,
+    repoName: body.repoName || null,
+    baseBranch: body.baseBranch || null,
+    branch: body.branch || worktreeInfo?.branch || null,
+    prefix: body.prefix || null,
+    worktreePath: body.worktreePath || worktreeInfo?.worktreePath || null,
+    startupScript: body.startupScript || null,
+    agent: body.agent || 'claude',
+    aiMode: body.aiMode || null,
+    agentOptions: body.agentOptions ? JSON.stringify(body.agentOptions) : null,
+    opencodeModel: body.opencodeModel || null,
+    type: body.type || null,
+    derivedFromTaskId: body.derivedFromTaskId || null,
+    projectId: body.projectId || null,
+    repositoryId: body.repositoryId || null,
+    startedAt,
+    dueDate: body.dueDate || null,
+    timeEstimate: body.timeEstimate != null ? (Number.isInteger(body.timeEstimate) && body.timeEstimate >= 1 ? body.timeEstimate : null) : null,
+    priority: body.priority && ['high', 'medium', 'low'].includes(body.priority) ? body.priority : 'medium',
+    recurrenceRule: body.recurrenceRule || null,
+    recurrenceEndDate: body.recurrenceEndDate || null,
+    recurrenceSourceTaskId: null,
+    hostId: body.hostId || null,
+    pinned: body.pinned ?? false,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  const warnings: string[] = []
+
+  if (body.derivedFromTaskId) {
+    const parentTask = db.select().from(tasks).where(eq(tasks.id, body.derivedFromTaskId)).get()
+    if (!parentTask) {
+      return { error: 'Parent task not found for derivation', status: 400 }
+    }
+    if (parentTask.status === 'DONE') {
+      return { error: 'Cannot derive from a DONE task', status: 400 }
+    }
+    if (parentTask.status === 'CANCELED') {
+      return { error: 'Cannot derive from a CANCELED task', status: 400 }
+    }
+  }
+
+  if (newTask.branch && newTask.worktreePath && newTask.repoPath && newTask.baseBranch) {
+    if (!isValidBranchName(newTask.branch)) {
+      return { error: 'Invalid branch name: only alphanumeric, /, _, -, . characters allowed', status: 400 }
+    }
+
+    if (body.pullToLatest && !body.hostId) {
+      const repoState = checkRepoStateForWorktree(newTask.repoPath, newTask.baseBranch, body.pullRemoteBranch || undefined)
+      warnings.push(...repoState.warnings)
+      if (repoState.skipPull) {
+        return { error: repoState.warnings.find(w => w.includes('Pull skipped')) || 'Cannot pull: base branch has unpushed commits', status: 400 }
+      }
+    }
+
+    if (body.hostId) {
+      const host = db.select().from(hosts).where(eq(hosts.id, body.hostId)).get()
+      if (!host) {
+        return { error: `Host not found: ${body.hostId}`, status: 400 }
+      }
+      const sshConfig = {
+        host: host.hostname,
+        port: host.port,
+        username: host.username,
+        authMethod: host.authMethod as 'key' | 'password',
+        privateKeyPath: host.privateKeyPath ?? undefined,
+        password: host.password ?? undefined,
+        hostFingerprint: host.hostFingerprint ?? undefined,
+      }
+      const result = await createRemoteGitWorktree(sshConfig, newTask.repoPath, newTask.worktreePath, newTask.branch, newTask.baseBranch)
+      if (!result.success) {
+        return { error: `Failed to create remote worktree: ${result.error}`, status: 500 }
+      }
+      if (body.copyFiles) log.api.info('copyFiles skipped for remote task (not yet supported)', { taskId: newTask.id })
+      if (body.pullToLatest) log.api.info('pullToLatest skipped for remote task (not yet supported)', { taskId: newTask.id })
+    } else {
+      const result = createGitWorktree(newTask.repoPath, newTask.worktreePath, newTask.branch, newTask.baseBranch)
+      if (!result.success) {
+        return { error: `Failed to create worktree: ${result.error}`, status: 500 }
+      }
+      if (body.pullToLatest) {
+        const pullResult = pullLatestInWorktree(newTask.worktreePath, body.pullRemoteBranch || undefined)
+        if (!pullResult.success) {
+          log.api.error('Failed to pull latest in worktree', { error: pullResult.error })
+          warnings.push(`Pull failed: ${pullResult.error}`)
+        }
+      }
+      if (body.copyFiles) {
+        try {
+          copyFilesToWorktree(newTask.repoPath, newTask.worktreePath, body.copyFiles)
+        } catch (err) {
+          log.api.error('Failed to copy files', { error: String(err) })
+        }
+      }
+    }
+  }
+
+  if (body.type === 'scratch' && newTask.worktreePath) {
+    try {
+      fs.mkdirSync(newTask.worktreePath, { recursive: true })
+    } catch (err) {
+      return { error: `Failed to create scratch directory: ${err instanceof Error ? err.message : String(err)}`, status: 500 }
+    }
+  }
+
+  const derivationResult: { parentBlocked: boolean; propagatedTo: string[]; guidance?: string } = { parentBlocked: false, propagatedTo: [] }
+  const affectedTaskIds: string[] = []
+
+  try {
+    db.transaction(() => {
+      db.insert(tasks).values(newTask).run()
+
+      if (body.tags && body.tags.length > 0) {
+        for (const tagName of body.tags) {
+          const name = tagName.trim().toLowerCase()
+          if (!name) continue
+
+          let tag = db.select().from(tags).where(eq(tags.name, name)).get()
+          if (!tag) {
+            const tagId = crypto.randomUUID()
+            db.insert(tags)
+              .values({ id: tagId, name, color: null, createdAt: now })
+              .run()
+            tag = db.select().from(tags).where(eq(tags.id, tagId)).get()
+          }
+
+          if (tag) {
+            const existing = db
+              .select()
+              .from(taskTags)
+              .where(and(eq(taskTags.taskId, newTask.id), eq(taskTags.tagId, tag.id)))
+              .get()
+            if (!existing) {
+              db.insert(taskTags)
+                .values({ id: crypto.randomUUID(), taskId: newTask.id, tagId: tag.id, createdAt: now })
+                .run()
+            }
+          }
+        }
+      }
+
+      if (body.blockedByTaskIds && body.blockedByTaskIds.length > 0) {
+        const uniqueIds = [...new Set(body.blockedByTaskIds)].filter((id) => id !== newTask.id)
+        for (const dependsOnTaskId of uniqueIds) {
+          const targetTask = db.select().from(tasks).where(eq(tasks.id, dependsOnTaskId)).get()
+          if (!targetTask) continue
+
+          db.insert(taskRelationships)
+            .values({
+              id: crypto.randomUUID(),
+              taskId: newTask.id,
+              relatedTaskId: dependsOnTaskId,
+              type: 'depends_on',
+              createdAt: now,
+            })
+            .run()
+        }
+      }
+
+      if (body.derivedFromTaskId) {
+        db.insert(taskRelationships)
+          .values({
+            id: crypto.randomUUID(),
+            taskId: body.derivedFromTaskId,
+            relatedTaskId: newTask.id,
+            type: 'depends_on',
+            source: 'derivation',
+            createdAt: now,
+          })
+          .run()
+        derivationResult.parentBlocked = true
+        derivationResult.guidance = `Your current task is now blocked by the derived task you just created. Stop working on the current task until the derived task "${body.title}" is completed.`
+        affectedTaskIds.push(body.derivedFromTaskId)
+
+        const dependentsOfParent = db
+          .select()
+          .from(taskRelationships)
+          .where(
+            and(
+              eq(taskRelationships.relatedTaskId, body.derivedFromTaskId),
+              eq(taskRelationships.type, 'depends_on')
+            )
+          )
+          .all()
+          .filter((dep) => dep.taskId !== newTask.id)
+
+        const existingDeps = dependentsOfParent.length > 0
+          ? db.select()
+              .from(taskRelationships)
+              .where(
+                and(
+                  inArray(taskRelationships.taskId, dependentsOfParent.map((d) => d.taskId)),
+                  eq(taskRelationships.relatedTaskId, newTask.id),
+                  eq(taskRelationships.type, 'depends_on')
+                )
+              )
+              .all()
+          : []
+        const existingDepTaskIds = new Set(existingDeps.map((d) => d.taskId))
+
+        for (const dep of dependentsOfParent) {
+          if (existingDepTaskIds.has(dep.taskId)) continue
+
+          db.insert(taskRelationships)
+            .values({
+              id: crypto.randomUUID(),
+              taskId: dep.taskId,
+              relatedTaskId: newTask.id,
+              type: 'depends_on',
+              source: 'derivation',
+              createdAt: now,
+            })
+            .run()
+          affectedTaskIds.push(dep.taskId)
+          derivationResult.propagatedTo.push(dep.taskId)
+        }
+      }
+
+      const allRels = db.select().from(taskRelationships).where(eq(taskRelationships.type, 'depends_on')).all()
+      const adj = new Map<string, string[]>()
+      for (const rel of allRels) {
+        if (!adj.has(rel.taskId)) adj.set(rel.taskId, [])
+        adj.get(rel.taskId)!.push(rel.relatedTaskId)
+      }
+      const visited = new Set<string>()
+      const stack = [newTask.id]
+      while (stack.length > 0) {
+        const current = stack.pop()!
+        if (current === newTask.id && visited.size > 0) {
+          throw new Error('Circular dependency detected')
+        }
+        if (visited.has(current)) continue
+        visited.add(current)
+        for (const neighbor of adj.get(current) ?? []) {
+          stack.push(neighbor)
+        }
+      }
+    })
+  } catch (txErr) {
+    if (newTask.worktreePath) {
+      try {
+        if (newTask.repoPath) {
+          deleteGitWorktree(newTask.repoPath, newTask.worktreePath)
+        } else if (newTask.type === 'scratch') {
+          fs.rmSync(newTask.worktreePath, { recursive: true, force: true })
+        }
+      } catch { /* best-effort cleanup */ }
+    }
+    return { error: txErr instanceof Error ? txErr.message : 'Failed to create task', status: 400 }
+  }
+
+  for (const taskId of affectedTaskIds) {
+    broadcast({ type: 'task:updated', payload: { taskId } })
+  }
+  if (body.derivedFromTaskId) {
+    broadcast({ type: 'task:updated', payload: { taskId: newTask.id } })
+  }
+
+  if (body.repoPath) {
+    db.update(repositories)
+      .set({ lastUsedAt: now, lastBaseBranch: body.baseBranch || null, updatedAt: now })
+      .where(eq(repositories.path, body.repoPath))
+      .run()
+  } else if (body.repositoryId && body.baseBranch) {
+    db.update(repositories)
+      .set({ lastUsedAt: now, lastBaseBranch: body.baseBranch, updatedAt: now })
+      .where(eq(repositories.id, body.repositoryId))
+      .run()
+  }
+
+  return { taskId: newTask.id, warnings, derivation: derivationResult }
+}
+
 
 // Helper to get links for a task
 function getTaskLinks(taskId: string): TaskLink[] {
@@ -192,346 +514,19 @@ app.post('/', async (c) => {
       }
     >()
 
-    // Get max position for the status
-    const existingTasks = db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.status, body.status || 'IN_PROGRESS'))
-      .all()
-    const maxPosition = existingTasks.reduce((max, t) => Math.max(max, t.position), -1)
-
-    const now = new Date().toISOString()
-
-    // Set startedAt based on status (null for TO_DO, now for others)
-    const startedAt = body.status === 'TO_DO' ? null : (body.startedAt || now)
-
-    const newTask: NewTask = {
-      id: crypto.randomUUID(),
-      title: body.title,
-      description: body.description || null,
-      status: body.status || 'IN_PROGRESS',
-      position: maxPosition + 1,
-      repoPath: body.repoPath || null,
-      repoName: body.repoName || null,
-      baseBranch: body.baseBranch || null,
-      branch: body.branch || null,
-      prefix: body.prefix || null,
-      worktreePath: body.worktreePath || null,
-      startupScript: body.startupScript || null,
-      agent: body.agent || 'claude',
-      aiMode: body.aiMode || null,
-      agentOptions: body.agentOptions ? JSON.stringify(body.agentOptions) : null,
-      opencodeModel: body.opencodeModel || null,
-      type: body.type || null,
-      derivedFromTaskId: body.derivedFromTaskId || null,
-      // New generalized task fields
-      projectId: body.projectId || null,
-      repositoryId: body.repositoryId || null,
-      startedAt,
-      dueDate: body.dueDate || null,
-      timeEstimate: body.timeEstimate != null ? (Number.isInteger(body.timeEstimate) && body.timeEstimate >= 1 ? body.timeEstimate : null) : null,
-      priority: body.priority && ['high', 'medium', 'low'].includes(body.priority) ? body.priority : 'medium',
-      recurrenceRule: body.recurrenceRule || null,
-      recurrenceEndDate: body.recurrenceEndDate || null,
-      recurrenceSourceTaskId: null,
-      hostId: body.hostId || null,
-      pinned: body.pinned ?? false,
-      createdAt: now,
-      updatedAt: now,
+    const result = await createTaskRecord(body)
+    if ('error' in result) {
+      return c.json({ error: result.error }, result.status || 400)
     }
 
-    // Create git worktree if branch and worktreePath are provided (for immediate IN_PROGRESS tasks)
-    const warnings: string[] = []
-    if (body.branch && body.worktreePath && body.repoPath && body.baseBranch) {
-      // Validate branch name to prevent shell injection
-      if (!isValidBranchName(body.branch)) {
-        return c.json({ error: 'Invalid branch name: only alphanumeric, /, _, -, . characters allowed' }, 400)
-      }
-
-      // Check source repo state before worktree creation (local only, skip for remote hosts)
-      if (body.pullToLatest && !body.hostId) {
-        const repoState = checkRepoStateForWorktree(body.repoPath, body.baseBranch, body.pullRemoteBranch || undefined)
-        warnings.push(...repoState.warnings)
-        if (repoState.skipPull) {
-          return c.json({ error: repoState.warnings.find(w => w.includes('Pull skipped')) || 'Cannot pull: base branch has unpushed commits' }, 400)
-        }
-      }
-
-      // Remote worktree creation via SSH
-      if (body.hostId) {
-        const host = db.select().from(hosts).where(eq(hosts.id, body.hostId)).get()
-        if (!host) {
-          return c.json({ error: `Host not found: ${body.hostId}` }, 400)
-        }
-        const sshConfig = {
-          host: host.hostname,
-          port: host.port,
-          username: host.username,
-          authMethod: host.authMethod as 'key' | 'password',
-          privateKeyPath: host.privateKeyPath ?? undefined,
-          hostFingerprint: host.hostFingerprint ?? undefined,
-        }
-        const result = await createRemoteGitWorktree(sshConfig, body.repoPath, body.worktreePath, body.branch, body.baseBranch)
-        if (!result.success) {
-          return c.json({ error: `Failed to create remote worktree: ${result.error}` }, 500)
-        }
-
-        // copyFiles and pullToLatest not yet supported for remote tasks
-        if (body.copyFiles) {
-          log.api.info('copyFiles skipped for remote task (not yet supported)', { taskId: newTask.id })
-        }
-        if (body.pullToLatest) {
-          log.api.info('pullToLatest skipped for remote task (not yet supported)', { taskId: newTask.id })
-        }
-      } else {
-        // Local worktree creation (existing behavior)
-        const result = createGitWorktree(body.repoPath, body.worktreePath, body.branch, body.baseBranch)
-        if (!result.success) {
-          return c.json({ error: `Failed to create worktree: ${result.error}` }, 500)
-        }
-
-        // Pull latest from remote if requested (local only)
-        if (body.pullToLatest) {
-          const pullResult = pullLatestInWorktree(body.worktreePath, body.pullRemoteBranch || undefined)
-          if (!pullResult.success) {
-            log.api.error('Failed to pull latest in worktree', { error: pullResult.error })
-            warnings.push(`Pull failed: ${pullResult.error}`)
-          }
-        }
-
-        // Copy files if patterns provided (local only)
-        if (body.copyFiles) {
-          try {
-            copyFilesToWorktree(body.repoPath, body.worktreePath, body.copyFiles)
-          } catch (err) {
-            log.api.error('Failed to copy files', { error: String(err) })
-            // Non-fatal: continue with task creation
-          }
-        }
-      }
-    }
-
-    // Create scratch directory if type is scratch and worktreePath is provided
-    if (body.type === 'scratch' && body.worktreePath) {
-      try {
-        fs.mkdirSync(body.worktreePath, { recursive: true })
-      } catch (err) {
-        return c.json({ error: `Failed to create scratch directory: ${err instanceof Error ? err.message : String(err)}` }, 500)
-      }
-    }
-
-    // Validate derivedFromTaskId before any DB/filesystem writes
-    if (body.derivedFromTaskId) {
-      const parentTask = db.select().from(tasks).where(eq(tasks.id, body.derivedFromTaskId)).get()
-      if (!parentTask) {
-        return c.json({ error: 'Parent task not found for derivation' }, 400)
-      }
-      if (parentTask.status === 'DONE' || parentTask.status === 'CANCELED') {
-        return c.json({ error: `Cannot derive from a ${parentTask.status} task` }, 400)
-      }
-      // Cycle defense: walk parent's chain. The new task's id is fresh so it
-      // cannot already appear, but if a future migration ever lets PATCH set
-      // derivedFromTaskId we'd want this here regardless. Bound the walk by
-      // visited set to avoid loops in pre-existing data.
-      const visited = new Set<string>([newTask.id])
-      let cursor: string | null = body.derivedFromTaskId
-      while (cursor) {
-        if (visited.has(cursor)) {
-          return c.json({ error: 'Derivation would create a cycle' }, 400)
-        }
-        visited.add(cursor)
-        const ancestor: { derivedFromTaskId: string | null } | undefined = db
-          .select({ derivedFromTaskId: tasks.derivedFromTaskId })
-          .from(tasks)
-          .where(eq(tasks.id, cursor))
-          .get()
-        cursor = ancestor?.derivedFromTaskId ?? null
-      }
-    }
-
-    // All DB writes in a single transaction: task insert + tags + dependencies + derivation
-    const derivationResult: { parentBlocked: boolean; propagatedTo: string[]; guidance?: string } = { parentBlocked: false, propagatedTo: [] }
-    const affectedTaskIds: string[] = []
-
-    try {
-      db.transaction(() => {
-        db.insert(tasks).values(newTask).run()
-
-        // Add tags to task_tags join table if provided
-        if (body.tags && body.tags.length > 0) {
-          for (const tagName of body.tags) {
-            const name = tagName.trim().toLowerCase()
-            if (!name) continue
-
-            let tag = db.select().from(tags).where(eq(tags.name, name)).get()
-            if (!tag) {
-              const tagId = crypto.randomUUID()
-              db.insert(tags)
-                .values({ id: tagId, name, color: null, createdAt: now })
-                .run()
-              tag = db.select().from(tags).where(eq(tags.id, tagId)).get()
-            }
-
-            if (tag) {
-              const existing = db
-                .select()
-                .from(taskTags)
-                .where(and(eq(taskTags.taskId, newTask.id), eq(taskTags.tagId, tag.id)))
-                .get()
-              if (!existing) {
-                db.insert(taskTags)
-                  .values({ id: crypto.randomUUID(), taskId: newTask.id, tagId: tag.id, createdAt: now })
-                  .run()
-              }
-            }
-          }
-        }
-
-        // Create dependencies if blockedByTaskIds provided
-        if (body.blockedByTaskIds && body.blockedByTaskIds.length > 0) {
-          const uniqueIds = [...new Set(body.blockedByTaskIds)].filter((id) => id !== newTask.id)
-          for (const dependsOnTaskId of uniqueIds) {
-            const targetTask = db.select().from(tasks).where(eq(tasks.id, dependsOnTaskId)).get()
-            if (!targetTask) continue
-
-            db.insert(taskRelationships)
-              .values({
-                id: crypto.randomUUID(),
-                taskId: newTask.id,
-                relatedTaskId: dependsOnTaskId,
-                type: 'depends_on',
-                createdAt: now,
-              })
-              .run()
-          }
-        }
-
-        // Handle derived task: parent depends_on new task + propagate
-        if (body.derivedFromTaskId) {
-          db.insert(taskRelationships)
-            .values({
-              id: crypto.randomUUID(),
-              taskId: body.derivedFromTaskId,
-              relatedTaskId: newTask.id,
-              type: 'depends_on',
-              source: 'derivation',
-              createdAt: now,
-            })
-            .run()
-          derivationResult.parentBlocked = true
-          derivationResult.guidance = `Your current task is now blocked by the derived task you just created. Stop working on the current task until the derived task "${body.title}" is completed.`
-          affectedTaskIds.push(body.derivedFromTaskId)
-
-          // Propagate: all tasks that depend on parent should also depend on the new derived task
-          const dependentsOfParent = db
-            .select()
-            .from(taskRelationships)
-            .where(
-              and(
-                eq(taskRelationships.relatedTaskId, body.derivedFromTaskId),
-                eq(taskRelationships.type, 'depends_on')
-              )
-            )
-            .all()
-            .filter((dep) => dep.taskId !== newTask.id)
-
-          const existingDeps = dependentsOfParent.length > 0
-            ? db.select()
-                .from(taskRelationships)
-                .where(
-                  and(
-                    inArray(taskRelationships.taskId, dependentsOfParent.map((d) => d.taskId)),
-                    eq(taskRelationships.relatedTaskId, newTask.id),
-                    eq(taskRelationships.type, 'depends_on')
-                  )
-                )
-                .all()
-            : []
-          const existingDepTaskIds = new Set(existingDeps.map((d) => d.taskId))
-
-          for (const dep of dependentsOfParent) {
-            if (existingDepTaskIds.has(dep.taskId)) continue
-
-            db.insert(taskRelationships)
-              .values({
-                id: crypto.randomUUID(),
-                taskId: dep.taskId,
-                relatedTaskId: newTask.id,
-                type: 'depends_on',
-                source: 'derivation',
-                createdAt: now,
-              })
-              .run()
-            affectedTaskIds.push(dep.taskId)
-            derivationResult.propagatedTo.push(dep.taskId)
-          }
-        }
-
-        // Full-graph cycle detection (BFS) after all relationships are established
-        const allRels = db.select().from(taskRelationships).where(eq(taskRelationships.type, 'depends_on')).all()
-        const adj = new Map<string, string[]>()
-        for (const rel of allRels) {
-          if (!adj.has(rel.taskId)) adj.set(rel.taskId, [])
-          adj.get(rel.taskId)!.push(rel.relatedTaskId)
-        }
-        const visited = new Set<string>()
-        const stack = [newTask.id]
-        while (stack.length > 0) {
-          const current = stack.pop()!
-          if (current === newTask.id && visited.size > 0) {
-            throw new Error('Circular dependency detected')
-          }
-          if (visited.has(current)) continue
-          visited.add(current)
-          for (const neighbor of adj.get(current) ?? []) {
-            stack.push(neighbor)
-          }
-        }
-      })
-    } catch (txErr) {
-      // Transaction rolled back — clean up filesystem artifacts
-      if (newTask.worktreePath) {
-        try {
-          if (newTask.repoPath) {
-            deleteGitWorktree(newTask.repoPath, newTask.worktreePath)
-          } else if (newTask.type === 'scratch') {
-            fs.rmSync(newTask.worktreePath, { recursive: true, force: true })
-          }
-        } catch { /* best-effort cleanup */ }
-      }
-      return c.json({ error: txErr instanceof Error ? txErr.message : 'Failed to create task' }, 400)
-    }
-
-    // Broadcast updates for all affected tasks outside transaction
-    for (const taskId of affectedTaskIds) {
-      broadcast({ type: 'task:updated', payload: { taskId } })
-    }
-    // Broadcast for the new derived task itself
-    if (body.derivedFromTaskId) {
-      broadcast({ type: 'task:updated', payload: { taskId: newTask.id } })
-    }
-
-    // Update lastUsedAt and lastBaseBranch for the repository (if it exists in our database)
-    if (body.repoPath) {
-      db.update(repositories)
-        .set({ lastUsedAt: now, lastBaseBranch: body.baseBranch || null, updatedAt: now })
-        .where(eq(repositories.path, body.repoPath))
-        .run()
-    } else if (body.repositoryId && body.baseBranch) {
-      db.update(repositories)
-        .set({ lastUsedAt: now, lastBaseBranch: body.baseBranch, updatedAt: now })
-        .where(eq(repositories.id, body.repositoryId))
-        .run()
-    }
-
-    const created = db.select().from(tasks).where(eq(tasks.id, newTask.id)).get()
-    broadcast({ type: 'task:updated', payload: { taskId: newTask.id } })
+    const created = db.select().from(tasks).where(eq(tasks.id, result.taskId)).get()
+    broadcast({ type: 'task:updated', payload: { taskId: result.taskId } })
     const response = created ? toApiResponse(created, true) : null
-    if (response && body.derivedFromTaskId && derivationResult.parentBlocked) {
-      ;(response as Record<string, unknown>)._derivationResult = derivationResult
+    if (response && body.derivedFromTaskId && result.derivation.parentBlocked) {
+      ;(response as Record<string, unknown>)._derivationResult = result.derivation
     }
-    if (warnings.length > 0) {
-      ;(response as Record<string, unknown>)._warnings = warnings
+    if (response && result.warnings.length > 0) {
+      ;(response as Record<string, unknown>)._warnings = result.warnings
     }
     return c.json(response, 201)
   } catch (err) {
@@ -1523,11 +1518,6 @@ app.post('/:id/attachments', async (c) => {
       return c.json({ error: 'No file provided' }, 400)
     }
 
-    // Validate MIME type
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      return c.json({ error: `File type not allowed: ${file.type}` }, 400)
-    }
-
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       return c.json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB` }, 400)
@@ -1556,7 +1546,7 @@ app.post('/:id/attachments', async (c) => {
       taskId,
       filename: file.name,
       storedPath,
-      mimeType: file.type,
+      mimeType: file.type || 'application/octet-stream',
       size: file.size,
       createdAt: now,
     }
@@ -1592,13 +1582,14 @@ app.get('/:id/attachments/:attachmentId', (c) => {
 
   // Read file and return
   const fileBuffer = fs.readFileSync(attachment.storedPath)
-  const inline = c.req.query('inline') === '1'
-  const disposition = inline ? 'inline' : 'attachment'
+  const inlineRequested = c.req.query('inline') === '1'
+  const disposition = inlineRequested && INLINE_SAFE_MIME_TYPES.has(attachment.mimeType) ? 'inline' : 'attachment'
   return new Response(fileBuffer, {
     headers: {
       'Content-Type': attachment.mimeType,
       'Content-Disposition': `${disposition}; filename="${attachment.filename}"`,
       'Content-Length': String(attachment.size),
+      'X-Content-Type-Options': 'nosniff',
     },
   })
 })

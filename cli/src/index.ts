@@ -12,6 +12,7 @@ import { notificationsCommand } from './commands/notifications'
 import { notifyCommand } from './commands/notify'
 import { upCommand } from './commands/up'
 import { downCommand } from './commands/down'
+import { exposeCommand } from './commands/expose'
 import { statusCommand } from './commands/status'
 import { doctorCommand } from './commands/doctor'
 import { devCommand } from './commands/dev'
@@ -74,6 +75,7 @@ const main = defineCommand({
     // Server management
     up: upCommand,
     down: downCommand,
+    expose: exposeCommand,
     status: statusCommand,
     doctor: doctorCommand,
     dev: devCommand,

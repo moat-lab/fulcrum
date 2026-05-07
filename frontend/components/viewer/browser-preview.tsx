@@ -8,6 +8,8 @@ import {
   RefreshIcon,
 } from '@hugeicons/core-free-icons'
 import { useBrowserUrl } from '@/hooks/use-browser-url'
+import { useTailscaleHostname } from '@/hooks/use-config'
+import { rewriteLocalhostForPreview } from '@/lib/preview-url'
 
 interface BrowserPreviewProps {
   taskId: string
@@ -15,9 +17,16 @@ interface BrowserPreviewProps {
 
 export function BrowserPreview({ taskId }: BrowserPreviewProps) {
   const { url, setUrl } = useBrowserUrl(taskId)
+  const { data: tailscaleHostname } = useTailscaleHostname()
   const [inputValue, setInputValue] = useState(url)
   const [key, setKey] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  const iframeSrc = rewriteLocalhostForPreview(
+    url,
+    tailscaleHostname,
+    typeof window !== 'undefined' ? window.location.host : '',
+  )
 
   // Sync input value when URL changes (e.g., on initial load)
   useEffect(() => {
@@ -82,7 +91,7 @@ export function BrowserPreview({ taskId }: BrowserPreviewProps) {
         <iframe
           ref={iframeRef}
           key={key}
-          src={url}
+          src={iframeSrc}
           className="h-full w-full border-0"
           title="Browser Preview"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"

@@ -53,7 +53,7 @@ export function useUpdateHost() {
       updates,
     }: {
       id: string
-      updates: Partial<Pick<Host, 'name' | 'hostname' | 'port' | 'username' | 'authMethod' | 'privateKeyPath' | 'defaultDirectory' | 'fulcrumUrl'>>
+      updates: Partial<Pick<Host, 'name' | 'hostname' | 'port' | 'username' | 'authMethod' | 'privateKeyPath' | 'password' | 'defaultDirectory' | 'fulcrumUrl'>>
     }) =>
       fetchJSON<Host>(`${API_BASE}/api/hosts/${id}`, {
         method: 'PATCH',

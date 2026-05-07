@@ -7,6 +7,7 @@ import {
   getMetrics,
   getCurrentMetrics,
   getHostMetricSummaries,
+  hostToSshConfig,
 } from './metrics-collector'
 
 describe('Metrics Collector', () => {
@@ -234,6 +235,39 @@ describe('Metrics Collector', () => {
         id: 'remote-error',
         status: 'disconnected',
       }))
+    })
+  })
+
+  describe('remote host SSH config', () => {
+    test('preserves password credentials for password-auth metric collection', () => {
+      const now = new Date().toISOString()
+      const host = {
+        id: 'remote-password',
+        name: 'Remote Password',
+        hostname: '192.0.2.12',
+        port: 22,
+        username: 'test',
+        authMethod: 'password',
+        privateKeyPath: null,
+        password: 'secret-password',
+        defaultDirectory: null,
+        fulcrumUrl: null,
+        hostFingerprint: 'fingerprint',
+        status: 'unknown',
+        lastConnectedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies typeof hosts.$inferSelect
+
+      expect(hostToSshConfig(host)).toEqual({
+        host: '192.0.2.12',
+        port: 22,
+        username: 'test',
+        authMethod: 'password',
+        privateKeyPath: undefined,
+        password: 'secret-password',
+        hostFingerprint: 'fingerprint',
+      })
     })
   })
 

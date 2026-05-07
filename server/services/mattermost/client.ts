@@ -4,7 +4,7 @@
 
 import { getSettings } from '../../lib/settings'
 import { log } from '../../lib/logger'
-import type { MattermostSettings } from '../../lib/settings/types'
+import type { MattermostSettings, Settings } from '../../lib/settings/types'
 
 export interface MattermostPost {
   channel_id: string
@@ -57,22 +57,78 @@ export interface MattermostDialogElement {
   display_name: string
   name: string
   type: 'text' | 'textarea' | 'select'
-  subtype?: 'email' | 'number' | 'url'
+  subtype?: 'email' | 'number' | 'url' | 'password'
   placeholder?: string
   default?: string
   optional?: boolean
   options?: Array<{ text: string; value: string }>
 }
 
+export interface MattermostConnectionInfo {
+  bot: {
+    id: string
+    username: string
+    displayName: string
+  }
+  team: {
+    id: string
+    name: string
+    displayName: string
+  } | null
+}
+
 function getConfig(): MattermostSettings {
   return getSettings().channels.mattermost
 }
 
-function getHostPort(): { host: string; port: number } {
-  const settings = getSettings()
-  return {
-    host: process.env.FULCRUM_HOST || settings.editor.host || 'localhost',
-    port: settings.server.port,
+type FulcrumHostPort = { host: string; port: number }
+
+type FulcrumUrlEnvironment = {
+  fulcrumHost?: string
+}
+
+type FulcrumUrlSettings = Pick<Settings, 'server' | 'editor'> & {
+  channels: Pick<Settings['channels'], 'mattermost'>
+}
+
+type FulcrumUrlResolution =
+  | { kind: 'resolved'; value: FulcrumHostPort }
+  | { kind: 'missing-callback-host'; port: number }
+
+export function resolveFulcrumUrlHostPort(
+  settings: FulcrumUrlSettings,
+  environment: FulcrumUrlEnvironment
+): FulcrumUrlResolution {
+  const host = environment.fulcrumHost || settings.editor.host
+
+  if (host) {
+    return { kind: 'resolved', value: { host, port: settings.server.port } }
+  }
+
+  if (settings.channels.mattermost.enabled) {
+    return { kind: 'missing-callback-host', port: settings.server.port }
+  }
+
+  return { kind: 'resolved', value: { host: 'localhost', port: settings.server.port } }
+}
+
+function resolveHostPort(): FulcrumUrlResolution {
+  return resolveFulcrumUrlHostPort(getSettings(), { fulcrumHost: process.env.FULCRUM_HOST })
+}
+
+function getHostPort(): FulcrumHostPort {
+  const resolution = resolveHostPort()
+
+  switch (resolution.kind) {
+    case 'resolved':
+      return resolution.value
+    case 'missing-callback-host':
+      log.messaging.warn('Mattermost callback host not configured', {
+        requiredEnv: 'FULCRUM_HOST',
+        fallbackRejected: 'localhost',
+        port: resolution.port,
+      })
+      throw new Error('Mattermost callback host not configured: set FULCRUM_HOST')
   }
 }
 
@@ -104,7 +160,7 @@ async function mmFetch(path: string, options: RequestInit = {}): Promise<Respons
 
   if (!res.ok) {
     const body = await res.text()
-    log.error('Mattermost API error', { status: res.status, path, body })
+    log.messaging.error('Mattermost API error', { status: res.status, path, body })
     throw new Error(`Mattermost API error: ${res.status} ${body}`)
   }
 
@@ -147,6 +203,33 @@ export async function postNotification(attachment: MattermostAttachment): Promis
     channel_id: config.channelId,
     props: { attachments: [attachment] },
   })
+}
+
+export async function validateConnection(): Promise<MattermostConnectionInfo> {
+  const config = getConfig()
+  const userRes = await mmFetch('/users/me')
+  const user = await userRes.json() as { id: string; username?: string; nickname?: string; first_name?: string; last_name?: string }
+
+  let team: MattermostConnectionInfo['team'] = null
+  if (config.teamId) {
+    const teamRes = await mmFetch(`/teams/${config.teamId}`)
+    const teamBody = await teamRes.json() as { id: string; name: string; display_name?: string }
+    team = {
+      id: teamBody.id,
+      name: teamBody.name,
+      displayName: teamBody.display_name || teamBody.name,
+    }
+  }
+
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ')
+  return {
+    bot: {
+      id: user.id,
+      username: user.username || user.id,
+      displayName: user.nickname || fullName || user.username || user.id,
+    },
+    team,
+  }
 }
 
 /** Get the callback URL for actions */

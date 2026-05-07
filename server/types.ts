@@ -92,6 +92,14 @@ export interface TerminalAttachMessage {
   type: 'terminal:attach'
   payload: {
     terminalId: string
+    /**
+     * Client's current xterm dimensions. When provided, the server resizes the
+     * PTY (and SIGWINCHes the running TUI) before capturing the replay buffer,
+     * so the buffer reflects content rendered at the dimensions the client will
+     * actually display it at. Eliminates row/column-mismatch garbling on attach.
+     */
+    cols?: number
+    rows?: number
   }
 }
 
