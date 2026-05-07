@@ -6,7 +6,7 @@
 import type { AttachmentData } from '../../../shared/types'
 
 // Supported messaging channel types
-export type ChannelType = 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'email'
+export type ChannelType = 'whatsapp' | 'discord' | 'telegram' | 'slack' | 'email' | 'mattermost'
 
 // Connection status
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'qr_pending' | 'credentials_required'
@@ -136,10 +136,12 @@ export interface ChannelFactory {
   createDiscordChannel(connectionId: string): MessagingChannel
   createTelegramChannel(connectionId: string): MessagingChannel
   createSlackChannel(connectionId: string): MessagingChannel
+  createMattermostChannel(connectionId: string): MessagingChannel
   createEmailChannel(connectionId: string, authState?: EmailAuthState): MessagingChannel
 
   // Optional token validators - tests can provide no-op implementations
   validateDiscordToken?(token: string): Promise<void>
   validateTelegramToken?(token: string): Promise<void>
   validateSlackTokens?(botToken: string, appToken: string): Promise<void>
+  validateMattermostConfig?(serverUrl: string, botToken: string): Promise<void>
 }
