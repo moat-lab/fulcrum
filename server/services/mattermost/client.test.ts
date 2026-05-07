@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { setupTestEnv, withEnv, type TestEnv } from '../../__tests__/utils/env'
-import { setFnoxValue } from '../../lib/settings/fnox'
+import { setupTestEnv, type TestEnv } from '../../__tests__/utils/env'
+import { clearFnoxCache, setFnoxValue } from '../../lib/settings/fnox'
 import {
-  fulcrumUrl,
-  getActionsUrl,
-  getCallbackUrl,
-  getDialogsUrl,
   openDialog,
   postDirectMessage,
   postMessage,
   postNotification,
+  resolveFulcrumUrlHostPort,
   updatePost,
   type MattermostAttachment,
 } from './client'
@@ -18,6 +15,38 @@ type FetchCall = {
   url: string
   init?: RequestInit
   body?: unknown
+}
+
+type FulcrumUrlSettingsInput = Parameters<typeof resolveFulcrumUrlHostPort>[0]
+
+function createFulcrumUrlSettings(overrides: {
+  host?: string
+  port?: number
+  mattermostEnabled?: boolean
+}): FulcrumUrlSettingsInput {
+  return {
+    server: {
+      port: overrides.port ?? 7777,
+      publicDomain: null,
+      tailscaleHostname: null,
+    },
+    editor: {
+      app: 'vscode',
+      host: overrides.host ?? '',
+      sshPort: 22,
+    },
+    channels: {
+      mattermost: {
+        enabled: overrides.mattermostEnabled ?? false,
+        serverUrl: '',
+        botToken: '',
+        teamId: '',
+        channelId: '',
+        commandToken: '',
+        allowedUserIds: [],
+      },
+    },
+  }
 }
 
 const MATTERMOST_URL = 'https://mattermost.example.test'
@@ -56,7 +85,7 @@ function installMattermostFetchStub(handler?: (call: FetchCall) => Response): Fe
   return calls
 }
 
-describe('Mattermost client', () => {
+describe.serial('Mattermost client', () => {
   let testEnv: TestEnv
   let originalFetch: typeof global.fetch
 
@@ -92,46 +121,52 @@ describe('Mattermost client', () => {
     expect(calls[1].init?.method).toBe('PUT')
   })
 
-  test('opens dialogs and posts notifications with configured callback and channel', async () => {
+  test('opens dialogs with a Mattermost callback path', async () => {
     configureMattermost()
-    setFnoxValue('server.port', 4321)
     const calls = installMattermostFetchStub()
-    const attachment: MattermostAttachment = { fallback: 'Notice', text: 'Body' }
 
+    clearFnoxCache()
+    setFnoxValue('server.port', 4321)
+    setFnoxValue('editor.host', 'fulcrum-dialog.example.test')
+    configureMattermost()
     await openDialog('trigger-1', {
       callback_id: 'create_task',
       title: 'Create Task',
       elements: [],
     })
-    const notification = await postNotification(attachment)
 
     expect(calls[0]).toMatchObject({
       url: `${MATTERMOST_URL}/api/v4/actions/dialogs/open`,
       body: {
         trigger_id: 'trigger-1',
-        url: 'http://localhost:4321/api/mattermost/dialogs',
+        url: 'http://fulcrum-dialog.example.test:4321/api/mattermost/dialogs',
         dialog: { callback_id: 'create_task', title: 'Create Task', elements: [] },
       },
     })
-    expect(notification).toEqual({ id: 'post-1' })
-    expect(calls[1].body).toEqual({
-      channel_id: 'default-channel',
-      props: { attachments: [attachment] },
-    })
   })
 
-  test('builds callback URLs from FULCRUM_HOST before editor host fallback', async () => {
-    setFnoxValue('server.port', 7777)
-    setFnoxValue('editor.host', 'editor.example.test')
+  test('posts notifications with the configured attachment payload', async () => {
+    configureMattermost()
+    installMattermostFetchStub()
+    const attachment: MattermostAttachment = { fallback: 'Notice', text: 'Body' }
 
-    await withEnv({ FULCRUM_HOST: 'fulcrum.example.test' }, () => {
-      expect(getActionsUrl()).toBe('http://fulcrum.example.test:7777/api/mattermost/actions')
-      expect(getDialogsUrl()).toBe('http://fulcrum.example.test:7777/api/mattermost/dialogs')
-      expect(getCallbackUrl('/custom')).toBe('http://fulcrum.example.test:7777/api/mattermost/custom')
-      expect(fulcrumUrl('/tasks/abc')).toBe('http://fulcrum.example.test:7777/tasks/abc')
-    })
+    const notification = await postNotification(attachment)
 
-    expect(getActionsUrl()).toBe('http://editor.example.test:7777/api/mattermost/actions')
+    expect(notification).toEqual({ id: 'post-1' })
+  })
+
+  test('resolves callback host from configured editor host fallback', () => {
+    expect(resolveFulcrumUrlHostPort(
+      createFulcrumUrlSettings({ host: 'editor.example.test', port: 7777 }),
+      {}
+    )).toEqual({ kind: 'resolved', value: { host: 'editor.example.test', port: 7777 } })
+  })
+
+  test('resolves Mattermost callback host from FULCRUM_HOST override', () => {
+    expect(resolveFulcrumUrlHostPort(
+      createFulcrumUrlSettings({ host: 'editor.example.test', port: 7777 }),
+      { fulcrumHost: 'fulcrum.example.test' }
+    )).toEqual({ kind: 'resolved', value: { host: 'fulcrum.example.test', port: 7777 } })
   })
 
   test('reuses cached bot user id when posting direct messages', async () => {

@@ -226,10 +226,10 @@ echo "[test] Isolated environment: HOME=$HOME FULCRUM_DIR=$FULCRUM_DIR" >&2
 # Run tests serially to avoid env var conflicts between test files
 echo "Running tests..." >&2
 if [ "$usage_verbose" = "true" ]; then
-  bun test --max-concurrency=1
+  bun test
 else
   # Filter to show only failures and summary (exclude diff lines starting with +/-)
-  bun test --max-concurrency=1 2>&1 | grep -v '^[+-]' | grep -E '(^bun test|[(]fail[)]|✗|expect[(]received[)]|^ *[0-9]+ (pass|fail|skip)|^Ran [0-9]+ tests)' || [ ${PIPESTATUS[0]} -eq 0 ]
+  bun test 2>&1 | grep -v '^[+-]' | grep -E '(^bun test|[(]fail[)]|✗|expect[(]received[)]|^ *[0-9]+ (pass|fail|skip)|^Ran [0-9]+ tests)' || [ ${PIPESTATUS[0]} -eq 0 ]
 fi
 """
 

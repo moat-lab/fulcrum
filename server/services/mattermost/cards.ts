@@ -10,6 +10,7 @@ import { listJobs } from '../job-service'
 import { getActionsUrl, fulcrumUrl } from './client'
 import type { MattermostAttachment, MattermostAction, MattermostField } from './client'
 import { getPTYManager } from '../../terminal/pty-instance'
+import type { NotificationPayload } from '../notification-service'
 
 // --- Helpers ---
 
@@ -99,6 +100,103 @@ function timeAgo(dateStr: string | null): string {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+function nextTaskStatus(status: string | undefined): string | null {
+  switch (status) {
+    case 'TO_DO': return 'IN_PROGRESS'
+    case 'IN_PROGRESS': return 'IN_REVIEW'
+    case 'IN_REVIEW': return 'DONE'
+    default: return null
+  }
+}
+
+function taskNotificationActions(payload: NotificationPayload, actions: MattermostAction[]): void {
+  if (!payload.taskId) return
+  actions.push(actionBtn('view_task', 'View Task', { action: 'task_detail', task_id: payload.taskId }, 'primary'))
+  const statusMatch = payload.message.match(/\b(TO_DO|IN_PROGRESS|IN_REVIEW|DONE|CANCELED)\b/g)
+  const nextStatus = nextTaskStatus(statusMatch?.at(-1))
+  if (nextStatus) {
+    actions.push(actionBtn('next_status', `→ ${nextStatus}`, { action: 'status_change', task_id: payload.taskId, status: nextStatus }, 'good'))
+  }
+}
+
+function appNotificationActions(payload: NotificationPayload, actions: MattermostAction[], appAction: 'logs' | 'retry' | 'rollback'): void {
+  if (!payload.appId) return
+  if (appAction === 'logs') actions.push(actionBtn('logs', 'Logs', { action: 'app_logs', app_id: payload.appId }, 'primary'))
+  if (appAction === 'retry') actions.push(actionBtn('retry', 'Retry', { action: 'deploy_app', app_id: payload.appId }, 'primary'))
+  if (appAction === 'rollback') actions.push(actionBtn('rollback', 'Rollback', { action: 'rollback_app', app_id: payload.appId }, 'danger'))
+}
+
+export function buildNotificationCard(payload: NotificationPayload): MattermostAttachment {
+  const fields: MattermostField[] = []
+  const actions: MattermostAction[] = []
+
+  switch (payload.type) {
+    case 'task_status_change':
+      if (payload.taskTitle) fields.push({ short: true, title: 'Task', value: payload.taskTitle })
+      taskNotificationActions(payload, actions)
+      return {
+        fallback: `${payload.title}: ${payload.message}`,
+        color: '#7C3AED',
+        pretext: `#### ${payload.title}`,
+        text: payload.message,
+        fields: fields.length > 0 ? fields : undefined,
+        actions: actions.length > 0 ? actions : undefined,
+      }
+    case 'pr_merged':
+      if (payload.taskTitle) fields.push({ short: true, title: 'Task', value: payload.taskTitle })
+      if (payload.url) fields.push({ short: false, title: 'Pull Request', value: payload.url })
+      if (payload.taskId) actions.push(actionBtn('view_task', 'View Task', { action: 'task_detail', task_id: payload.taskId }, 'primary'))
+      if (payload.url) actions.push(actionBtn('open_pr', 'Open PR ↗', { action: 'open_link', url: payload.url }))
+      return {
+        fallback: `${payload.title}: ${payload.message}`,
+        color: '#22C55E',
+        pretext: `#### ${payload.title}`,
+        text: payload.message,
+        fields: fields.length > 0 ? fields : undefined,
+        actions: actions.length > 0 ? actions : undefined,
+      }
+    case 'deployment_success':
+      if (payload.appName) fields.push({ short: true, title: 'App', value: payload.appName })
+      appNotificationActions(payload, actions, 'logs')
+      appNotificationActions(payload, actions, 'rollback')
+      return {
+        fallback: `${payload.title}: ${payload.message}`,
+        color: '#22C55E',
+        pretext: `#### ${payload.title}`,
+        text: payload.message,
+        fields: fields.length > 0 ? fields : undefined,
+        actions: actions.length > 0 ? actions : undefined,
+      }
+    case 'deployment_failed':
+      if (payload.appName) fields.push({ short: true, title: 'App', value: payload.appName })
+      appNotificationActions(payload, actions, 'logs')
+      appNotificationActions(payload, actions, 'retry')
+      appNotificationActions(payload, actions, 'rollback')
+      return {
+        fallback: `${payload.title}: ${payload.message}`,
+        color: '#EF4444',
+        pretext: `#### ${payload.title}`,
+        text: payload.message,
+        fields: fields.length > 0 ? fields : undefined,
+        actions: actions.length > 0 ? actions : undefined,
+      }
+    case 'plan_complete':
+      if (payload.taskTitle) fields.push({ short: true, title: 'Task', value: payload.taskTitle })
+      if (payload.taskId) {
+        actions.push(actionBtn('view_diff', 'View Diff', { action: 'task_detail', task_id: payload.taskId }, 'primary'))
+        actions.push(actionBtn('review', '→ Review', { action: 'status_change', task_id: payload.taskId, status: 'IN_REVIEW' }, 'good'))
+      }
+      return {
+        fallback: `${payload.title}: ${payload.message}`,
+        color: '#7C3AED',
+        pretext: `#### ${payload.title}`,
+        text: payload.message,
+        fields: fields.length > 0 ? fields : undefined,
+        actions: actions.length > 0 ? actions : undefined,
+      }
+  }
 }
 
 function formatJobTime(dateStr: string | null): string {
