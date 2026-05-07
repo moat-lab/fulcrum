@@ -229,7 +229,6 @@ function SettingsPage() {
   const [mattermostNotifEnabled, setMattermostNotifEnabled] = useState(false)
   const [slackUseMessaging, setSlackUseMessaging] = useState(false)
   const [discordUseMessaging, setDiscordUseMessaging] = useState(false)
-  const [mattermostNotifEnabled, setMattermostNotifEnabled] = useState(false)
   const [mattermostEnabled, setMattermostEnabled] = useState(false)
   const [mattermostServerUrl, setMattermostServerUrl] = useState('')
   const [mattermostBotToken, setMattermostBotToken] = useState('')
