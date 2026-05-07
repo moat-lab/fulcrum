@@ -57,7 +57,7 @@ export interface MattermostDialogElement {
   display_name: string
   name: string
   type: 'text' | 'textarea' | 'select'
-  subtype?: 'email' | 'number' | 'url'
+  subtype?: 'email' | 'number' | 'url' | 'password'
   placeholder?: string
   default?: string
   optional?: boolean
