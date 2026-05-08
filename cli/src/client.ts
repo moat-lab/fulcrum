@@ -64,6 +64,21 @@ export interface CheckHostEnvResult {
   ready: boolean
 }
 
+export interface ClaudeChannelMessage {
+  messageId: string
+  content: string
+  source: string
+  createdAt: string
+  meta: Record<string, unknown>
+}
+
+export interface ClaudeChannelReply {
+  messageId: string
+  text: string
+  structuredData?: unknown
+  createdAt: string
+}
+
 export interface CreateTaskInput {
   title: string
   type?: string | null
@@ -693,6 +708,22 @@ export class FulcrumClient {
 
   async checkHostEnv(id: string): Promise<CheckHostEnvResult> {
     return this.fetch(`/api/hosts/${id}/check-env`, { method: 'POST' })
+  }
+
+  async consumeClaudeChannelMessages(sessionId: string): Promise<{ messages: ClaudeChannelMessage[] }> {
+    return this.fetch(`/api/claude-channels/sessions/${encodeURIComponent(sessionId)}/consume`, {
+      method: 'POST',
+    })
+  }
+
+  async sendClaudeChannelReply(
+    sessionId: string,
+    input: { messageId: string; text: string; structuredData?: unknown }
+  ): Promise<{ reply: ClaudeChannelReply }> {
+    return this.fetch(`/api/claude-channels/sessions/${encodeURIComponent(sessionId)}/replies`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
   }
 
   // Server expose (Cloudflare Tunnel for the Fulcrum UI)
