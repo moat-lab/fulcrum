@@ -35,9 +35,14 @@ const APP_STATUS_EMOJI: Record<string, string> = {
   stopped: '⏹',
 }
 
+function mattermostActionId(id: string): string {
+  const alphanumericId = id.replace(/[^A-Za-z0-9]+([A-Za-z0-9]?)/g, (_, next: string) => next.toUpperCase())
+  return alphanumericId || 'action'
+}
+
 function actionBtn(id: string, name: string, context: Record<string, unknown>, style?: MattermostAction['style']): MattermostAction {
   return {
-    id,
+    id: mattermostActionId(id),
     name,
     type: 'button',
     style,
@@ -521,7 +526,7 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
   ]
   const currentPriority = task.priority || 'medium'
   actions.push({
-    id: 'change_priority',
+    id: mattermostActionId('change_priority'),
     name: 'Priority',
     type: 'select',
     integration: {
@@ -627,7 +632,7 @@ export async function buildAppDetailCard(appId: string): Promise<MattermostAttac
 
   if (recentDeploys.length > 0) {
     actions.push({
-      id: 'rollback',
+      id: mattermostActionId('rollback'),
       name: '↩ Rollback',
       type: 'select',
       integration: {
