@@ -295,7 +295,7 @@ describe.serial('Mattermost Routes', () => {
         props?: { attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }> }
       }
       const agentField = data.props?.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
-      expect(agentField?.value).toBe('claude (running)')
+      expect(agentField?.value).toBe('claude running')
     })
 
     test('task detail marks exited managed terminal as crashed instead of idle', async () => {
@@ -329,7 +329,7 @@ describe.serial('Mattermost Routes', () => {
         props?: { attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }> }
       }
       const agentField = data.props?.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
-      expect(agentField?.value).toBe('opencode (crashed)')
+      expect(agentField?.value).toBe('opencode crashed')
     })
   })
 

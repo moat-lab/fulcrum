@@ -20,15 +20,18 @@ import {
   buildDashboardCard,
   buildTaskListCard,
   buildTaskDetailCard,
+  buildTaskDiffCard,
   buildAppsCard,
   buildAppDetailCard,
   buildMonitorCard,
   buildJobsCard,
   buildProjectsCard,
   buildSearchCard,
+  buildDeployFailedCard,
 } from '../services/mattermost/cards'
-import { openDialog, postMessage, getActionsUrl, fulcrumUrl } from '../services/mattermost/client'
-import type { MattermostDialog } from '../services/mattermost/client'
+import { openDialog, postMessage, updatePost, getActionsUrl, fulcrumUrl } from '../services/mattermost/client'
+import { getPTYManager } from '../terminal/pty-instance'
+import type { MattermostAttachment, MattermostDialog } from '../services/mattermost/client'
 
 const MATTERMOST_RESPONSE_USERNAME = 'fulcrum'
 const MATTERMOST_RESPONSE_ICON_PATH = '/icon-192.png'
@@ -39,6 +42,8 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const DESTRUCTIVE_ACTIONS = new Set(['stop_app', 'kill_agent'])
 const DESTRUCTIVE_STATUS = new Set(['CANCELED'])
 const IN_CHANNEL_SUBCOMMANDS = new Set(['', 'deploy'])
+
+type MattermostPostUpdateTarget = { postId: string } | { postId: null }
 
 type MattermostDialogSubmission =
   | { callbackId: 'create_task'; submission: CreateTaskSubmission; channelId: string }
@@ -105,6 +110,27 @@ type MattermostAuthResult =
   | { ok: false; message: string }
 
 const app = new Hono()
+
+function mattermostUpdate(attachment: MattermostAttachment) {
+  return { props: { attachments: [attachment] } }
+}
+
+async function updateMattermostPost(target: MattermostPostUpdateTarget, attachment: MattermostAttachment): Promise<void> {
+  if (target.postId === null) return
+  await updatePost(target.postId, mattermostUpdate(attachment))
+}
+
+function buildDeploymentProgressCard(appName: string, progress: { stage: string; message: string; progress?: number }): MattermostAttachment {
+  const pct = progress.progress ?? 0
+  const filled = Math.max(0, Math.min(10, Math.round(pct / 10)))
+  const bar = pct > 0 ? `\n${'█'.repeat(filled)}${'░'.repeat(10 - filled)} ${pct}%` : ''
+  return {
+    fallback: `Deploying ${appName}`,
+    color: progress.stage === 'failed' ? '#EF4444' : progress.stage === 'done' ? '#22C55E' : '#F59E0B',
+    pretext: `#### 🔨 Deploying ${appName}`,
+    text: `**${progress.stage}** — ${progress.message}${bar}`,
+  }
+}
 
 function authorizeMattermostRequest(token: string | undefined, userId: string | undefined): MattermostAuthResult {
   const config = getSettings().channels.mattermost
@@ -524,6 +550,36 @@ app.post('/actions', async (c) => {
         return c.json({ update: { props: { attachments: [card] } } })
       }
 
+      case 'view_diff': {
+        const card = await buildTaskDiffCard(context.task_id as string)
+        return c.json({ update: mattermostUpdate(card) })
+      }
+
+      case 'start_agent': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        if (!task.worktreePath) return c.json({ ephemeral_text: 'Task has no worktree or scratch directory.' })
+        try {
+          const ptyManager = getPTYManager()
+          const terminal = await ptyManager.create({
+            name: `${task.agent || 'agent'}: ${task.title.slice(0, 32)}`,
+            cwd: task.worktreePath,
+            cols: 120,
+            rows: 30,
+            taskId: task.id,
+            hostId: task.hostId ?? undefined,
+          })
+          const command = task.agent === 'opencode' ? 'opencode\n' : 'claude\n'
+          ptyManager.write(terminal.id, command)
+          await updateTaskStatus(task.id, 'IN_PROGRESS')
+          const card = await buildTaskDetailCard(task.id)
+          return c.json({ update: mattermostUpdate(card), ephemeral_text: 'Agent started.' })
+        } catch (err) {
+          return c.json({ ephemeral_text: `Failed to start agent: ${err instanceof Error ? err.message : String(err)}` })
+        }
+      }
+
       case 'list_apps': {
         const card = await buildAppsCard()
         return c.json({ update: { props: { attachments: [card] } } })
@@ -536,13 +592,21 @@ app.post('/actions', async (c) => {
 
       case 'deploy_app': {
         const appId = context.app_id as string
+        const postTarget: MattermostPostUpdateTarget = body.post_id ? { postId: body.post_id as string } : { postId: null }
+        const appRecord = db.select().from(apps).where(eq(apps.id, appId)).get()
+        const appName = appRecord?.name ?? 'app'
         try {
-          const result = await deployApp(appId, { deployedBy: 'manual' })
+          await updateMattermostPost(postTarget, buildDeploymentProgressCard(appName, { stage: 'queued', message: 'Deployment queued...' }))
+          const result = await deployApp(appId, { deployedBy: 'manual' }, async (progress) => {
+            await updateMattermostPost(postTarget, buildDeploymentProgressCard(appName, progress))
+          })
           if (!result.success) {
-            return c.json({ ephemeral_text: `❌ Deploy failed: ${result.error || 'unknown error'}` })
+            const failedCard = buildDeployFailedCard(appId, appName, result.error || 'unknown error')
+            await updateMattermostPost(postTarget, failedCard)
+            return c.json({ update: mattermostUpdate(failedCard), ephemeral_text: `❌ Deploy failed: ${result.error || 'unknown error'}` })
           }
           const card = await buildAppDetailCard(appId)
-          return c.json({ update: { props: { attachments: [card] } } })
+          return c.json({ update: mattermostUpdate(card) })
         } catch (err) {
           return c.json({ ephemeral_text: `❌ Deploy failed: ${err}` })
         }
@@ -625,6 +689,29 @@ app.post('/actions', async (c) => {
         } catch (err) {
           return c.json({ ephemeral_text: `Rollback failed: ${err}` })
         }
+      }
+
+      case 'create_pr': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        if (task.prUrl) return c.json({ ephemeral_text: `PR already exists: ${task.prUrl}` })
+        return c.json({ ephemeral_text: 'Open the task terminal and create the PR from the prepared diff.', update: mattermostUpdate(await buildTaskDiffCard(task.id)) })
+      }
+
+      case 'merge_to_main': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        if (!task.prUrl) return c.json({ ephemeral_text: 'No PR URL is linked to this task yet.' })
+        return c.json({ ephemeral_text: `Merge gate stays on GitHub: ${task.prUrl}` })
+      }
+
+      case 'delete_worktree': {
+        const taskId = context.task_id as string
+        const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+        if (!task) return c.json({ ephemeral_text: 'Task not found.' })
+        return c.json({ ephemeral_text: task.worktreePath ? `Delete worktree from Fulcrum after confirming no local changes: ${task.worktreePath}` : 'Task has no worktree.' })
       }
 
       case 'monitor': {

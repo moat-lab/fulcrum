@@ -55,6 +55,14 @@ function actionBtn(id: string, name: string, context: Record<string, unknown>, s
 
 type AgentRuntimeStatus = 'running' | 'idle' | 'crashed'
 
+interface DiffPreview {
+  branch: string
+  fileCount: number
+  insertions: number
+  deletions: number
+  files: Array<{ path: string; insertions: number; deletions: number }>
+}
+
 function getAgentRuntimeStatusFromDb(worktreePath: string): AgentRuntimeStatus {
   const terminalRecord = db
     .select({ status: terminals.status })
@@ -87,7 +95,11 @@ function formatAgentStatus(agent: string, taskStatus: string, worktreePath: stri
     return agent
   }
 
-  return `${agent} (${getAgentRuntimeStatus(worktreePath)})`
+  switch (getAgentRuntimeStatus(worktreePath)) {
+    case 'running': return `${agent} running`
+    case 'crashed': return `${agent} crashed`
+    case 'idle': return `${agent} idle`
+  }
 }
 
 function formatDate(dateStr: string | null): string {
@@ -105,6 +117,46 @@ function timeAgo(dateStr: string | null): string {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+function readDiffPreview(worktreePath: string): DiffPreview | null {
+  try {
+    const branch = execFileSync('git', ['branch', '--show-current'], { cwd: worktreePath, encoding: 'utf-8' }).trim() || 'detached'
+    const summary = execFileSync('git', ['diff', '--numstat', 'HEAD'], { cwd: worktreePath, encoding: 'utf-8' }).trim()
+    const files = summary.split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [added, removed, path] = line.split('\t')
+        return {
+          path,
+          insertions: Number(added) || 0,
+          deletions: Number(removed) || 0,
+        }
+      })
+    if (files.length === 0) return null
+    return {
+      branch,
+      fileCount: files.length,
+      insertions: files.reduce((sum, file) => sum + file.insertions, 0),
+      deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+      files,
+    }
+  } catch {
+    return null
+  }
+}
+
+function formatDiffPreview(preview: DiffPreview): string {
+  const shownFiles = preview.files.slice(0, 8).map((file) => {
+    const delta = `+${file.insertions} -${file.deletions}`
+    return `- \`${file.path}\` (${delta})`
+  })
+  const more = preview.files.length > shownFiles.length ? `\n- … ${preview.files.length - shownFiles.length} more file(s)` : ''
+  return [
+    `#### Diff — ${preview.branch} (${preview.fileCount} files, +${preview.insertions} -${preview.deletions})`,
+    '',
+    `${shownFiles.join('\n')}${more}`,
+  ].join('\n')
 }
 
 function nextTaskStatus(status: string | undefined): string | null {
@@ -152,7 +204,10 @@ export function buildNotificationCard(payload: NotificationPayload): MattermostA
     case 'pr_merged':
       if (payload.taskTitle) fields.push({ short: true, title: 'Task', value: payload.taskTitle })
       if (payload.url) fields.push({ short: false, title: 'Pull Request', value: payload.url })
-      if (payload.taskId) actions.push(actionBtn('view_task', 'View Task', { action: 'task_detail', task_id: payload.taskId }, 'primary'))
+      if (payload.taskId) {
+        actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: payload.taskId, status: 'DONE' }, 'good'))
+        actions.push(actionBtn('delete_worktree', 'Delete Worktree', { action: 'delete_worktree', task_id: payload.taskId }, 'danger'))
+      }
       if (payload.url) actions.push(actionBtn('open_pr', 'Open PR ↗', { action: 'open_link', url: payload.url }))
       return {
         fallback: `${payload.title}: ${payload.message}`,
@@ -190,8 +245,10 @@ export function buildNotificationCard(payload: NotificationPayload): MattermostA
     case 'plan_complete':
       if (payload.taskTitle) fields.push({ short: true, title: 'Task', value: payload.taskTitle })
       if (payload.taskId) {
-        actions.push(actionBtn('view_diff', 'View Diff', { action: 'task_detail', task_id: payload.taskId }, 'primary'))
+        actions.push(actionBtn('view_diff', 'View Diff', { action: 'view_diff', task_id: payload.taskId }, 'primary'))
         actions.push(actionBtn('review', '→ Review', { action: 'status_change', task_id: payload.taskId, status: 'IN_REVIEW' }, 'good'))
+        actions.push(actionBtn('create_pr', 'Create PR', { action: 'create_pr', task_id: payload.taskId }))
+        actions.push(actionBtn('merge', 'Merge', { action: 'merge_to_main', task_id: payload.taskId }))
       }
       return {
         fallback: `${payload.title}: ${payload.message}`,
@@ -496,20 +553,28 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
 
   switch (task.status) {
     case 'TO_DO':
-      actions.push(actionBtn('start', '▶ Start', { action: 'status_change', task_id: task.id, status: 'IN_PROGRESS' }, 'primary'))
+      actions.push(actionBtn('start_agent', '🤖 Start Agent', { action: 'start_agent', task_id: task.id }, 'primary'))
+      actions.push(actionBtn('start', '▶ Start', { action: 'status_change', task_id: task.id, status: 'IN_PROGRESS' }))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
       break
-    case 'IN_PROGRESS':
+    case 'IN_PROGRESS': {
+      const runtimeStatus = task.worktreePath ? getAgentRuntimeStatus(task.worktreePath) : 'idle'
+      if (runtimeStatus === 'crashed') {
+        actions.push(actionBtn('restart_agent', '🤖 Restart Agent', { action: 'start_agent', task_id: task.id }, 'primary'))
+      }
       actions.push(actionBtn('review', '→ Review', { action: 'status_change', task_id: task.id, status: 'IN_REVIEW' }, 'primary'))
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))
+      actions.push(actionBtn('diff', 'View Diff', { action: 'view_diff', task_id: task.id }))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
       if (task.worktreePath) {
         actions.push(actionBtn('kill_agent', 'Kill Agent', { action: 'kill_agent', task_id: task.id }, 'danger'))
       }
       break
+    }
     case 'IN_REVIEW':
       actions.push(actionBtn('done', '→ Done', { action: 'status_change', task_id: task.id, status: 'DONE' }, 'good'))
       actions.push(actionBtn('back', '← Progress', { action: 'status_change', task_id: task.id, status: 'IN_PROGRESS' }))
+      actions.push(actionBtn('diff', 'View Diff', { action: 'view_diff', task_id: task.id }))
       actions.push(actionBtn('cancel', '✕ Cancel', { action: 'status_change', task_id: task.id, status: 'CANCELED' }, 'danger'))
       break
     case 'DONE':
@@ -548,6 +613,94 @@ export async function buildTaskDetailCard(taskId: string): Promise<MattermostAtt
     text: text || undefined,
     fields,
     actions,
+  }
+}
+
+export async function buildTaskDiffCard(taskId: string): Promise<MattermostAttachment> {
+  let task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
+  if (!task) {
+    const allTasks = db.select().from(tasks).all()
+    task = allTasks.find(t => t.id.startsWith(taskId))
+  }
+
+  if (!task) {
+    return { fallback: 'Task not found', color: '#EF4444', text: `Task **${taskId}** not found.` }
+  }
+  if (!task.worktreePath) {
+    return {
+      fallback: 'No diff available',
+      color: '#6B7280',
+      pretext: `#### Diff — Task #${task.id.slice(0, 6)}`,
+      text: '_No worktree is available for this task._',
+      actions: [actionBtn('back', '← Back', { action: 'task_detail', task_id: task.id })],
+    }
+  }
+
+  const preview = readDiffPreview(task.worktreePath)
+  if (!preview) {
+    return {
+      fallback: 'No diff available',
+      color: '#6B7280',
+      pretext: `#### Diff — Task #${task.id.slice(0, 6)}`,
+      text: '_No working tree diff against HEAD._',
+      actions: [
+        actionBtn('back', '← Back', { action: 'task_detail', task_id: task.id }),
+        actionBtn('open', 'Open Task ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${task.id}`) }),
+      ],
+    }
+  }
+
+  return {
+    fallback: `Diff — ${task.title}`,
+    color: '#3B82F6',
+    pretext: `#### Task #${task.id.slice(0, 6)} — ${task.title}`,
+    text: formatDiffPreview(preview),
+    actions: [
+      actionBtn('review', '→ Review', { action: 'status_change', task_id: task.id, status: 'IN_REVIEW' }, 'primary'),
+      actionBtn('create_pr', 'Create PR', { action: 'create_pr', task_id: task.id }),
+      actionBtn('merge', 'Merge', { action: 'merge_to_main', task_id: task.id }, 'good'),
+      actionBtn('back', '← Back', { action: 'task_detail', task_id: task.id }),
+      actionBtn('open', 'Open Full Diff ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${task.id}`) }),
+    ],
+  }
+}
+
+export async function buildAgentCompletedCard(taskId: string): Promise<MattermostAttachment> {
+  const diffCard = await buildTaskDiffCard(taskId)
+  return {
+    ...diffCard,
+    fallback: `Agent completed — ${diffCard.fallback ?? taskId}`,
+    color: '#22C55E',
+    pretext: `#### 🤖 Agent completed — ${diffCard.pretext?.replace(/^####\s*/, '') ?? taskId}`,
+    actions: diffCard.actions?.filter(action => ['review', 'create_pr', 'merge', 'open'].includes(action.id)),
+  }
+}
+
+export function buildPullRequestMergedCard(taskId: string, branch: string | null): MattermostAttachment {
+  return {
+    fallback: 'PR merged',
+    color: '#22C55E',
+    pretext: '#### ✅ PR merged',
+    text: branch ? `Branch \`${branch}\` is ready for cleanup.` : 'Task branch is ready for cleanup.',
+    actions: [
+      actionBtn('done', '→ Done', { action: 'status_change', task_id: taskId, status: 'DONE' }, 'good'),
+      actionBtn('delete_worktree', 'Delete Worktree', { action: 'delete_worktree', task_id: taskId }, 'danger'),
+      actionBtn('open', 'Open Task ↗', { action: 'open_link', url: fulcrumUrl(`/tasks/${taskId}`) }),
+    ],
+  }
+}
+
+export function buildDeployFailedCard(appId: string, appName: string, error: string): MattermostAttachment {
+  return {
+    fallback: `Deploy failed — ${appName}`,
+    color: '#EF4444',
+    pretext: `#### ❌ Deploy failed — ${appName}`,
+    text: `\`\`\`\n${error.slice(0, 1000) || 'Unknown error'}\n\`\`\``,
+    actions: [
+      actionBtn('retry_deploy', 'Retry', { action: 'deploy_app', app_id: appId }, 'primary'),
+      actionBtn('rollback', 'Rollback', { action: 'rollback_app', app_id: appId }),
+      actionBtn('logs', 'View Full Log', { action: 'app_logs', app_id: appId }),
+    ],
   }
 }
 
