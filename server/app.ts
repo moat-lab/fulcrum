@@ -44,6 +44,7 @@ import draftItemsRoutes from './routes/draft-items'
 import scratchDirsRoutes from './routes/scratch-dirs'
 import mattermostRoutes from './routes/mattermost'
 import serverExposeRoutes from './routes/server-expose'
+import claudeChannelRoutes from './routes/claude-channels'
 import { writeEntry } from './lib/logger'
 import type { LogEntry } from '../shared/logger'
 
@@ -146,6 +147,9 @@ export function createApp() {
 
   // Mattermost integration (slash commands, actions, dialogs)
   app.route('/api/mattermost', mattermostRoutes)
+
+  // Claude Code channel bridge
+  app.route('/api/claude-channels', claudeChannelRoutes)
 
   // Logging endpoint for frontend to send batched logs to server
   app.post('/api/logs', async (c) => {
