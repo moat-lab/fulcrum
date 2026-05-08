@@ -1386,7 +1386,6 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
                     multiple
                     className="hidden"
                     onChange={handleFileSelect}
-                    accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.md,.doc,.docx,.xls,.xlsx,.csv"
                   />
                   <Button
                     type="button"
