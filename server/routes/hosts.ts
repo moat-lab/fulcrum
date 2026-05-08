@@ -18,6 +18,7 @@ function toApiResponse(row: typeof hosts.$inferSelect): Host {
     username: row.username,
     authMethod: row.authMethod as 'key' | 'password',
     privateKeyPath: row.privateKeyPath,
+    password: row.password ? '••••••••' : null,
     defaultDirectory: row.defaultDirectory,
     fulcrumUrl: row.fulcrumUrl,
     hostFingerprint: row.hostFingerprint,
@@ -84,6 +85,9 @@ app.post('/', async (c) => {
   if (!body.name || !body.hostname || !body.username) {
     return c.json({ error: 'name, hostname, and username are required' }, 400)
   }
+  if (body.authMethod === 'password' && !body.password) {
+    return c.json({ error: 'password is required for password auth' }, 400)
+  }
 
   const validation = validateHostInput(body)
   if (!validation.ok) {
@@ -101,7 +105,8 @@ app.post('/', async (c) => {
       port: body.port ?? 22,
       username: body.username,
       authMethod: body.authMethod ?? 'key',
-      privateKeyPath: body.privateKeyPath ?? null,
+      privateKeyPath: body.authMethod === 'password' ? null : body.privateKeyPath ?? null,
+      password: body.authMethod === 'password' ? body.password ?? null : null,
       defaultDirectory: body.defaultDirectory ?? null,
       fulcrumUrl: body.fulcrumUrl ?? null,
       status: 'unknown',
@@ -131,6 +136,7 @@ app.patch('/:id', async (c) => {
     username: string
     authMethod: 'key' | 'password'
     privateKeyPath: string | null
+    password: string | null
     defaultDirectory: string | null
     fulcrumUrl: string | null
   }>>()
@@ -141,8 +147,22 @@ app.patch('/:id', async (c) => {
   }
 
   const now = new Date().toISOString()
+  const updates: Partial<typeof hosts.$inferInsert> = { updatedAt: now }
+  if (body.name !== undefined) updates.name = body.name
+  if (body.hostname !== undefined) updates.hostname = body.hostname
+  if (body.port !== undefined) updates.port = body.port
+  if (body.username !== undefined) updates.username = body.username
+  if (body.authMethod !== undefined) updates.authMethod = body.authMethod
+  if (body.privateKeyPath !== undefined) updates.privateKeyPath = body.privateKeyPath
+  if (body.password !== undefined && body.password !== '••••••••') updates.password = body.password
+  if (body.defaultDirectory !== undefined) updates.defaultDirectory = body.defaultDirectory
+  if (body.fulcrumUrl !== undefined) updates.fulcrumUrl = body.fulcrumUrl
+
+  if (updates.authMethod === 'key') updates.password = null
+  if (updates.authMethod === 'password') updates.privateKeyPath = null
+
   db.update(hosts)
-    .set({ ...body, updatedAt: now })
+    .set(updates)
     .where(eq(hosts.id, id))
     .run()
 
@@ -196,6 +216,7 @@ app.post('/:id/test', async (c) => {
     username: host.username,
     authMethod: host.authMethod as 'key' | 'password',
     privateKeyPath: host.privateKeyPath ?? undefined,
+    password: host.password ?? undefined,
     hostFingerprint: host.hostFingerprint ?? undefined,
     onFirstConnect: (fingerprint) => {
       savedFingerprint = fingerprint
@@ -264,6 +285,7 @@ app.post('/:id/check-env', async (c) => {
     username: host.username,
     authMethod: host.authMethod as 'key' | 'password',
     privateKeyPath: host.privateKeyPath ?? undefined,
+    password: host.password ?? undefined,
     hostFingerprint: host.hostFingerprint ?? undefined,
   }
 

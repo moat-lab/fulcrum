@@ -6,7 +6,7 @@ import { join } from 'path'
 import { db, tasks } from '../db'
 import { getPTYManager } from '../terminal/pty-instance'
 import { getDtachService } from '../terminal/dtach-service'
-import { getMetrics, getCurrentMetrics } from '../services/metrics-collector'
+import { getMetrics, getCurrentMetrics, getHostMetricSummaries } from '../services/metrics-collector'
 import { getZAiSettings } from '../lib/settings'
 import { getChannelMessages, getChannelMessageCounts } from '../services/channels/message-storage'
 import { getCircuitBreaker } from '../services/channels/message-handler'
@@ -376,12 +376,15 @@ monitoringRoutes.get('/claude-instances', (c) => {
 monitoringRoutes.get('/system-metrics', (c) => {
   const windowStr = c.req.query('window') || '1h'
   const windowSeconds = parseWindow(windowStr)
+  const hostId = c.req.query('hostId') || 'local'
 
-  const dataPoints = getMetrics(windowSeconds)
-  const current = getCurrentMetrics()
+  const dataPoints = getMetrics(windowSeconds, hostId)
+  const current = getCurrentMetrics(hostId)
 
   return c.json({
     window: windowStr,
+    hostId,
+    hosts: getHostMetricSummaries(),
     dataPoints,
     current,
   })

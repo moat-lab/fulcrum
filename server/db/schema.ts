@@ -336,6 +336,7 @@ export const artifacts = sqliteTable('artifacts', {
 // System metrics for monitoring - stores historical CPU, memory, disk usage
 export const systemMetrics = sqliteTable('system_metrics', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  hostId: text('host_id').notNull().default('local'),
   timestamp: integer('timestamp').notNull(), // Unix timestamp in seconds
   cpuPercent: real('cpu_percent').notNull(),
   memoryUsedBytes: integer('memory_used_bytes').notNull(),
@@ -590,6 +591,7 @@ export const hosts = sqliteTable('hosts', {
   username: text('username').notNull(),
   authMethod: text('auth_method').notNull().default('key'), // 'key' | 'password'
   privateKeyPath: text('private_key_path'), // Path to SSH private key file
+  password: text('password'), // SSH password for password auth
   defaultDirectory: text('default_directory'), // Default remote cwd for tasks
   fulcrumUrl: text('fulcrum_url'), // Override FULCRUM_URL for this host (e.g., http://192.168.1.100:7777)
   hostFingerprint: text('host_fingerprint'), // SSH host key fingerprint (TOFU)

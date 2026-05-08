@@ -212,6 +212,7 @@ export async function createTaskRecord(body: Omit<NewTask, 'id' | 'createdAt' | 
         username: host.username,
         authMethod: host.authMethod as 'key' | 'password',
         privateKeyPath: host.privateKeyPath ?? undefined,
+        password: host.password ?? undefined,
         hostFingerprint: host.hostFingerprint ?? undefined,
       }
       const result = await createRemoteGitWorktree(sshConfig, newTask.repoPath, newTask.worktreePath, newTask.branch, newTask.baseBranch)

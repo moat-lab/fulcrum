@@ -77,6 +77,7 @@ export class PTYManager {
           username: host.username,
           authMethod: host.authMethod as 'key' | 'password',
           privateKeyPath: host.privateKeyPath ?? undefined,
+          password: host.password ?? undefined,
           hostFingerprint: host.hostFingerprint ?? undefined,
         }
         const fulcrumUrl = host.fulcrumUrl
@@ -236,6 +237,7 @@ export class PTYManager {
         username: host.username,
         authMethod: host.authMethod as 'key' | 'password',
         privateKeyPath: host.privateKeyPath ?? undefined,
+        password: host.password ?? undefined,
         hostFingerprint: host.hostFingerprint ?? undefined,
       }
       const fulcrumUrl = host.fulcrumUrl

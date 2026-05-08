@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { Area, AreaChart, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { useSystemMetrics, formatBytes, type TimeWindow } from '@/hooks/use-monitoring'
+import { useSystemMetrics, formatBytes, type HostMetricSummary, type TimeWindow } from '@/hooks/use-monitoring'
 
 const TIME_WINDOWS: TimeWindow[] = ['1m', '10m', '1h', '3h', '6h', '12h', '24h']
 
@@ -30,10 +30,34 @@ const chartConfig: ChartConfig = {
   },
 }
 
+function statusClass(status: HostMetricSummary['status']): string {
+  switch (status) {
+    case 'connected':
+      return 'bg-emerald-500'
+    case 'degraded':
+      return 'bg-amber-500'
+    case 'disconnected':
+      return 'bg-destructive'
+  }
+}
+
+function statusLabel(status: HostMetricSummary['status']): string {
+  switch (status) {
+    case 'connected':
+      return 'Connected'
+    case 'degraded':
+      return 'Degraded'
+    case 'disconnected':
+      return 'Disconnected'
+  }
+}
+
 export default function SystemMetricsTab() {
   const { t } = useTranslation('monitoring')
   const [window, setWindow] = useState<TimeWindow>('1h')
-  const { data: metrics, isLoading, error } = useSystemMetrics(window)
+  const [hostId, setHostId] = useState('local')
+  const { data: metrics, isLoading, error } = useSystemMetrics(window, hostId)
+  const selectedHost = metrics?.hosts.find((host) => host.id === hostId)
 
   // Transform data for charts - use timestamp as x-axis
   const chartData =
@@ -47,32 +71,49 @@ export default function SystemMetricsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Time window selector */}
-      {/* Mobile: dropdown */}
-      <div className="sm:hidden">
-        <Select value={window} onValueChange={(v) => setWindow(v as TimeWindow)}>
-          <SelectTrigger size="sm" className="w-auto gap-2">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TIME_WINDOWS.map((tw) => (
-              <SelectItem key={tw} value={tw}>{t(`system.timeWindows.${tw}`)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {/* Desktop: buttons */}
-      <div className="hidden sm:flex gap-1">
-        {TIME_WINDOWS.map((tw) => (
-          <Button
-            key={tw}
-            variant={window === tw ? 'default' : 'ghost'}
-            size="xs"
-            onClick={() => setWindow(tw)}
-          >
-            {t(`system.timeWindows.${tw}`)}
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Time window selector */}
+        {/* Mobile: dropdown */}
+        <div className="sm:hidden">
+          <Select value={window} onValueChange={(v) => setWindow(v as TimeWindow)}>
+            <SelectTrigger size="sm" className="w-auto gap-2">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TIME_WINDOWS.map((tw) => (
+                <SelectItem key={tw} value={tw}>{t(`system.timeWindows.${tw}`)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {/* Desktop: buttons */}
+        <div className="hidden sm:flex gap-1">
+          {TIME_WINDOWS.map((tw) => (
+            <Button
+              key={tw}
+              variant={window === tw ? 'default' : 'ghost'}
+              size="xs"
+              onClick={() => setWindow(tw)}
+            >
+              {t(`system.timeWindows.${tw}`)}
+            </Button>
+          ))}
+        </div>
+
+        {metrics && (
+          <Select value={hostId} onValueChange={(value) => value && setHostId(value)}>
+            <SelectTrigger size="sm" className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {metrics.hosts.map((host) => (
+                <SelectItem key={host.id} value={host.id}>
+                  {host.name} · {statusLabel(host.status)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {isLoading && (
@@ -89,6 +130,34 @@ export default function SystemMetricsTab() {
 
       {metrics && (
         <div className="space-y-6">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {metrics.hosts.map((host) => (
+              <button
+                key={host.id}
+                type="button"
+                onClick={() => setHostId(host.id)}
+                className={`rounded-lg border p-3 text-left transition-colors ${host.id === hostId ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium">{host.name}</span>
+                  <span className={`size-2 rounded-full ${statusClass(host.status)}`} />
+                </div>
+                <div className="text-xs text-muted-foreground">{statusLabel(host.status)}</div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs tabular-nums">
+                  <span>CPU {host.current.cpu.toFixed(0)}%</span>
+                  <span>MEM {host.current.memory.usedPercent.toFixed(0)}%</span>
+                  <span>DISK {host.current.disk.usedPercent.toFixed(0)}%</span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {selectedHost && selectedHost.status !== 'connected' && (
+            <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+              {selectedHost.name} is {statusLabel(selectedHost.status).toLowerCase()}; showing the latest collected metrics.
+            </div>
+          )}
+
           {/* CPU Chart */}
           <Card className="p-4">
             <div className="mb-4 flex items-center justify-between">
