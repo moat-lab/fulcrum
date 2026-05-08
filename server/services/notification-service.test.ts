@@ -488,8 +488,8 @@ describe('Notification Service', () => {
 
       expect(results.some(r => r.channel === 'mattermost' && r.success)).toBe(true)
       expect(attachment.fields?.some(f => f.title === 'Task' && f.value === 'Mattermost task')).toBe(true)
-      expect(attachment.actions?.some(a => a.id === 'view_task' && a.integration.context.task_id === 'task-123')).toBe(true)
-      expect(attachment.actions?.some(a => a.id === 'next_status' && a.integration.context.status === 'IN_REVIEW')).toBe(true)
+      expect(attachment.actions?.some(a => a.id === 'viewTask' && a.integration.context.task_id === 'task-123')).toBe(true)
+      expect(attachment.actions?.some(a => a.id === 'nextStatus' && a.integration.context.status === 'IN_REVIEW')).toBe(true)
     })
 
     test('sends Mattermost failed deployment card with logs retry and rollback actions', async () => {

@@ -670,7 +670,7 @@ describe.serial('Mattermost Routes', () => {
       const updated = db.select().from(tasks).all().find(task => task.id === 'priority-task')
 
       expect(updated?.priority).toBe('high')
-      expect(data.update?.props?.attachments?.[0]?.actions?.find(action => action.id === 'change_priority')?.default_option?.value).toBe('high')
+      expect(data.update?.props?.attachments?.[0]?.actions?.find(action => action.id === 'changePriority')?.default_option?.value).toBe('high')
     })
 
     test('list and detail actions return expected Mattermost payloads', async () => {

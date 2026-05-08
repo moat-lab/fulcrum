@@ -128,9 +128,28 @@ describe.serial('Mattermost cards', () => {
       task_id: 'detail-task-123',
       status: 'IN_REVIEW',
     })
-    expect(card.actions?.find(action => action.id === 'change_priority')?.default_option).toEqual({ text: '🔴 High', value: 'high' })
+    expect(card.actions?.find(action => action.id === 'changePriority')?.default_option).toEqual({ text: '🔴 High', value: 'high' })
     expect(card.text).toContain('/tasks/detail-task-123')
     expect(card.actions?.find(action => action.id === 'open')).toBeUndefined()
+  })
+
+  test('builds Mattermost action ids that match the v10 post action route', async () => {
+    db.insert(projects).values({ id: 'proj-with_dash.1', name: 'Mattermost', status: 'active', createdAt: now, updatedAt: now }).run()
+    insertTask({ id: 'task-with_dash.1', title: 'Route-safe task', status: 'IN_PROGRESS', projectId: 'proj-with_dash.1', worktreePath: '/tmp/fulcrum-task' })
+    insertApp({ id: 'app-with_dash.1', name: 'Route-safe app', status: 'running' })
+
+    const cards = [
+      await buildDashboardCard(),
+      await buildTaskListCard(),
+      await buildTaskDetailCard('task-with_dash.1'),
+      await buildProjectsCard(),
+      await buildAppDetailCard('app-with_dash.1'),
+    ]
+
+    const actionIds = cards.flatMap(card => card.actions?.map(action => action.id) ?? [])
+    expect(actionIds.length).toBeGreaterThan(0)
+    expect(actionIds.every(id => /^[A-Za-z0-9]+$/.test(id))).toBe(true)
+    expect(cards.flatMap(card => card.actions ?? []).some(action => action.integration?.context.action === 'change_priority')).toBe(true)
   })
 
   test('buildAppDetailCard exposes deployment actions and only running rollback options', async () => {
