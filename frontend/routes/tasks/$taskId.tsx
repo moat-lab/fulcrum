@@ -18,7 +18,7 @@ import { useGitPush } from '@/hooks/use-git-push'
 import { useGitSyncParent } from '@/hooks/use-git-sync-parent'
 import { useGitCreatePR } from '@/hooks/use-git-create-pr'
 import { useKillClaudeInTask } from '@/hooks/use-kill-claude'
-import { useEditorApp, useEditorHost, useEditorSshPort, usePort, useOpencodeModel, useScratchStartupScript } from '@/hooks/use-config'
+import { useEditorApp, useEditorHost, useEditorSshPort, usePort, useOpencodeModel, useScratchStartupScript, useRemoteOnlyMode } from '@/hooks/use-config'
 import { useHost } from '@/hooks/use-hosts'
 import { useTerminalWS } from '@/hooks/use-terminal-ws'
 import { useStore } from '@/stores'
@@ -141,6 +141,7 @@ function TaskView() {
   const { data: serverPort } = usePort()
   const { data: globalOpencodeModel } = useOpencodeModel()
   const { data: scratchStartupScript } = useScratchStartupScript()
+  const { data: remoteOnly } = useRemoteOnlyMode()
   const { data: repositories = [] } = useRepositories()
   const { data: taskHost } = useHost(task?.hostId ?? null)
 
@@ -1021,10 +1022,12 @@ function TaskView() {
                       Diff
                     </TabsTrigger>
                   )}
-                  <TabsTrigger value="terminal">
-                    <HugeiconsIcon icon={CommandLineIcon} size={14} strokeWidth={2} data-slot="icon" />
-                    Terminal
-                  </TabsTrigger>
+                  {!remoteOnly && (
+                    <TabsTrigger value="terminal">
+                      <HugeiconsIcon icon={CommandLineIcon} size={14} strokeWidth={2} data-slot="icon" />
+                      Terminal
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="scratch">
                     <HugeiconsIcon icon={NoteEditIcon} size={14} strokeWidth={2} data-slot="icon" />
                     Scratch
@@ -1051,9 +1054,11 @@ function TaskView() {
                 </TabsContent>
               )}
 
-              <TabsContent value="terminal" className="flex-1 overflow-hidden">
-                <TaskShellTerminal taskId={task.id} taskName={task.title} cwd={task.worktreePath} />
-              </TabsContent>
+              {!remoteOnly && (
+                <TabsContent value="terminal" className="flex-1 overflow-hidden">
+                  <TaskShellTerminal taskId={task.id} taskName={task.title} cwd={task.worktreePath} />
+                </TabsContent>
+              )}
 
               <TabsContent value="scratch" className="flex-1 overflow-hidden">
                 <ScratchEditor
@@ -1121,15 +1126,17 @@ function TaskView() {
                       Diff
                     </TabsTrigger>
                   )}
-                  <TabsTrigger value="terminal">
-                    <HugeiconsIcon
-                      icon={CommandLineIcon}
-                      size={14}
-                      strokeWidth={2}
-                      data-slot="icon"
-                    />
-                    Terminal
-                  </TabsTrigger>
+                  {!remoteOnly && (
+                    <TabsTrigger value="terminal">
+                      <HugeiconsIcon
+                        icon={CommandLineIcon}
+                        size={14}
+                        strokeWidth={2}
+                        data-slot="icon"
+                      />
+                      Terminal
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="scratch">
                     <HugeiconsIcon
                       icon={NoteEditIcon}
@@ -1176,9 +1183,11 @@ function TaskView() {
                 </TabsContent>
               )}
 
-              <TabsContent value="terminal" className="flex-1 overflow-hidden">
-                <TaskShellTerminal taskId={task.id} taskName={task.title} cwd={task.worktreePath} />
-              </TabsContent>
+              {!remoteOnly && (
+                <TabsContent value="terminal" className="flex-1 overflow-hidden">
+                  <TaskShellTerminal taskId={task.id} taskName={task.title} cwd={task.worktreePath} />
+                </TabsContent>
+              )}
 
               <TabsContent value="scratch" className="flex-1 overflow-hidden">
                 <ScratchEditor

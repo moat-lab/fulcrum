@@ -30,6 +30,12 @@ export const AGENT_DOC_URLS: Record<AgentType, string> = {
   opencode: 'https://opencode.ai/docs/',
 }
 
+export type RemoteOnlyMode = boolean
+
+export interface AppConfig {
+  remoteOnly: RemoteOnlyMode
+}
+
 export type TaskStatus =
   | 'TO_DO'
   | 'IN_PROGRESS'

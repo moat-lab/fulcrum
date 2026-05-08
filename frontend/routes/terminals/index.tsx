@@ -22,6 +22,7 @@ import { useProjects } from '@/hooks/use-projects'
 import { useHosts } from '@/hooks/use-hosts'
 import { useTerminalViewState } from '@/hooks/use-terminal-view-state'
 import { useHotkeys } from '@/hooks/use-hotkeys'
+import { useRemoteOnlyMode } from '@/hooks/use-config'
 import { cn } from '@/lib/utils'
 import type { Terminal as XTerm } from '@xterm/xterm'
 import type { TerminalTab, TaskStatus } from '@/types'
@@ -102,6 +103,8 @@ const TerminalsView = observer(function TerminalsView() {
     lastCreatedTabId,
   } = useTerminalStore()
 
+  const { data: remoteOnly } = useRemoteOnlyMode()
+
   // State for tab edit dialog
   const [editingTab, setEditingTab] = useState<TerminalTab | null>(null)
 
@@ -160,6 +163,7 @@ const TerminalsView = observer(function TerminalsView() {
           // This delay prevents the redirect effect from racing and overriding our navigation
           setTimeout(() => {
             store.clearLastCreatedTabId()
+            if (remoteOnly) return
             terminalCountRef.current++
             const terminalName = `Terminal ${terminalCountRef.current}`
             log.terminal.debug('Creating terminal in new tab', { tabId, name: terminalName })
@@ -176,7 +180,7 @@ const TerminalsView = observer(function TerminalsView() {
       { fireImmediately: true } // Check current value on mount
     )
     return dispose
-  }, [store, setActiveTab, createTerminal])
+  }, [store, setActiveTab, createTerminal, remoteOnly])
 
   // Redirect effect - handles invalid URL when not waiting for tab creation
   useEffect(() => {
@@ -630,6 +634,9 @@ const TerminalsView = observer(function TerminalsView() {
     })
 
     // Prevent duplicate creations from double-clicks or React Strict Mode
+    if (remoteOnly) {
+      return
+    }
     if (pendingTerminalCreateRef.current) {
       log.terminal.debug('Skipping terminal creation, already pending')
       return
@@ -662,7 +669,7 @@ const TerminalsView = observer(function TerminalsView() {
     setTimeout(() => {
       pendingTerminalCreateRef.current = false
     }, 500)
-  }, [createTerminal, activeTabId, terminals, connected])
+  }, [createTerminal, activeTabId, terminals, connected, remoteOnly])
 
   // Task-related terminals should not be in regular tabs - remove them if they are
   useEffect(() => {
@@ -815,9 +822,9 @@ const TerminalsView = observer(function TerminalsView() {
   // Keyboard shortcuts (Cmd+D/W only work on desktop - browser intercepts on web)
   const isSystemTab = activeTabId === ALL_TASKS_TAB_ID || activeTabId === ALL_REPOS_TAB_ID
   useHotkeys('meta+d', handleTerminalAdd, {
-    enabled: !isSystemTab && connected,
+    enabled: !isSystemTab && connected && !remoteOnly,
     allowInTerminal: true,
-    deps: [handleTerminalAdd, isSystemTab, connected],
+    deps: [handleTerminalAdd, isSystemTab, connected, remoteOnly],
   })
 
   useHotkeys('meta+w', () => {
@@ -979,7 +986,7 @@ const TerminalsView = observer(function TerminalsView() {
             variant="outline"
             size="sm"
             onClick={handleTerminalAdd}
-            disabled={!connected || activeTabId === ALL_TASKS_TAB_ID || activeTabId === ALL_REPOS_TAB_ID}
+            disabled={!connected || remoteOnly || activeTabId === ALL_TASKS_TAB_ID || activeTabId === ALL_REPOS_TAB_ID}
             className="max-sm:px-2 border-transparent text-primary"
           >
             <HugeiconsIcon
@@ -998,7 +1005,7 @@ const TerminalsView = observer(function TerminalsView() {
         <TerminalGrid
           terminals={visibleTerminals}
           onTerminalClose={activeTabId === ALL_TASKS_TAB_ID || activeTabId === ALL_REPOS_TAB_ID ? undefined : handleTerminalClose}
-          onTerminalAdd={connected && activeTabId !== ALL_TASKS_TAB_ID && activeTabId !== ALL_REPOS_TAB_ID ? handleTerminalAdd : undefined}
+          onTerminalAdd={connected && !remoteOnly && activeTabId !== ALL_TASKS_TAB_ID && activeTabId !== ALL_REPOS_TAB_ID ? handleTerminalAdd : undefined}
           onTerminalReady={handleTerminalReady}
           onTerminalResize={handleTerminalResize}
           onTerminalRename={activeTabId === ALL_TASKS_TAB_ID || activeTabId === ALL_REPOS_TAB_ID ? undefined : handleTerminalRename}

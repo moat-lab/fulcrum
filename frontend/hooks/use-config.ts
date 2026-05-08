@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJSON } from '@/lib/api'
 export { CONFIG_KEYS } from '@shared/config-keys'
 import { CONFIG_KEYS } from '@shared/config-keys'
+import type { AppConfig } from '@shared/types'
 
 // Use relative URLs - works with both Vite dev proxy and production
 const API_BASE = ''
@@ -17,6 +18,22 @@ const DEFAULT_PORT = 7777
 
 // Editor app types
 export type EditorApp = 'vscode' | 'cursor' | 'windsurf' | 'zed'
+
+export function useAppConfig() {
+  return useQuery({
+    queryKey: ['config'],
+    queryFn: () => fetchJSON<AppConfig & Record<string, unknown>>(`${API_BASE}/api/config`),
+  })
+}
+
+export function useRemoteOnlyMode() {
+  const query = useAppConfig()
+
+  return {
+    ...query,
+    data: Boolean(query.data?.remoteOnly),
+  }
+}
 
 export function useConfig(key: string) {
   return useQuery({

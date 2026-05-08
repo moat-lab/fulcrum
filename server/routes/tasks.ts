@@ -18,6 +18,7 @@ import { reindexTaskFTS } from '../services/search-service'
 import { log } from '../lib/logger'
 import { createGitWorktree, createRemoteGitWorktree, copyFilesToWorktree, pullLatestInWorktree, checkRepoStateForWorktree } from '../lib/git-utils'
 import { isValidBranchName } from '../lib/shell-escape'
+import { getRuntimeConfig } from '../lib/runtime-config'
 
 // Helper to delete git worktree
 function deleteGitWorktree(repoPath: string, worktreePath: string): void {
@@ -133,6 +134,10 @@ export async function createTaskRecord(body: Omit<NewTask, 'id' | 'createdAt' | 
   const worktreeInfo = body.repoPath && body.worktreePath === undefined && body.type === 'worktree'
     ? generateWorktreeInfo(body.repoPath, body.title, body.prefix)
     : null
+
+  if (getRuntimeConfig().remoteOnly && !body.hostId) {
+    return { error: 'remote-only mode requires hostId', status: 400 }
+  }
 
   const newTask: NewTask = {
     id: crypto.randomUUID(),
@@ -837,6 +842,10 @@ app.patch('/:id', async (c) => {
 
     const body = await c.req.json<Partial<Task> & { viewState?: unknown }>()
     const now = new Date().toISOString()
+
+    if (getRuntimeConfig().remoteOnly && body.hostId === null) {
+      return c.json({ error: 'remote-only mode requires hostId' }, 400)
+    }
 
     // hostId reassignment rules:
     //   - only worktree / scratch tasks have an execution host (manual / draft
