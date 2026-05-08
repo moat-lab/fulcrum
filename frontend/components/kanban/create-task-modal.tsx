@@ -1143,12 +1143,20 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
                         ))}
                       </SelectContent>
                     </Select>
-                  ) : (
+                  ) : remoteOnly ? (
                     <p className="text-xs text-muted-foreground">
                       Remote mode requires a configured host.{' '}
                       <a href="/settings" className="text-primary hover:underline">
                         Add hosts in Settings → Remote Hosts
                       </a>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      No remote hosts configured. Tasks will run locally unless a host is added in{' '}
+                      <a href="/settings" className="text-primary hover:underline">
+                        Settings → Remote Hosts
+                      </a>
+                      .
                     </p>
                   )}
                 </Field>
