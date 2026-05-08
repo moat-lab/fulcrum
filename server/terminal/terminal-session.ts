@@ -1,4 +1,4 @@
-import { spawn, type IPty } from 'bun-pty'
+import type { IPty } from 'bun-pty'
 import { unlinkSync } from 'fs'
 import { getDtachService } from './dtach-service'
 import { BufferManager } from './buffer-manager'
@@ -9,6 +9,15 @@ import type { TerminalInfo, TerminalStatus } from '../types'
 import type { ITerminalSession } from './session-interface'
 import { log } from '../lib/logger'
 import { getSettingByKey } from '../lib/settings'
+
+type SpawnPty = typeof import('bun-pty')['spawn']
+
+let spawnPty: SpawnPty | null = null
+
+async function loadSpawnPty(): Promise<SpawnPty> {
+  spawnPty ??= (await import('bun-pty')).spawn
+  return spawnPty
+}
 
 export interface TerminalSessionOptions {
   id: string
@@ -100,7 +109,8 @@ export class TerminalSession implements ITerminalSession {
   }
 
   // Create a new dtach session (but don't attach yet - that happens in attach())
-  start(): void {
+  async start(): Promise<void> {
+    const spawn = await loadSpawnPty()
     const dtach = getDtachService()
     const [cmd, ...args] = dtach.getCreateCommand(this.id)
 
@@ -199,6 +209,7 @@ export class TerminalSession implements ITerminalSession {
     // Load saved buffer from disk before attaching
     this.buffer.loadFromDisk()
 
+    const spawn = await loadSpawnPty()
     const [cmd, ...args] = dtach.getAttachCommand(this.id)
 
     try {

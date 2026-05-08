@@ -337,7 +337,7 @@ export class PTYManager {
     this.sessions.set(id, session)
 
     // Start the dtach session (creates and attaches)
-    session.start()
+    await session.start()
 
     return session.getInfo()
   }

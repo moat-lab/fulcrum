@@ -1,0 +1,16 @@
+node_modules/
+dist/
+cli/bin/
+cli/dist/
+cli/drizzle/
+cli/lib/
+cli/server/
+cli/package.json
+desktop/
+docs/
+skills/
+.git/
+.coder-loop/
+.dev-loop/
+.dev-trace.txt
+*.test.ts
