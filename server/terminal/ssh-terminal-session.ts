@@ -73,7 +73,7 @@ export class SSHTerminalSession implements ITerminalSession {
     this._hostId = options.hostId
     this.sshConfig = options.sshConfig
     this.fulcrumUrl = options.fulcrumUrl
-    this.buffer = new BufferManager()
+    this.buffer = new BufferManager(this.cols, this.rows)
     this.buffer.setTerminalId(this.id)
     this.remoteSocketsDir = `/home/${options.sshConfig.username}/.fulcrum/sockets`
     this.onData = options.onData
@@ -316,6 +316,7 @@ export class SSHTerminalSession implements ITerminalSession {
     if (this.stream) {
       this.stream.setWindow(rows, cols, rows * 16, cols * 8)
     }
+    this.buffer.resize(cols, rows)
     this.updateDb({ cols, rows })
   }
 
