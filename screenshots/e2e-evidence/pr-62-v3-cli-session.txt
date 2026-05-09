@@ -1,0 +1,71 @@
+=== PR #62 v3 e2e: full CLI session ===
+
+--- v3: board command removed (config #36 conflict prep) ---
+$ fulcrum --help (top-level subcommands)
+USAGE fulcrum current-task|config|opencode|claude|notifications|notify|hosts|up|down|status|doctor|dev|mcp|update|migrate-from-vibora
+
+→ subcommand list now: current-task|config|opencode|claude|notifications|notify|hosts|up|down|status|doctor|dev|mcp|update|migrate-from-vibora
+→ "board" no longer present (was line 68/20 in cli/src/index.ts)
+
+--- v2 + v3: hosts CRUD with key + password auth paths ---
+$ fulcrum hosts list (initial)
+No remote hosts configured. Use "fulcrum hosts add <name>" to add one.
+
+$ fulcrum hosts add demo-key --hostname 192.168.1.50 --username root  # default --auth-method=key
+Host "demo-key" added (root@192.168.1.50:8888)
+
+$ fulcrum hosts add demo-pwd --hostname 192.168.1.51 --username admin --auth-method password --password supersecret  # v2 new
+Host "demo-pwd" added (admin@192.168.1.51:8888)
+
+$ fulcrum hosts add bad --hostname x --username y --auth-method password  # missing --password, expect ERROR
+
+ ERROR  --password is required when --auth-method=password
+
+exit=1
+
+$ fulcrum hosts add bad --hostname x --username y --auth-method certificate  # invalid method, expect ERROR
+
+ ERROR  --auth-method must be "key" or "password"
+
+exit=1
+
+$ fulcrum hosts list  # after add
+Remote Hosts
+============
+  ? demo-key             root@192.168.1.50:8888
+  ? demo-pwd             admin@192.168.1.51:8888
+
+--- verify server persisted authMethod (no silent drop) ---
+$ curl http://localhost:8888/api/hosts | jq '[.[]|{name,authMethod,fulcrumUrl}]'
+[
+  {
+    "name": "demo-key",
+    "authMethod": "key",
+    "fulcrumUrl": null
+  },
+  {
+    "name": "demo-pwd",
+    "authMethod": "password",
+    "fulcrumUrl": null
+  }
+]
+
+$ fulcrum hosts test demo-pwd  # expect FAIL + exit=1
+FAIL demo-pwd: Invalid SSH auth config: method=password
+exit=1
+
+$ fulcrum hosts check-env demo-pwd  # expect not ready + exit=1
+Environment check: demo-pwd
+  ✗ dtach       
+  ✗ fulcrum     
+  ✗ claude      
+  ✗ opencode    
+Status: not ready
+exit=1
+
+$ fulcrum hosts remove demo-key && fulcrum hosts remove demo-pwd
+Host "demo-key" removed
+Host "demo-pwd" removed
+
+$ fulcrum hosts list  # final, empty
+No remote hosts configured. Use "fulcrum hosts add <name>" to add one.

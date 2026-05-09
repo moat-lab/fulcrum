@@ -1,0 +1,30 @@
+e2e dispatch test: agent-browser drives chromium against fulcrum dev server.
+Setup: 1 host configured (test-host @ 127.0.0.1, unreachable so env stays not-ready).
+
+Step 1 — click "Check Env" button at T=0:
+  POST /api/hosts/<id>/check-env (200, 22ms)
+  setEnvCheckedAt({hostId: T+~50ms})
+
+Step 2 — at T=~3s (within 30s cooldown), agent-browser eval:
+  document.dispatchEvent(new Event('visibilitychange'))
+
+  Chromium console output:
+    [RemoteHosts] visibilitychange fired
+    {envResultsCount: 1, notReadyCount: 1, staleCount: 0, cooldownMs: 30000}
+
+  Server log: NO additional POST /api/hosts/<id>/check-env
+  → cooldown filter skipped the silent re-check (correct).
+
+Step 3 — at T=~35s (past 30s cooldown), agent-browser eval:
+  document.dispatchEvent(new Event('visibilitychange'))
+
+  Chromium console output:
+    [RemoteHosts] visibilitychange fired
+    {envResultsCount: 1, notReadyCount: 1, staleCount: 1, cooldownMs: 30000}
+
+  Server log: POST /api/hosts/<id>/check-env (200, 1ms) — silent re-check fired.
+
+Conclusion:
+- visibility-change listener is registered (console breadcrumb fires every dispatch).
+- Cooldown gate works (staleCount=0 inside 30s, =1 outside).
+- Silent re-check actually hits the API when cooldown clears (POST count delta=2 = req+resp lines).

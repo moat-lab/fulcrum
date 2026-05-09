@@ -1,0 +1,18 @@
+=== PR #61 v3 e2e: PATCH /api/tasks hostId 存在性校验 ===
+
+Setup: 1 scratch task without worktree, 1 valid host.
+
+Created task: 3c922243-cc94-4c6a-82f0-97f3b76f5b79 (type=scratch, no worktree)
+Created host: 9ITess88yQLBoKlzFhQ1X
+
+=== Test 1: PATCH with non-existent hostId (typo) → expect 400 ===
+  → HTTP 400
+  body: {"error":"Host not found: typoid-doesnt-exist"}
+
+=== Test 2: PATCH with valid hostId → expect 200 ===
+  → HTTP 200
+  task.hostId after = 9ITess88yQLBoKlzFhQ1X
+
+=== Test 3: PATCH hostId=null (clear back to local) → expect 200 ===
+  → HTTP 200
+  task.hostId after = None
