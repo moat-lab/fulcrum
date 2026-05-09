@@ -1,0 +1,15 @@
+Issue #115 browser evidence run: run-2026-05-09-01-30-07-issue-115
+
+Local dev instance:
+- Backend: http://localhost:8899
+- Frontend: http://192.168.1.220:5175
+- /api/config/tailscale_ip response: {"key":"tailscale_ip","value":null,"isDefault":true}
+
+Browser screenshots:
+- browser-default-localhost-fallback.jpg: Browser tab defaulted to http://localhost:3000 when no Tailscale IPv4 was detected.
+- browser-direct-url-preserved.jpg: Submitted http://example.com/direct-path?issue=115 and the URL field preserved that exact direct URL while the iframe loaded Example Domain.
+- browser-open-new-tab.jpg: Open-in-new-tab button opened a second browser tab for the direct URL.
+
+agent-browser tab list after open-in-new-tab:
+  [t1] Fulcrum - http://192.168.1.220:5175/tasks/46f1f16c-4374-498b-88ba-64a3029f86d5?tab=browser
+→ [t2] example.com/direct-path?issue=115 - https://example.com/direct-path?issue=115

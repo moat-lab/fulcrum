@@ -6,6 +6,7 @@ import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { CONFIG_KEYS } from '../../shared/config-keys'
 import { VALID_SETTING_PATHS } from '../lib/settings/types'
 import { setFnoxValue } from '../lib/settings/fnox'
+import { getTailscaleIpv4 } from './server-expose'
 
 describe('Config Routes', () => {
   let testEnv: TestEnv
@@ -17,6 +18,20 @@ describe('Config Routes', () => {
   afterEach(() => {
     delete process.env.FULCRUM_REMOTE_ONLY
     testEnv.cleanup()
+  })
+
+  describe('Tailscale IPv4 selection', () => {
+    test('selects the first IPv4 address from Tailscale status', () => {
+      expect(getTailscaleIpv4({
+        Self: { TailscaleIPs: ['100.101.102.103', 'fd7a:115c:a1e0::1'] },
+      })).toBe('100.101.102.103')
+    })
+
+    test('returns null when Tailscale status has no IPv4 address', () => {
+      expect(getTailscaleIpv4({
+        Self: { TailscaleIPs: ['fd7a:115c:a1e0::1'] },
+      })).toBeNull()
+    })
   })
 
   describe('GET /api/config', () => {
@@ -74,6 +89,17 @@ describe('Config Routes', () => {
       expect(res.status).toBe(200)
       expect(body.key).toBe('home_dir')
       expect(typeof body.value).toBe('string')
+      expect(body.isDefault).toBe(true)
+    })
+
+    test('returns tailscale_ip (special read-only key)', async () => {
+      const { get } = createTestApp()
+      const res = await get('/api/config/tailscale_ip')
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.key).toBe('tailscale_ip')
+      expect(body.value === null || typeof body.value === 'string').toBe(true)
       expect(body.isDefault).toBe(true)
     })
 

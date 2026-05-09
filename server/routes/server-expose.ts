@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { execSync } from 'node:child_process'
+import * as childProcess from 'node:child_process'
 import os from 'node:os'
 import { getSettings, updateSettingByPath } from '../lib/settings'
 import { log } from '../lib/logger'
@@ -15,28 +15,44 @@ import {
 const app = new Hono()
 
 interface TailscaleStatus {
-  Self?: { DNSName?: string; HostName?: string }
+  Self?: { DNSName?: string; HostName?: string; TailscaleIPs?: string[] }
   MagicDNSSuffix?: string
 }
 
-/** Best-effort Tailscale hostname detection. Returns null if Tailscale is not available. */
-function detectTailscaleHostname(): string | null {
+function readTailscaleStatus(): TailscaleStatus | null {
   try {
-    const raw = execSync('tailscale status --json', {
+    const raw = childProcess.execSync('tailscale status --json', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 5000,
     })
-    const status = JSON.parse(raw) as TailscaleStatus
-    const dnsName = status.Self?.DNSName
-    if (dnsName) return dnsName.replace(/\.$/, '')
-    if (status.Self?.HostName && status.MagicDNSSuffix) {
-      return `${status.Self.HostName}.${status.MagicDNSSuffix}`
-    }
+    return JSON.parse(raw) as TailscaleStatus
   } catch {
-    // tailscale not installed, not running, or not authenticated
+    return null
+  }
+}
+
+/** Best-effort Tailscale hostname detection. Returns null if Tailscale is not available. */
+function detectTailscaleHostname(): string | null {
+  const status = readTailscaleStatus()
+  if (!status) return null
+  const dnsName = status.Self?.DNSName
+  if (dnsName) return dnsName.replace(/\.$/, '')
+  if (status.Self?.HostName && status.MagicDNSSuffix) {
+    return `${status.Self.HostName}.${status.MagicDNSSuffix}`
   }
   return null
+}
+
+function getTailscaleIpv4(status: TailscaleStatus): string | null {
+  return status.Self?.TailscaleIPs?.find((ip) => !ip.includes(':')) ?? null
+}
+
+/** Best-effort Tailscale IPv4 detection. Returns null if Tailscale is not available. */
+function detectTailscaleIp(): string | null {
+  const status = readTailscaleStatus()
+  if (!status) return null
+  return getTailscaleIpv4(status)
 }
 
 /** GET /api/server/expose — current state */
@@ -196,4 +212,4 @@ app.delete('/', async (c) => {
 export default app
 
 // Re-export for tests
-export { detectTailscaleHostname }
+export { detectTailscaleHostname, detectTailscaleIp, getTailscaleIpv4 }
