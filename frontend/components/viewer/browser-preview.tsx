@@ -11,12 +11,25 @@ import {
 import { useBrowserUrl } from '@/hooks/use-browser-url'
 import { normalizeBrowserUrl } from '@/lib/preview-url'
 
-interface BrowserPreviewProps {
-  taskId: string
+type BrowserPreviewProps =
+  | { taskId: string }
+  | { url: string; setUrl: (url: string) => void }
+
+export function BrowserPreview(props: BrowserPreviewProps) {
+  if ('taskId' in props) {
+    return <TaskBrowserPreview taskId={props.taskId} />
+  }
+
+  return <BrowserPreviewFrame url={props.url} setUrl={props.setUrl} />
 }
 
-export function BrowserPreview({ taskId }: BrowserPreviewProps) {
+function TaskBrowserPreview({ taskId }: { taskId: string }) {
   const { url, setUrl } = useBrowserUrl(taskId)
+
+  return <BrowserPreviewFrame url={url} setUrl={setUrl} />
+}
+
+function BrowserPreviewFrame({ url, setUrl }: { url: string; setUrl: (url: string) => void }) {
   const [inputValue, setInputValue] = useState(url)
   const [key, setKey] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)

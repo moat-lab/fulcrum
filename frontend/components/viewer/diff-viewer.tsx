@@ -4,6 +4,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowRight01Icon, ArrowDown01Icon, MenuCollapseIcon, UnfoldMoreIcon } from '@hugeicons/core-free-icons'
 import { useGitDiff } from '@/hooks/use-filesystem'
 import { useDiffOptions } from '@/hooks/use-diff-options'
+import type { DiffOptions } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface DiffLine {
@@ -107,14 +108,58 @@ type FlatRow =
 const FILE_HEADER_HEIGHT = 32
 const DIFF_LINE_HEIGHT = 22
 
-interface DiffViewerProps {
-  taskId: string
-  worktreePath: string | null
-  baseBranch?: string
+type DiffViewerProps =
+  | {
+      taskId: string
+      worktreePath: string | null
+      baseBranch?: string
+    }
+  | {
+      worktreePath: string | null
+      baseBranch?: string
+      options: DiffOptions
+      collapsedSet: Set<string>
+      setOption: <K extends keyof DiffOptions>(key: K, value: DiffOptions[K]) => void
+      toggleFileCollapse: (path: string) => void
+      collapseAll: (filePaths: string[]) => void
+      expandAll: () => void
+    }
+
+export function DiffViewer(props: DiffViewerProps) {
+  if ('taskId' in props) {
+    return <TaskDiffViewer taskId={props.taskId} worktreePath={props.worktreePath} baseBranch={props.baseBranch} />
+  }
+
+  return <DiffViewerFrame {...props} />
 }
 
-export function DiffViewer({ taskId, worktreePath, baseBranch }: DiffViewerProps) {
-  const { options, collapsedSet, setOption, toggleFileCollapse, collapseAll, expandAll } = useDiffOptions(taskId)
+function TaskDiffViewer({ taskId, worktreePath, baseBranch }: { taskId: string; worktreePath: string | null; baseBranch?: string }) {
+  const diffOptions = useDiffOptions(taskId)
+
+  return (
+    <DiffViewerFrame
+      worktreePath={worktreePath}
+      baseBranch={baseBranch}
+      options={diffOptions.options}
+      collapsedSet={diffOptions.collapsedSet}
+      setOption={diffOptions.setOption}
+      toggleFileCollapse={diffOptions.toggleFileCollapse}
+      collapseAll={diffOptions.collapseAll}
+      expandAll={diffOptions.expandAll}
+    />
+  )
+}
+
+function DiffViewerFrame({
+  worktreePath,
+  baseBranch,
+  options,
+  collapsedSet,
+  setOption,
+  toggleFileCollapse,
+  collapseAll,
+  expandAll,
+}: Exclude<DiffViewerProps, { taskId: string }>) {
   const { wrap, ignoreWhitespace, includeUntracked, collapsedFiles } = options
   const { data, isLoading, error } = useGitDiff(worktreePath, { ignoreWhitespace, includeUntracked, baseBranch })
 
