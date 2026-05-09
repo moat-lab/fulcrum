@@ -1,0 +1,26 @@
+=== PR #58 v3 e2e: cascade-unset + cycle defense ===
+
+Setup: 3 tasks, A is parent, B derives from A, C derives from B.
+
+Step 1: create A → B(derivedFromTaskId=A) → C(derivedFromTaskId=B)
+  A=066df4a0-1d6a-4546-b657-4a2409b2c2bb
+  B=f91b92a3-6b03-46a5-a44c-08a2129db407 (derivedFromTaskId=066df4a0-1d6a-4546-b657-4a2409b2c2bb)
+  C=6ee27a6f-d87c-4bc7-9b8e-3261a0d8b2bb (derivedFromTaskId=f91b92a3-6b03-46a5-a44c-08a2129db407)
+
+Step 2: cycle defense — try create D derivedFromTaskId=C, but pretend chain points back to D itself
+  (in practice: only achievable if walked chain hit a cycle in pre-existing data;
+   here we simulate by pointing existing A.derivedFromTaskId → C through SQL,
+   then creating D derivedFromTaskId=A → walks A→C→B→A (cycle found))
+  Manual cycle injected: A.derivedFromTaskId = C (now A→C→B→A loop)
+
+  POST /api/tasks (D derivedFromTaskId=A):
+  → HTTP 400
+  body: {"error":"Derivation would create a cycle"}
+
+Step 3: cascade-unset — DELETE A → verify B.derivedFromTaskId becomes null
+  Before delete:
+    B.derivedFromTaskId = 066df4a0-1d6a-4546-b657-4a2409b2c2bb
+  DELETE /api/tasks/A:
+  → HTTP 200
+  After delete:
+    B.derivedFromTaskId = None
