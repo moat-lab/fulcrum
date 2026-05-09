@@ -4,15 +4,33 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { Button } from '@/components/ui/button'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Loading03Icon } from '@hugeicons/core-free-icons'
+import {
+  Loading03Icon,
+  CodeIcon,
+  CommandLineIcon,
+  NoteEditIcon,
+  Folder01Icon,
+  BrowserIcon,
+} from '@hugeicons/core-free-icons'
 import { FilesViewer } from '@/components/viewer/files-viewer'
+import { DiffViewer } from '@/components/viewer/diff-viewer'
+import { BrowserPreview } from '@/components/viewer/browser-preview'
+import { ScratchEditor } from '@/components/viewer/scratch-editor'
+import { GitStatusBadge } from '@/components/viewer/git-status-badge'
+import { ShellTerminal } from '@/components/terminal/shell-terminal'
 import { Terminal } from '@/components/terminal/terminal'
 import { useTerminalWS } from '@/hooks/use-terminal-ws'
 import { useIsMobile } from '@/hooks/use-is-mobile'
+import { useDiffOptionsLocal } from '@/hooks/use-diff-options-local'
+import { useBrowserUrlLocal } from '@/hooks/use-browser-url-local'
 import { log } from '@/lib/logger'
 import type { Terminal as XTerm } from '@xterm/xterm'
 
+type WorkspaceRightTab = 'diff' | 'terminal' | 'scratch' | 'files' | 'browser'
+
 export interface WorkspacePanelProps {
+  /** Stable ID for per-repository workspace state */
+  repoId: string
   /** The directory path to use for terminal cwd and file viewer */
   repoPath: string
   /** Display name for terminal tab */
@@ -32,6 +50,7 @@ export interface WorkspacePanelProps {
  * Used in both repository detail view and app detail view.
  */
 export function WorkspacePanel({
+  repoId,
   repoPath,
   repoDisplayName,
   activeTab,
@@ -41,9 +60,9 @@ export function WorkspacePanel({
 }: WorkspacePanelProps) {
   const { t } = useTranslation('repositories')
   const isMobile = useIsMobile()
-
-  // Mobile sub-tab state
-  const [mobileWorkspaceTab, setMobileWorkspaceTab] = useState<'terminal' | 'files'>('terminal')
+  const [rightTab, setRightTab] = useState<WorkspaceRightTab>('files')
+  const diffOptions = useDiffOptionsLocal(repoId)
+  const { url: browserUrl, setUrl: setBrowserUrl } = useBrowserUrlLocal(repoId)
 
   // Terminal state
   const [terminalId, setTerminalId] = useState<string | null>(null)
@@ -253,36 +272,141 @@ export function WorkspacePanel({
     )
   }
 
+  const renderTerminalPanel = () => (
+    <div className="relative h-full flex flex-col">
+      {renderConnectionStatus()}
+      {renderTerminalLoadingOverlay()}
+      {renderErrorOverlay()}
+      <Terminal
+        className="flex-1"
+        onReady={handleTerminalReady}
+        onResize={handleTerminalResize}
+        onContainerReady={handleTerminalContainerReady}
+        terminalId={terminalId ?? undefined}
+        setupImagePaste={setupImagePaste}
+        onSend={handleTerminalSend}
+        onReset={terminalId ? handleRecreate : undefined}
+      />
+    </div>
+  )
+
+  const renderRightTabs = () => (
+    <Tabs
+      value={rightTab}
+      onValueChange={(v) => setRightTab(v as WorkspaceRightTab)}
+      className="flex h-full flex-col"
+    >
+      <div
+        className="film-grain relative flex items-center justify-between shrink-0 border-b border-border px-2 py-1"
+        style={{ background: 'var(--gradient-header)' }}
+      >
+        <TabsList variant="line">
+          <TabsTrigger value="diff">
+            <HugeiconsIcon icon={CodeIcon} size={14} strokeWidth={2} data-slot="icon" />
+            Diff
+          </TabsTrigger>
+          <TabsTrigger value="terminal">
+            <HugeiconsIcon icon={CommandLineIcon} size={14} strokeWidth={2} data-slot="icon" />
+            Terminal
+          </TabsTrigger>
+          <TabsTrigger value="scratch">
+            <HugeiconsIcon icon={NoteEditIcon} size={14} strokeWidth={2} data-slot="icon" />
+            Scratch
+          </TabsTrigger>
+          <TabsTrigger value="files">
+            <HugeiconsIcon icon={Folder01Icon} size={14} strokeWidth={2} data-slot="icon" />
+            Files
+          </TabsTrigger>
+          <TabsTrigger value="browser">
+            <HugeiconsIcon icon={BrowserIcon} size={14} strokeWidth={2} data-slot="icon" />
+            Browser
+          </TabsTrigger>
+        </TabsList>
+        <GitStatusBadge worktreePath={repoPath} />
+      </div>
+
+      <TabsContent value="diff" className="flex-1 overflow-hidden">
+        <DiffViewer
+          worktreePath={repoPath}
+          options={diffOptions.options}
+          collapsedSet={diffOptions.collapsedSet}
+          setOption={diffOptions.setOption}
+          toggleFileCollapse={diffOptions.toggleFileCollapse}
+          collapseAll={diffOptions.collapseAll}
+          expandAll={diffOptions.expandAll}
+        />
+      </TabsContent>
+
+      <TabsContent value="terminal" className="flex-1 overflow-hidden">
+        <ShellTerminal
+          scopeId={`repo-shell:${repoId}`}
+          name={`${repoDisplayName} (shell)`}
+          cwd={repoPath}
+        />
+      </TabsContent>
+
+      <TabsContent value="scratch" className="flex-1 overflow-hidden">
+        <ScratchEditor
+          taskId={`repo:${repoId}`}
+          worktreePath={repoPath}
+          terminalId={terminalId}
+        />
+      </TabsContent>
+
+      <TabsContent value="files" className="flex-1 overflow-hidden">
+        <FilesViewer
+          worktreePath={repoPath}
+          initialSelectedFile={file}
+          onFileChange={onFileChange}
+          onFileSaved={onFileSaved}
+        />
+      </TabsContent>
+
+      <TabsContent value="browser" className="flex-1 overflow-hidden">
+        <BrowserPreview url={browserUrl} setUrl={setBrowserUrl} />
+      </TabsContent>
+    </Tabs>
+  )
+
   if (isMobile) {
     return (
       <Tabs
-        value={mobileWorkspaceTab}
-        onValueChange={(v) => setMobileWorkspaceTab(v as 'terminal' | 'files')}
+        value={rightTab}
+        onValueChange={(v) => setRightTab(v as WorkspaceRightTab)}
         className="flex min-h-0 flex-1 flex-col h-full"
       >
         <div className="shrink-0 border-b border-border px-2 py-1">
           <TabsList className="w-full">
+            <TabsTrigger value="diff" className="flex-1">Diff</TabsTrigger>
             <TabsTrigger value="terminal" className="flex-1">{t('detailView.mobileWorkspace.terminal')}</TabsTrigger>
+            <TabsTrigger value="scratch" className="flex-1">Scratch</TabsTrigger>
             <TabsTrigger value="files" className="flex-1">{t('detailView.mobileWorkspace.files')}</TabsTrigger>
+            <TabsTrigger value="browser" className="flex-1">Browser</TabsTrigger>
           </TabsList>
         </div>
 
+        <TabsContent value="diff" className="flex-1 min-h-0">
+          <DiffViewer
+            worktreePath={repoPath}
+            options={diffOptions.options}
+            collapsedSet={diffOptions.collapsedSet}
+            setOption={diffOptions.setOption}
+            toggleFileCollapse={diffOptions.toggleFileCollapse}
+            collapseAll={diffOptions.collapseAll}
+            expandAll={diffOptions.expandAll}
+          />
+        </TabsContent>
+
         <TabsContent value="terminal" className="flex-1 min-h-0">
-          <div className="relative h-full flex flex-col">
-            {renderConnectionStatus()}
-            {renderTerminalLoadingOverlay()}
-            {renderErrorOverlay()}
-            <Terminal
-              className="flex-1"
-              onReady={handleTerminalReady}
-              onResize={handleTerminalResize}
-              onContainerReady={handleTerminalContainerReady}
-              terminalId={terminalId ?? undefined}
-              setupImagePaste={setupImagePaste}
-              onSend={handleTerminalSend}
-              onReset={terminalId ? handleRecreate : undefined}
-            />
-          </div>
+          {renderTerminalPanel()}
+        </TabsContent>
+
+        <TabsContent value="scratch" className="flex-1 min-h-0">
+          <ScratchEditor
+            taskId={`repo:${repoId}`}
+            worktreePath={repoPath}
+            terminalId={terminalId}
+          />
         </TabsContent>
 
         <TabsContent value="files" className="flex-1 min-h-0">
@@ -293,6 +417,10 @@ export function WorkspacePanel({
             onFileSaved={onFileSaved}
           />
         </TabsContent>
+
+        <TabsContent value="browser" className="flex-1 min-h-0">
+          <BrowserPreview url={browserUrl} setUrl={setBrowserUrl} />
+        </TabsContent>
       </Tabs>
     )
   }
@@ -300,30 +428,11 @@ export function WorkspacePanel({
   return (
     <ResizablePanelGroup direction="horizontal" className="h-full">
       <ResizablePanel defaultSize={50} minSize={30}>
-        <div className="relative h-full flex flex-col">
-          {renderConnectionStatus()}
-          {renderTerminalLoadingOverlay()}
-          {renderErrorOverlay()}
-          <Terminal
-            className="flex-1"
-            onReady={handleTerminalReady}
-            onResize={handleTerminalResize}
-            onContainerReady={handleTerminalContainerReady}
-            terminalId={terminalId ?? undefined}
-            setupImagePaste={setupImagePaste}
-            onSend={handleTerminalSend}
-            onReset={terminalId ? handleRecreate : undefined}
-          />
-        </div>
+        {renderTerminalPanel()}
       </ResizablePanel>
       <ResizableHandle withHandle />
       <ResizablePanel defaultSize={50} minSize={30}>
-        <FilesViewer
-          worktreePath={repoPath}
-          initialSelectedFile={file}
-          onFileChange={onFileChange}
-          onFileSaved={onFileSaved}
-        />
+        {renderRightTabs()}
       </ResizablePanel>
     </ResizablePanelGroup>
   )

@@ -565,6 +565,7 @@ const RepositoryDetailView = observer(function RepositoryDetailView() {
 
           <TabsContent value="workspace" className="mt-0 h-full">
             <WorkspacePanel
+              repoId={repository.id}
               repoPath={repository.path}
               repoDisplayName={repository.displayName}
               activeTab={activeTab}
