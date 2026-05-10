@@ -327,7 +327,16 @@ export function TaskActionsDropdown({
               Commit
             </DropdownMenuItem>
           )}
-          {!prUrl && (
+          {prUrl ? (
+            <DropdownMenuItem onClick={() => openExternalUrl(prUrl)}>
+              <HugeiconsIcon
+                icon={GitPullRequestIcon}
+                size={12}
+                strokeWidth={2}
+              />
+              View PR
+            </DropdownMenuItem>
+          ) : (
             <DropdownMenuItem onClick={handleCreatePR} disabled={gitCreatePR.isPending}>
               <HugeiconsIcon
                 icon={GitPullRequestIcon}
