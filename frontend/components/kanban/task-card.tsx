@@ -1,7 +1,9 @@
 import { useRef, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { ContextMenu } from '@base-ui/react/context-menu'
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview'
 import { pointerOutsideOfPreview } from '@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview'
@@ -9,18 +11,39 @@ import { attachClosestEdge, extractClosestEdge, type Edge } from '@atlaskit/prag
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DeleteTaskDialog } from '@/components/delete-task-dialog'
 import { useDrag } from './drag-context'
 import { useSelection } from './selection-context'
-import type { Task } from '@/types'
+import type { Task, TaskStatus } from '@/types'
 import { cn } from '@/lib/utils'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { FolderLibraryIcon, GitPullRequestIcon, Calendar03Icon, AlertDiamondIcon, Alert02Icon, RepeatIcon, Clock01Icon, ArrowUp01Icon, ArrowDown01Icon, PinIcon, PinOffIcon } from '@hugeicons/core-free-icons'
+import { FolderLibraryIcon, GitPullRequestIcon, Calendar03Icon, AlertDiamondIcon, Alert02Icon, RepeatIcon, Clock01Icon, ArrowUp01Icon, ArrowDown01Icon, PinIcon, PinOffIcon, Delete02Icon, ArrowRight01Icon, ArrowLeftRightIcon } from '@hugeicons/core-free-icons'
 import { useRepositories } from '@/hooks/use-repositories'
-import { usePinTask } from '@/hooks/use-tasks'
+import { usePinTask, useUpdateTaskStatus } from '@/hooks/use-tasks'
 import { formatDateString } from '../../../shared/date-utils'
 import { useIsOverdue, useIsDueToday } from '@/hooks/use-date-utils'
 import { getTaskTypeCssVar } from '@/lib/task-type-colors'
 import { getTaskType } from '../../../shared/types'
+
+const STATUS_LABELS: Record<TaskStatus, string> = {
+  TO_DO: 'To Do',
+  IN_PROGRESS: 'In Progress',
+  IN_REVIEW: 'In Review',
+  DONE: 'Done',
+  CANCELED: 'Canceled',
+}
+
+const MENU_ITEM_CLASS =
+  'focus:bg-accent focus:text-accent-foreground data-disabled:opacity-50 data-disabled:pointer-events-none min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0'
+
+const MENU_ITEM_DESTRUCTIVE_CLASS =
+  'text-destructive focus:bg-destructive/10 dark:focus:bg-destructive/20 [&_svg]:text-destructive min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0'
+
+const MENU_POPUP_CLASS = cn(
+  'data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0',
+  'data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 bg-popover text-popover-foreground',
+  'min-w-40 rounded-lg p-1 shadow-md ring-1 duration-100 outline-none'
+)
 
 interface TaskCardProps {
   task: Task
@@ -36,8 +59,11 @@ export function TaskCard({ task, isDragPreview, isBlocked, isBlocking, showTypeL
   const { isSelected, toggleSelection } = useSelection()
   const navigate = useNavigate()
   const pinTask = usePinTask()
+  const updateTaskStatus = useUpdateTaskStatus()
+  const queryClient = useQueryClient()
   const { data: repositories } = useRepositories()
   const selected = isSelected(task.id)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const ref = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -152,6 +178,13 @@ export function TaskCard({ task, isDragPreview, isBlocked, isBlocking, showTypeL
       })
     }
     hasDragged.current = false
+  }
+
+  const handleStatusChange = (newStatus: TaskStatus) => {
+    if (newStatus === task.status) return
+    const allTasks = queryClient.getQueryData<Task[]>(['tasks']) ?? []
+    const position = allTasks.filter((t) => t.status === newStatus && t.id !== task.id).length
+    updateTaskStatus.mutate({ taskId: task.id, status: newStatus, position })
   }
 
 
@@ -359,9 +392,65 @@ export function TaskCard({ task, isDragPreview, isBlocked, isBlocking, showTypeL
     </div>
   )
 
+  if (isDragPreview) {
+    return cardContent
+  }
+
   return (
     <>
-      {cardContent}
+      <ContextMenu.Root>
+        <ContextMenu.Trigger>{cardContent}</ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Positioner className="isolate z-50 outline-none">
+            <ContextMenu.Popup className={MENU_POPUP_CLASS}>
+              <ContextMenu.Item
+                className={MENU_ITEM_CLASS}
+                onClick={() => pinTask.mutate({ taskId: task.id, pinned: !task.pinned })}
+              >
+                <HugeiconsIcon icon={task.pinned ? PinOffIcon : PinIcon} size={14} strokeWidth={2} />
+                {task.pinned ? 'Unpin' : 'Pin to top'}
+              </ContextMenu.Item>
+              <ContextMenu.SubmenuRoot>
+                <ContextMenu.SubmenuTrigger className={MENU_ITEM_CLASS}>
+                  <HugeiconsIcon icon={ArrowLeftRightIcon} size={14} strokeWidth={2} />
+                  <span className="flex-1">Move to status</span>
+                  <HugeiconsIcon icon={ArrowRight01Icon} size={12} strokeWidth={2} className="opacity-60" />
+                </ContextMenu.SubmenuTrigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.Positioner className="isolate z-50 outline-none">
+                    <ContextMenu.Popup className={MENU_POPUP_CLASS}>
+                      {(Object.entries(STATUS_LABELS) as [TaskStatus, string][]).map(([value, label]) => (
+                        <ContextMenu.Item
+                          key={value}
+                          className={MENU_ITEM_CLASS}
+                          disabled={value === task.status}
+                          onClick={() => handleStatusChange(value)}
+                        >
+                          <span className="w-3 text-primary">{value === task.status ? '✓' : ''}</span>
+                          {label}
+                        </ContextMenu.Item>
+                      ))}
+                    </ContextMenu.Popup>
+                  </ContextMenu.Positioner>
+                </ContextMenu.Portal>
+              </ContextMenu.SubmenuRoot>
+              <div role="separator" className="my-1 h-px bg-border" />
+              <ContextMenu.Item
+                className={MENU_ITEM_DESTRUCTIVE_CLASS}
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={2} />
+                Delete…
+              </ContextMenu.Item>
+            </ContextMenu.Popup>
+          </ContextMenu.Positioner>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
+      <DeleteTaskDialog
+        task={task}
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+      />
       {previewContainer && createPortal(
         <div className="w-72 max-w-[90vw]">
           <TaskCard task={task} isDragPreview />
