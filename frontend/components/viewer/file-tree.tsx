@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -28,6 +28,7 @@ interface FileTreeProps {
   onRenameFile?: (path: string) => void
   onDownloadFile?: (path: string) => void
   onDeleteFile?: (path: string) => void
+  onFilesDropped?: (files: File[], targetDir: string) => void | Promise<void>
 }
 
 /** Flatten tree to get all file paths */
@@ -79,6 +80,10 @@ function getFileIcon(name: string) {
   }
 
   return File01Icon
+}
+
+function isFilesDrag(e: React.DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types ?? []).includes('Files')
 }
 
 interface FileContextMenuProps {
@@ -151,11 +156,14 @@ interface TreeNodeProps {
   depth: number
   selectedFile: string | null
   expandedDirs: string[]
+  dragOverPath: string | null
   onSelectFile: (path: string) => void
   onToggleDir: (path: string) => void
   onRenameFile?: (path: string) => void
   onDownloadFile?: (path: string) => void
   onDeleteFile?: (path: string) => void
+  onDirectoryDragOver?: (path: string) => void
+  onDirectoryDrop?: (path: string, files: File[]) => void
 }
 
 function TreeNode({
@@ -163,15 +171,19 @@ function TreeNode({
   depth,
   selectedFile,
   expandedDirs,
+  dragOverPath,
   onSelectFile,
   onToggleDir,
   onRenameFile,
   onDownloadFile,
   onDeleteFile,
+  onDirectoryDragOver,
+  onDirectoryDrop,
 }: TreeNodeProps) {
   const isExpanded = expandedDirs.includes(entry.path)
   const isSelected = selectedFile === entry.path
   const isDirectory = entry.type === 'directory'
+  const isDropTarget = isDirectory && dragOverPath === entry.path
 
   const handleClick = useCallback(() => {
     if (isDirectory) {
@@ -181,14 +193,38 @@ function TreeNode({
     }
   }, [isDirectory, entry.path, onSelectFile, onToggleDir])
 
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!isDirectory || !onDirectoryDragOver || !isFilesDrag(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      onDirectoryDragOver(entry.path)
+    },
+    [isDirectory, onDirectoryDragOver, entry.path]
+  )
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!isDirectory || !onDirectoryDrop || !isFilesDrag(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length > 0) onDirectoryDrop(entry.path, files)
+    },
+    [isDirectory, onDirectoryDrop, entry.path]
+  )
+
   const row = (
     <div
       className={cn(
         'flex items-center gap-1.5 px-2 py-0.5 cursor-pointer text-sm hover:bg-muted/50',
-        isSelected && 'bg-primary/10 text-primary'
+        isSelected && 'bg-primary/10 text-primary',
+        isDropTarget && 'bg-primary/15 ring-1 ring-primary ring-inset'
       )}
       style={{ paddingLeft: `${depth * 12 + 8}px` }}
       onClick={handleClick}
+      onDragOver={isDirectory && onDirectoryDragOver ? handleDragOver : undefined}
+      onDrop={isDirectory && onDirectoryDrop ? handleDrop : undefined}
     >
       <HugeiconsIcon
         icon={
@@ -233,11 +269,14 @@ function TreeNode({
               depth={depth + 1}
               selectedFile={selectedFile}
               expandedDirs={expandedDirs}
+              dragOverPath={dragOverPath}
               onSelectFile={onSelectFile}
               onToggleDir={onToggleDir}
               onRenameFile={onRenameFile}
               onDownloadFile={onDownloadFile}
               onDeleteFile={onDeleteFile}
+              onDirectoryDragOver={onDirectoryDragOver}
+              onDirectoryDrop={onDirectoryDrop}
             />
           ))}
         </div>
@@ -256,9 +295,13 @@ export function FileTree({
   onRenameFile,
   onDownloadFile,
   onDeleteFile,
+  onFilesDropped,
 }: FileTreeProps) {
   const { t } = useTranslation('repositories')
   const [searchQuery, setSearchQuery] = useState('')
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null)
+  const dragCounterRef = useRef(0)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
 
   const allFiles = useMemo(() => flattenFiles(entries), [entries])
 
@@ -278,16 +321,106 @@ export function FileTree({
     setSearchQuery('')
   }, [])
 
+  const dropEnabled = !!onFilesDropped
+
+  const handleWrapperDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      if (!dropEnabled || !isFilesDrag(e)) return
+      e.preventDefault()
+      dragCounterRef.current += 1
+      setDragOverPath((prev) => (prev === null ? '' : prev))
+    },
+    [dropEnabled]
+  )
+
+  const handleWrapperDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!dropEnabled || !isFilesDrag(e)) return
+      e.preventDefault()
+      // Reset to root when not over a directory row (directory rows stopPropagation).
+      setDragOverPath((prev) => (prev === null ? '' : prev === '' ? prev : ''))
+    },
+    [dropEnabled]
+  )
+
+  const handleWrapperDragLeave = useCallback(
+    (e: React.DragEvent) => {
+      if (!dropEnabled) return
+      dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+      if (dragCounterRef.current === 0) {
+        setDragOverPath(null)
+      }
+      e.preventDefault()
+    },
+    [dropEnabled]
+  )
+
+  const handleWrapperDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!dropEnabled || !isFilesDrag(e)) return
+      e.preventDefault()
+      dragCounterRef.current = 0
+      setDragOverPath(null)
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length > 0) onFilesDropped?.(files, '')
+    },
+    [dropEnabled, onFilesDropped]
+  )
+
+  const handleDirectoryDragOver = useCallback(
+    (path: string) => {
+      setDragOverPath(path)
+    },
+    []
+  )
+
+  const handleDirectoryDrop = useCallback(
+    (path: string, files: File[]) => {
+      dragCounterRef.current = 0
+      setDragOverPath(null)
+      if (files.length > 0) onFilesDropped?.(files, path)
+    },
+    [onFilesDropped]
+  )
+
+  const dropHandlers = dropEnabled
+    ? {
+        onDragEnter: handleWrapperDragEnter,
+        onDragOver: handleWrapperDragOver,
+        onDragLeave: handleWrapperDragLeave,
+        onDrop: handleWrapperDrop,
+      }
+    : {}
+
+  const showDropHighlight = dropEnabled && dragOverPath !== null
+
   if (entries.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {t('detailView.fileTree.noFiles')}
+      <div
+        ref={wrapperRef}
+        className={cn(
+          'flex items-center justify-center h-full text-muted-foreground text-sm relative',
+          showDropHighlight && 'ring-2 ring-primary ring-inset bg-primary/5'
+        )}
+        {...dropHandlers}
+      >
+        {showDropHighlight
+          ? t('detailView.fileTree.uploadToast.dropHint', 'Drop files to upload')
+          : t('detailView.fileTree.noFiles')}
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--gradient-card)' }}>
+    <div
+      ref={wrapperRef}
+      className={cn(
+        'flex flex-col h-full relative',
+        showDropHighlight && 'ring-2 ring-primary ring-inset'
+      )}
+      style={{ background: 'var(--gradient-card)' }}
+      {...dropHandlers}
+    >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between px-2 py-1 border-b border-border bg-card">
         <span className="text-xs text-muted-foreground">{t('detailView.fileTree.title')}</span>
@@ -368,15 +501,26 @@ export function FileTree({
               depth={0}
               selectedFile={selectedFile}
               expandedDirs={expandedDirs}
+              dragOverPath={dragOverPath}
               onSelectFile={onSelectFile}
               onToggleDir={onToggleDir}
               onRenameFile={onRenameFile}
               onDownloadFile={onDownloadFile}
               onDeleteFile={onDeleteFile}
+              onDirectoryDragOver={dropEnabled ? handleDirectoryDragOver : undefined}
+              onDirectoryDrop={dropEnabled ? handleDirectoryDrop : undefined}
             />
           ))
         )}
       </div>
+
+      {showDropHighlight && dragOverPath === '' && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/5">
+          <div className="rounded-md bg-card/90 px-3 py-1.5 text-xs text-foreground shadow-sm border border-primary/40">
+            {t('detailView.fileTree.uploadToast.dropHint', 'Drop files to upload')}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

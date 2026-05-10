@@ -179,6 +179,14 @@
       "deleteToast": {
         "success": "File deleted",
         "error": "Failed to delete file"
+      },
+      "uploadToast": {
+        "success_one": "Uploaded {{count}} file",
+        "success_other": "Uploaded {{count}} files",
+        "error": "Upload failed",
+        "conflict": "{{name}} already exists",
+        "overwrite": "Overwrite",
+        "dropHint": "Drop files to upload"
       }
     },
     "settings": {

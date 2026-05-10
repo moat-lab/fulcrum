@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { createTestGitRepo } from '../__tests__/fixtures/git'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -576,6 +576,273 @@ describe('Filesystem Routes', () => {
 
       expect(res.status).toBe(403)
       expect(body.error).toContain('Access denied')
+    })
+  })
+
+  describe('POST /api/fs/upload', () => {
+    function buildForm(opts: {
+      filename?: string
+      content?: Uint8Array | string
+      mimeType?: string
+      root?: string
+      targetDir?: string
+      overwrite?: string
+      omitFile?: boolean
+    }): FormData {
+      const form = new FormData()
+      if (!opts.omitFile) {
+        const data: BlobPart =
+          opts.content === undefined
+            ? new Uint8Array([1, 2, 3, 4])
+            : typeof opts.content === 'string'
+              ? opts.content
+              : new Uint8Array(opts.content)
+        const blob = new Blob([data], { type: opts.mimeType ?? 'application/octet-stream' })
+        form.append('file', blob, opts.filename ?? 'upload.bin')
+      }
+      if (opts.root !== undefined) form.append('root', opts.root)
+      if (opts.targetDir !== undefined) form.append('targetDir', opts.targetDir)
+      if (opts.overwrite !== undefined) form.append('overwrite', opts.overwrite)
+      return form
+    }
+
+    test('uploads a file to the worktree root', async () => {
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'hello.txt',
+          content: 'hello world',
+          mimeType: 'text/plain',
+          root: tempDir,
+          targetDir: '',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(201)
+      expect(body.path).toBe('hello.txt')
+      expect(body.size).toBe('hello world'.length)
+      expect(body.mtime).toBeDefined()
+      expect(readFileSync(join(tempDir, 'hello.txt'), 'utf-8')).toBe('hello world')
+    })
+
+    test('uploads into a subdirectory', async () => {
+      mkdirSync(join(tempDir, 'src'))
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'a.bin',
+          content: new Uint8Array([7, 8, 9]),
+          root: tempDir,
+          targetDir: 'src',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(201)
+      expect(body.path).toBe(join('src', 'a.bin'))
+      expect(existsSync(join(tempDir, 'src', 'a.bin'))).toBe(true)
+    })
+
+    test('preserves binary contents', async () => {
+      // Avoid leading 0x00 — Bun's multipart parser treats it as termination in the
+      // Blob→FormData roundtrip used here. Real browser uploads aren't affected.
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0x10, 0x80, 0x7f])
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'blob.bin',
+          content: bytes,
+          root: tempDir,
+          targetDir: '',
+        }),
+      })
+      expect(res.status).toBe(201)
+
+      const written = readFileSync(join(tempDir, 'blob.bin'))
+      expect(written.length).toBe(bytes.length)
+      for (let i = 0; i < bytes.length; i++) {
+        expect(written[i]).toBe(bytes[i])
+      }
+    })
+
+    test('returns 409 when file already exists without overwrite', async () => {
+      writeFileSync(join(tempDir, 'existing.txt'), 'old')
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'existing.txt',
+          content: 'new',
+          root: tempDir,
+          targetDir: '',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(409)
+      expect(body.conflict).toBe(true)
+      expect(body.path).toBe('existing.txt')
+      expect(readFileSync(join(tempDir, 'existing.txt'), 'utf-8')).toBe('old')
+    })
+
+    test('overwrites when overwrite=true', async () => {
+      writeFileSync(join(tempDir, 'existing.txt'), 'old')
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'existing.txt',
+          content: 'new',
+          root: tempDir,
+          targetDir: '',
+          overwrite: 'true',
+        }),
+      })
+
+      expect(res.status).toBe(201)
+      expect(readFileSync(join(tempDir, 'existing.txt'), 'utf-8')).toBe('new')
+    })
+
+    test('rejects targetDir traversal', async () => {
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'evil.txt',
+          content: 'pwn',
+          root: tempDir,
+          targetDir: '../../etc',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(403)
+      expect(body.error).toContain('Access denied')
+    })
+
+    test('strips path components from filename', async () => {
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: '../../passwd',
+          content: 'x',
+          root: tempDir,
+          targetDir: '',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(201)
+      expect(body.path).toBe('passwd')
+      expect(existsSync(join(tempDir, 'passwd'))).toBe(true)
+    })
+
+    test('returns 413 when file exceeds max size', async () => {
+      const big = new Uint8Array(51 * 1024 * 1024)
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'big.bin',
+          content: big,
+          root: tempDir,
+          targetDir: '',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(413)
+      expect(body.error).toContain('too large')
+    })
+
+    test('returns 400 when file is missing', async () => {
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({ omitFile: true, root: tempDir, targetDir: '' }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('file is required')
+    })
+
+    test('returns 400 when root is missing', async () => {
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({ filename: 'a.txt', targetDir: '' }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('root is required')
+    })
+
+    test('returns 400 when targetDir is missing', async () => {
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({ filename: 'a.txt', root: tempDir }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('targetDir is required')
+    })
+
+    test('returns 400 when targetDir does not exist', async () => {
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'a.txt',
+          root: tempDir,
+          targetDir: 'nope',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('does not exist')
+    })
+
+    test('returns 400 when targetDir is a file', async () => {
+      writeFileSync(join(tempDir, 'notadir'), 'x')
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', {
+        method: 'POST',
+        body: buildForm({
+          filename: 'a.txt',
+          root: tempDir,
+          targetDir: 'notadir',
+        }),
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('not a directory')
+    })
+
+    test('returns 400 when uploaded file has no name', async () => {
+      // Bun's multipart parser drops the filename for zero-byte / leading-null Blobs
+      // in this Blob→FormData roundtrip; the handler must reject rather than crash.
+      const form = new FormData()
+      form.append('file', new Blob([new Uint8Array(0)]), 'unused.txt')
+      form.append('root', tempDir)
+      form.append('targetDir', '')
+
+      const { request } = createTestApp()
+      const res = await request('/api/fs/upload', { method: 'POST', body: form })
+      const body = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(body.error).toContain('file is required')
     })
   })
 
