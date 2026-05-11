@@ -61,17 +61,28 @@ mock.module('ssh2', () => ({ Client: MockClient }))
 // gives ssh-terminal-session.ts's `db.update(terminals)…run()` a working
 // target without polluting global state.
 
+class MockBufferManager {
+  static instances: MockBufferManager[] = []
+
+  resizeCalls: Array<{ cols: number; rows: number }> = []
+
+  constructor(readonly cols = 80, readonly rows = 24) {
+    MockBufferManager.instances.push(this)
+  }
+
+  setTerminalId() {}
+  append() {}
+  getContents() { return '' }
+  resize(cols: number, rows: number) { this.resizeCalls.push({ cols, rows }) }
+  clear() {}
+  saveToDisk() {}
+  loadFromDisk() {}
+  deleteFromDisk() {}
+}
+
 // Mock buffer manager
 mock.module('./buffer-manager', () => ({
-  BufferManager: class {
-    setTerminalId() {}
-    append() {}
-    getContents() { return '' }
-    clear() {}
-    saveToDisk() {}
-    loadFromDisk() {}
-    deleteFromDisk() {}
-  },
+  BufferManager: MockBufferManager,
 }))
 
 import { SSHTerminalSession } from './ssh-terminal-session'
@@ -107,6 +118,7 @@ describe('SSHTerminalSession', () => {
 
   beforeEach(() => {
     env = setupTestEnv()
+    MockBufferManager.instances = []
     resetSSHConnectionManager()
   })
 
@@ -173,12 +185,24 @@ describe('SSHTerminalSession', () => {
     session.write('hello')
   })
 
+  test('initializes replay buffer with SSH terminal dimensions', () => {
+    createSession({ cols: 132, rows: 43 })
+    expect(MockBufferManager.instances[0]?.cols).toBe(132)
+    expect(MockBufferManager.instances[0]?.rows).toBe(43)
+  })
+
   test('resize() updates dimensions', () => {
     const session = createSession()
     session.resize(120, 40)
     const info = session.getInfo()
     expect(info.cols).toBe(120)
     expect(info.rows).toBe(40)
+  })
+
+  test('resize() updates replay buffer dimensions', () => {
+    const session = createSession()
+    session.resize(120, 40)
+    expect(MockBufferManager.instances[0]?.resizeCalls).toEqual([{ cols: 120, rows: 40 }])
   })
 
   test('isRunning() returns true initially', () => {
