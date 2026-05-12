@@ -146,7 +146,38 @@
       "title": "文件",
       "searchPlaceholder": "搜索文件...",
       "noFiles": "无文件",
-      "collapseAll": "折叠所有文件夹"
+      "collapseAll": "折叠所有文件夹",
+      "contextMenu": {
+        "rename": "重命名",
+        "download": "下载",
+        "delete": "删除"
+      },
+      "renameDialog": {
+        "title": "重命名文件",
+        "description": "为 \"{{name}}\" 输入新名称。",
+        "label": "新名称",
+        "submit": "重命名",
+        "renaming": "重命名中...",
+        "cancel": "取消"
+      },
+      "renameToast": {
+        "success": "文件已重命名",
+        "error": "重命名文件失败"
+      },
+      "downloadToast": {
+        "error": "下载文件失败"
+      },
+      "deleteDialog": {
+        "title": "删除文件",
+        "description": "永久删除 \"{{name}}\"？此操作无法撤销。",
+        "confirm": "删除",
+        "deleting": "删除中...",
+        "cancel": "取消"
+      },
+      "deleteToast": {
+        "success": "文件已删除",
+        "error": "删除文件失败"
+      }
     },
     "settings": {
       "generalTitle": "常规",
