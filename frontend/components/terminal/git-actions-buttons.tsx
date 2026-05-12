@@ -269,7 +269,16 @@ export function GitActionsButtons({
               Commit
             </DropdownMenuItem>
           )}
-          {!prUrl && (
+          {prUrl ? (
+            <DropdownMenuItem onClick={() => openExternalUrl(prUrl)}>
+              <HugeiconsIcon
+                icon={GitPullRequestIcon}
+                size={12}
+                strokeWidth={2}
+              />
+              View PR
+            </DropdownMenuItem>
+          ) : (
             <DropdownMenuItem onClick={handleCreatePR} disabled={gitCreatePR.isPending}>
               <HugeiconsIcon
                 icon={GitPullRequestIcon}
@@ -367,7 +376,21 @@ export function GitActionsButtons({
         </Button>
       )}
 
-      {!prUrl && (
+      {prUrl ? (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => openExternalUrl(prUrl)}
+          className="h-5 w-5 text-primary hover:text-primary"
+          title="View Pull Request"
+        >
+          <HugeiconsIcon
+            icon={GitPullRequestIcon}
+            size={12}
+            strokeWidth={2}
+          />
+        </Button>
+      ) : (
         <Button
           variant="ghost"
           size="icon-xs"
