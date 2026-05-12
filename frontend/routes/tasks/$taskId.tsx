@@ -1073,6 +1073,7 @@ function TaskView() {
                   worktreePath={task.worktreePath}
                   initialSelectedFile={activeFile}
                   onFileChange={handleFileChange}
+                  readOnly={task.status === 'DONE' || task.status === 'CANCELED'}
                 />
               </TabsContent>
 
@@ -1202,6 +1203,7 @@ function TaskView() {
                   worktreePath={task.worktreePath}
                   initialSelectedFile={activeFile}
                   onFileChange={handleFileChange}
+                  readOnly={task.status === 'DONE' || task.status === 'CANCELED'}
                 />
               </TabsContent>
 
