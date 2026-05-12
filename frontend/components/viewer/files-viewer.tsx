@@ -15,10 +15,11 @@ import {
   useFilesStoreActions,
 } from '@/stores'
 import { useFileTreePolling } from '@/hooks/use-file-tree-polling'
+import { useUploadToFilesystem } from '@/hooks/use-upload-to-filesystem'
 import {
-  useUploadToFilesystem,
-  UploadConflictError,
-} from '@/hooks/use-upload-to-filesystem'
+  handleFilesDroppedFlow,
+  type UploadFlowDeps,
+} from '@/lib/upload-files-flow'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -232,74 +233,20 @@ const FilesViewerInner = observer(function FilesViewerInner() {
     setDeleteTarget(null)
   }, [isDeleting])
 
-  const uploadOne = useCallback(
-    async (file: File, targetDir: string, overwrite: boolean): Promise<boolean> => {
-      if (!worktreePath) return false
-      try {
-        const result = await uploadFile({
-          worktreePath,
-          targetDir,
-          file,
-          overwrite,
-        })
-        if (overwrite) {
-          // Drop any cached editor buffer for the now-overwritten file
-          closeFile(result.path)
-        }
-        return true
-      } catch (err) {
-        if (err instanceof UploadConflictError) {
-          toast.warning(
-            t('detailView.fileTree.uploadToast.conflict', {
-              name: file.name,
-              defaultValue: '{{name}} already exists',
-            }),
-            {
-              action: {
-                label: t('detailView.fileTree.uploadToast.overwrite', {
-                  defaultValue: 'Overwrite',
-                }),
-                onClick: () => {
-                  void uploadOne(file, targetDir, true).then((ok) => {
-                    if (ok) refreshTree()
-                  })
-                },
-              },
-            }
-          )
-          return false
-        }
-        toast.error(
-          t('detailView.fileTree.uploadToast.error', { defaultValue: 'Upload failed' }),
-          {
-            description: err instanceof Error ? err.message : 'Unknown error',
-          }
-        )
-        return false
-      }
-    },
-    [worktreePath, uploadFile, closeFile, refreshTree, t]
-  )
-
   const handleFilesDropped = useCallback(
     async (files: File[], targetDir: string) => {
-      if (!worktreePath || files.length === 0) return
-      let successCount = 0
-      for (const file of files) {
-        const ok = await uploadOne(file, targetDir, false)
-        if (ok) successCount += 1
+      if (!worktreePath) return
+      const deps: UploadFlowDeps = {
+        worktreePath,
+        uploadFile,
+        refreshTree,
+        closeFile,
+        toast,
+        t,
       }
-      if (successCount > 0) {
-        await refreshTree()
-        toast.success(
-          t('detailView.fileTree.uploadToast.success', {
-            count: successCount,
-            defaultValue: 'Uploaded {{count}} file(s)',
-          })
-        )
-      }
+      await handleFilesDroppedFlow(deps, files, targetDir)
     },
-    [worktreePath, uploadOne, refreshTree, t]
+    [worktreePath, uploadFile, refreshTree, closeFile, t]
   )
 
   const confirmDelete = useCallback(async () => {
