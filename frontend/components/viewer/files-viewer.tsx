@@ -15,6 +15,10 @@ import {
   useFilesStoreActions,
 } from '@/stores'
 import { useFileTreePolling } from '@/hooks/use-file-tree-polling'
+import {
+  useUploadToFilesystem,
+  UploadConflictError,
+} from '@/hooks/use-upload-to-filesystem'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -90,6 +94,8 @@ const FilesViewerInner = observer(function FilesViewerInner() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const { uploadFile } = useUploadToFilesystem()
 
   useEffect(() => {
     if (renameTarget) {
@@ -225,6 +231,76 @@ const FilesViewerInner = observer(function FilesViewerInner() {
     if (isDeleting) return
     setDeleteTarget(null)
   }, [isDeleting])
+
+  const uploadOne = useCallback(
+    async (file: File, targetDir: string, overwrite: boolean): Promise<boolean> => {
+      if (!worktreePath) return false
+      try {
+        const result = await uploadFile({
+          worktreePath,
+          targetDir,
+          file,
+          overwrite,
+        })
+        if (overwrite) {
+          // Drop any cached editor buffer for the now-overwritten file
+          closeFile(result.path)
+        }
+        return true
+      } catch (err) {
+        if (err instanceof UploadConflictError) {
+          toast.warning(
+            t('detailView.fileTree.uploadToast.conflict', {
+              name: file.name,
+              defaultValue: '{{name}} already exists',
+            }),
+            {
+              action: {
+                label: t('detailView.fileTree.uploadToast.overwrite', {
+                  defaultValue: 'Overwrite',
+                }),
+                onClick: () => {
+                  void uploadOne(file, targetDir, true).then((ok) => {
+                    if (ok) refreshTree()
+                  })
+                },
+              },
+            }
+          )
+          return false
+        }
+        toast.error(
+          t('detailView.fileTree.uploadToast.error', { defaultValue: 'Upload failed' }),
+          {
+            description: err instanceof Error ? err.message : 'Unknown error',
+          }
+        )
+        return false
+      }
+    },
+    [worktreePath, uploadFile, closeFile, refreshTree, t]
+  )
+
+  const handleFilesDropped = useCallback(
+    async (files: File[], targetDir: string) => {
+      if (!worktreePath || files.length === 0) return
+      let successCount = 0
+      for (const file of files) {
+        const ok = await uploadOne(file, targetDir, false)
+        if (ok) successCount += 1
+      }
+      if (successCount > 0) {
+        await refreshTree()
+        toast.success(
+          t('detailView.fileTree.uploadToast.success', {
+            count: successCount,
+            defaultValue: 'Uploaded {{count}} file(s)',
+          })
+        )
+      }
+    },
+    [worktreePath, uploadOne, refreshTree, t]
+  )
 
   const confirmDelete = useCallback(async () => {
     if (!worktreePath || !deleteTarget) return
@@ -364,6 +440,7 @@ const FilesViewerInner = observer(function FilesViewerInner() {
         onRenameFile={readOnly ? undefined : openRename}
         onDownloadFile={handleDownload}
         onDeleteFile={readOnly ? undefined : openDelete}
+        onFilesDropped={readOnly || !worktreePath ? undefined : handleFilesDropped}
       />
 
       <Dialog
