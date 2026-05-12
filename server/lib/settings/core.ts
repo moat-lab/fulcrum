@@ -132,6 +132,13 @@ export function getSettings(): Settings {
         commandToken: (fv('channels.mattermost.commandToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.commandToken,
         allowedUserIds: (fv('channels.mattermost.allowedUserIds') as string[] | null) ?? DEFAULT_SETTINGS.channels.mattermost.allowedUserIds,
       },
+      exchange: {
+        enabled: (fv('channels.exchange.enabled') as boolean | null) ?? DEFAULT_SETTINGS.channels.exchange.enabled,
+        url: (fv('channels.exchange.url') as string) ?? DEFAULT_SETTINGS.channels.exchange.url,
+        token: (fv('channels.exchange.token') as string) ?? DEFAULT_SETTINGS.channels.exchange.token,
+        mailbox: (fv('channels.exchange.mailbox') as string) ?? DEFAULT_SETTINGS.channels.exchange.mailbox,
+        mcpGitRef: (fv('channels.exchange.mcpGitRef') as string) ?? DEFAULT_SETTINGS.channels.exchange.mcpGitRef,
+      },
     },
     caldav: {
       enabled: (fv('caldav.enabled') as boolean | null) ?? DEFAULT_SETTINGS.caldav.enabled,

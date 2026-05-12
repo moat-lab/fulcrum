@@ -407,6 +407,8 @@ const CONFIG_VALIDATORS: Record<string, (value: unknown) => ValidatorResult> = {
     }
     return { value: num }
   },
+  // Agent channel exchange (issue #180 / parent #153)
+  [CONFIG_KEYS.CHANNELS_EXCHANGE_ENABLED]: booleanValidator('Agent channel enabled'),
 }
 
 // PUT /api/config/:key - Set config value

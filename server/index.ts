@@ -12,6 +12,11 @@ import { startPRMonitor, stopPRMonitor } from './services/pr-monitor'
 import { startMetricsCollector, stopMetricsCollector } from './services/metrics-collector'
 import { startGitWatcher, stopGitWatcher } from './services/git-watcher'
 import { startMessagingChannels, stopMessagingChannels } from './services/channels'
+import {
+  restoreChannelsFromDatabase,
+  startChannelHeartbeat,
+  stopChannelHeartbeat,
+} from './services/channel-heartbeat-service'
 import { startAssistantScheduler, stopAssistantScheduler } from './services/assistant-scheduler'
 import { startCaldavSync, stopCaldavSync } from './services/caldav'
 import { startGoogleCalendarSync, stopGoogleCalendarSync } from './services/google/google-calendar-service'
@@ -121,6 +126,12 @@ const ptyManager = initPTYManager({
 // Restore terminals from database (reconnect to existing dtach sessions)
 await ptyManager.restoreFromDatabase()
 
+// Reconcile agent-channel mailboxes for restored terminals (#180 / #153 §Server 重启恢复).
+// Best-effort: errors are logged and the heartbeat tick will retry.
+await restoreChannelsFromDatabase().catch((err) => {
+  log.server.warn('restoreChannelsFromDatabase failed', { error: err instanceof Error ? err.message : String(err) })
+})
+
 // Set up broadcast function for terminal destruction from task deletion
 setBroadcastDestroyed((terminalId) => {
   broadcast({
@@ -170,6 +181,9 @@ startGitWatcher()
 // Start messaging channels (WhatsApp, etc.)
 startMessagingChannels()
 
+// Start agent-channel heartbeat (no-op when `channels.exchange.enabled` is false)
+startChannelHeartbeat()
+
 // Start assistant scheduler (hourly sweeps, daily rituals)
 startAssistantScheduler()
 
@@ -189,6 +203,7 @@ process.on('SIGINT', async () => {
   stopCaldavSync()
   stopGoogleCalendarSync()
   await stopMessagingChannels()
+  stopChannelHeartbeat()
   ptyManager.detachAll()
   server.close()
   process.exit(0)
@@ -203,6 +218,7 @@ process.on('SIGTERM', async () => {
   stopCaldavSync()
   stopGoogleCalendarSync()
   await stopMessagingChannels()
+  stopChannelHeartbeat()
   ptyManager.detachAll()
   server.close()
   process.exit(0)

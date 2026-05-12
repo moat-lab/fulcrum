@@ -1,0 +1,26 @@
+Issue #180 — Fulcrum client integration (Agent Channel Settings UI E2E)
+Run: run-2026-05-12-20-18-45-issue-180
+Captured via local agent-browser 0.26.0 against `mise run dev` (vite 5173 + bun 8888).
+
+01-disabled-default.jpg
+  Settings → AI 与开发, scrolled to the new "Agent Channel" SettingsSection.
+  Default state with channels.exchange.enabled=false (gray toggle), all five
+  fields (Enabled / Exchange URL / Token / Mailbox / MCP git ref) rendered
+  with placeholder copy. Confirms opt-in default and that the section sits
+  inside the existing AI tab below "工作树代理".
+
+02-enabled-filled.jpg
+  After clicking the Enabled switch (now blue/on) and pasting
+  "https://exchange.invalid.localhost" into Exchange URL plus "main" into
+  MCP git ref. Demonstrates the form accepts user input, the Switch updates
+  optimistically, and the URL/MCP-git-ref Inputs render the persisted
+  values (fnox onBlur write).
+
+03-test-connection-fail.jpg
+  After typing the mailbox value and clicking "Test Connection". The button
+  proxies POST /api/channels/test-connection → testExchangeConnection() →
+  fetch GET <invalid>/version. The fetch fails to resolve and the result
+  span renders the red error indicator "Unable to connect. Is the computer
+  able to access the url?" — exercising the negative path required by the
+  workflow.md evidence rule, and proving the UI surfaces wire-compat failures
+  before a task agent attempts /v1/register.

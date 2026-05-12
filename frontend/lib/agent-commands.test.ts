@@ -53,6 +53,43 @@ describe('Agent Commands', () => {
         // Should be escaped (exact escaping depends on shell-escape implementation)
         expect(cmd).not.toContain("'quotes'")
       })
+
+      test('omits --channels flag when channel spec is absent (zero regression)', () => {
+        const cmd = buildAgentCommand('claude', baseOptions)
+        expect(cmd).not.toContain('--channels')
+      })
+
+      test('prefixes --channels server:<mcpInvocation> when channel spec is provided', () => {
+        const cmd = buildAgentCommand('claude', {
+          ...baseOptions,
+          channel: {
+            channelId: 'fulcrum-mouriya-laptop/task-42',
+            exchangeUrl: 'https://exchange.example.com',
+            mcpInvocation: 'bun x @agent-channel/mcp',
+          },
+        })
+
+        expect(cmd).toContain('--channels server:')
+        // Both the legacy flags and the new --channels coexist
+        expect(cmd).toContain('--dangerously-skip-permissions')
+        // mcpInvocation passed through shell escaping
+        expect(cmd).toContain('@agent-channel/mcp')
+      })
+
+      test('--channels flag is also injected in plan mode', () => {
+        const cmd = buildAgentCommand('claude', {
+          ...baseOptions,
+          mode: 'plan',
+          channel: {
+            channelId: 'fulcrum-host/task-9',
+            exchangeUrl: 'https://exchange.example.com',
+            mcpInvocation: 'bun x @agent-channel/mcp',
+          },
+        })
+
+        expect(cmd).toContain('--permission-mode plan')
+        expect(cmd).toContain('--channels server:')
+      })
     })
 
     describe('OpenCode', () => {

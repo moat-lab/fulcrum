@@ -45,6 +45,7 @@ import scratchDirsRoutes from './routes/scratch-dirs'
 import mattermostRoutes from './routes/mattermost'
 import serverExposeRoutes from './routes/server-expose'
 import claudeChannelRoutes from './routes/claude-channels'
+import channelRoutes from './routes/channels'
 import { writeEntry } from './lib/logger'
 import type { LogEntry } from '../shared/logger'
 
@@ -150,6 +151,9 @@ export function createApp() {
 
   // Claude Code channel bridge
   app.route('/api/claude-channels', claudeChannelRoutes)
+
+  // Agent channel exchange (issue #180 / parent #153)
+  app.route('/api/channels', channelRoutes)
 
   // Logging endpoint for frontend to send batched logs to server
   app.post('/api/logs', async (c) => {
