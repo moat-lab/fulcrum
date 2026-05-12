@@ -1,19 +1,25 @@
 /**
  * Agent channel exchange heartbeat service (issue #180 / parent #153).
  *
- * Drives the fulcrum-server-owned half of the dual heartbeat:
+ * Owns the fulcrum-server side of the dual heartbeat against the
+ * `agent-channel-exchange` HTTP server:
  *
- * - 30s ping interval (`body.kind = "heartbeat.ping"`) per registered
- *   fulcrum-client mailbox bound to a terminal.
- * - 3 consecutive misses (≈90s) → reRegister via exchange `POST /v1/register`,
- *   matching the exchange-side 3-miss deregister window.
- * - `restoreChannelsFromDatabase()` reconciles `terminals.channel_id` non-null
- *   rows on server startup so dtach-persisted claude sessions keep their
- *   mailbox without manual intervention.
+ * - `probeExchangeVersion` / `testExchangeConnection` — GET /version to surface
+ *   schema_version skew in the Settings UI before any register attempt.
+ * - `registerChannel` — POST /v1/register with a full wire envelope
+ *   (`body.kind = "register.request"`), parse the envelope response, and
+ *   persist the assigned `channel_id` onto the `terminals` row.
+ * - `startChannelHeartbeat` — every 30s POST /v1/envelope with a
+ *   `heartbeat.ping` envelope and the `X-Agent-Channel-Sender` header
+ *   set to the channel_id; 3 consecutive misses trigger reRegister to
+ *   match the exchange-side 90s deregister window.
+ * - `restoreChannelsFromDatabase` — server startup reconcile so dtach-persisted
+ *   claude sessions keep their mailbox without manual intervention.
  *
- * Out of scope for fulcrum: MCP-child-owned mailbox heartbeat (lives inside
- * `@agent-channel/mcp`; claude death → MCP-child death → exchange-side
- * deregister handles that path).
+ * Wire shapes are validated end-to-end by the exchange runtime
+ * (typebox JSON Schema in `@agent-channel/protocol`). This file matches that
+ * contract exactly: any divergence is rejected by the exchange and surfaced
+ * in fulcrum logs / Settings UI rather than silently dropped.
  */
 
 import { eq, isNotNull } from 'drizzle-orm'
@@ -23,6 +29,17 @@ import { getFnoxValue } from '../lib/settings/fnox'
 
 export const HEARTBEAT_INTERVAL_MS = 30_000
 export const HEARTBEAT_MAX_MISSES = 3
+
+/**
+ * Exchange wire schema we speak. The exchange enforces strict equality
+ * on this value (see `agent-channel-exchange/packages/exchange/src/router.ts`),
+ * so any drift here surfaces as `schema_version_incompatible` on the wire.
+ */
+export const EXCHANGE_SCHEMA_VERSION = '0.1.0'
+const EXCHANGE_SYSTEM_CHANNEL = 'exchange/system'
+const SENDER_HEADER = 'x-agent-channel-sender'
+
+const FULCRUM_CAPABILITIES = ['channel.send', 'channel.receive', 'discovery.list'] as const
 
 interface ExchangeConfig {
   enabled: boolean
@@ -45,12 +62,10 @@ function readExchangeConfig(): ExchangeConfig {
 export interface RegisterArgs {
   /** Logical fulcrum task id (used to compose `<mailbox>/task-<id>` per #153 §Channel-id 形态). */
   taskId: string
-  /** Terminal row id; the row is updated with the assigned `channelId` + ISO timestamp. */
+  /** Terminal row id; the row is updated with the assigned `channel_id` + ISO timestamp. */
   terminalId: string
   /** Optional override of the configured exchange URL (used by tests). */
   exchangeUrl?: string
-  /** Optional override of the configured exchange token. */
-  exchangeToken?: string
   /** Optional override of the configured mailbox namespace. */
   mailboxNamespace?: string
 }
@@ -62,7 +77,6 @@ export interface RegisterResult {
 }
 
 interface VersionResponse {
-  /** Exchange wire schema major version. fulcrum surfaces incompatibility to the UI rather than continuing silently (#153). */
   schemaVersion: string
 }
 
@@ -75,47 +89,40 @@ export function _setFetchForTests(f: FetchLike | null): void {
   _fetch = f ?? globalThis.fetch.bind(globalThis)
 }
 
-const SUPPORTED_SCHEMA_MAJOR = '1'
-
 function isSchemaCompatible(serverVersion: string): boolean {
-  const major = serverVersion.split('.')[0]
-  return major === SUPPORTED_SCHEMA_MAJOR
+  // The exchange protocol is pre-1.0; until 1.0 lands, breaking changes can
+  // ride any minor bump. Require exact major.minor match (current = "0.1").
+  return serverVersion === EXCHANGE_SCHEMA_VERSION
 }
 
-async function exchangeFetch(
-  url: string,
-  path: string,
-  token: string,
-  body: unknown,
-): Promise<Response> {
-  const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url
-  return _fetch(`${baseUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  })
+function buildBaseUrl(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url
 }
 
-export async function probeExchangeVersion(url: string, token: string): Promise<VersionResponse> {
-  const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url
-  const res = await _fetch(`${baseUrl}/version`, {
-    method: 'GET',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
+function newMsgId(): string {
+  return crypto.randomUUID()
+}
+
+function nowIso(): string {
+  return new Date().toISOString()
+}
+
+export async function probeExchangeVersion(url: string): Promise<VersionResponse> {
+  const baseUrl = buildBaseUrl(url)
+  const res = await _fetch(`${baseUrl}/version`, { method: 'GET' })
   if (!res.ok) {
     throw new Error(`exchange /version returned ${res.status}`)
   }
-  const data = (await res.json()) as Partial<VersionResponse>
-  if (typeof data.schemaVersion !== 'string') {
-    throw new Error('exchange /version response missing schemaVersion')
+  const data = (await res.json()) as { schema_version?: unknown }
+  if (typeof data.schema_version !== 'string') {
+    throw new Error('exchange /version response missing schema_version')
   }
-  if (!isSchemaCompatible(data.schemaVersion)) {
-    throw new Error(`exchange schema_version ${data.schemaVersion} incompatible with fulcrum ${SUPPORTED_SCHEMA_MAJOR}.x`)
+  if (!isSchemaCompatible(data.schema_version)) {
+    throw new Error(
+      `exchange schema_version ${data.schema_version} incompatible with fulcrum ${EXCHANGE_SCHEMA_VERSION}`,
+    )
   }
-  return { schemaVersion: data.schemaVersion }
+  return { schemaVersion: data.schema_version }
 }
 
 export interface TestConnectionResult {
@@ -124,62 +131,101 @@ export interface TestConnectionResult {
   error?: string
 }
 
-export async function testExchangeConnection(args?: { url?: string; token?: string }): Promise<TestConnectionResult> {
+export async function testExchangeConnection(args?: { url?: string }): Promise<TestConnectionResult> {
   const cfg = readExchangeConfig()
   const url = args?.url ?? cfg.url
-  const token = args?.token ?? cfg.token
   if (!url) return { ok: false, error: 'exchange URL not configured' }
   try {
-    const v = await probeExchangeVersion(url, token)
+    const v = await probeExchangeVersion(url)
     return { ok: true, schemaVersion: v.schemaVersion }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 
-interface ExchangeRegisterResponse {
-  channelId: string
-  registeredAt: string
-  heartbeat?: { intervalSeconds?: number; timeoutSeconds?: number }
+interface RegisterResponsePayload {
+  channel_id: string
+  registered_at: string
+  heartbeat: { interval_seconds: number; timeout_seconds: number }
+  delivery_endpoint: string
+  schema_version: string
+}
+
+interface RegisterResponseEnvelope {
+  msg_id: string
+  from: string
+  to: string
+  ts: string
+  schema_version: string
+  body: { kind: string; payload: RegisterResponsePayload }
 }
 
 export async function registerChannel(args: RegisterArgs): Promise<RegisterResult> {
   const cfg = readExchangeConfig()
   const url = args.exchangeUrl ?? cfg.url
-  const token = args.exchangeToken ?? cfg.token
   const mailbox = args.mailboxNamespace ?? cfg.mailbox
 
   if (!url) throw new Error('exchange URL not configured')
   if (!mailbox) throw new Error('exchange mailbox not configured')
 
-  // Compat-window probe per #153 — surface incompatibility before we ever
-  // issue a register, instead of letting the client silently drift.
-  await probeExchangeVersion(url, token)
+  // Compat-window probe per #153 — surface incompatibility before any register.
+  await probeExchangeVersion(url)
 
   const desiredChannelId = `${mailbox}/task-${args.taskId}`
-  const res = await exchangeFetch(url, '/v1/register', token, {
-    desired_channel_id: desiredChannelId,
-    capabilities: ['channel.send', 'channel.list_channels'],
-    identity: { agent_kind: 'fulcrum-client', instance_label: mailbox },
+  const ts = nowIso()
+  const envelope = {
+    msg_id: newMsgId(),
+    from: desiredChannelId,
+    to: EXCHANGE_SYSTEM_CHANNEL,
+    ts,
+    schema_version: EXCHANGE_SCHEMA_VERSION,
+    body: {
+      kind: 'register.request',
+      payload: {
+        schema_version: EXCHANGE_SCHEMA_VERSION,
+        desired_channel_id: desiredChannelId,
+        capabilities: FULCRUM_CAPABILITIES,
+        identity: {
+          agent_kind: 'fulcrum-client',
+          instance_label: mailbox,
+        },
+      },
+    },
+  }
+  const res = await _fetch(`${buildBaseUrl(url)}/v1/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(envelope),
   })
   if (!res.ok) {
-    throw new Error(`exchange /v1/register returned ${res.status}`)
+    const text = await res.text().catch(() => '')
+    throw new Error(`exchange /v1/register returned ${res.status}${text ? ` ${text}` : ''}`)
   }
-  const data = (await res.json()) as ExchangeRegisterResponse
-  if (!data.channelId) throw new Error('exchange /v1/register response missing channelId')
+  const data = (await res.json()) as Partial<RegisterResponseEnvelope>
+  if (!data?.body || data.body.kind !== 'register.response' || !data.body.payload) {
+    throw new Error('exchange /v1/register response shape invalid')
+  }
+  const payload = data.body.payload
+  if (typeof payload.channel_id !== 'string' || typeof payload.registered_at !== 'string') {
+    throw new Error('exchange /v1/register response missing channel_id or registered_at')
+  }
 
-  const registeredAt = data.registeredAt ?? new Date().toISOString()
   db.update(terminals)
-    .set({ channelId: data.channelId, channelRegisteredAt: registeredAt, updatedAt: registeredAt })
+    .set({
+      channelId: payload.channel_id,
+      channelRegisteredAt: payload.registered_at,
+      updatedAt: payload.registered_at,
+    })
     .where(eq(terminals.id, args.terminalId))
     .run()
 
   return {
-    channelId: data.channelId,
-    registeredAt,
+    channelId: payload.channel_id,
+    registeredAt: payload.registered_at,
     heartbeat: {
-      intervalSeconds: data.heartbeat?.intervalSeconds ?? HEARTBEAT_INTERVAL_MS / 1000,
-      timeoutSeconds: data.heartbeat?.timeoutSeconds ?? (HEARTBEAT_INTERVAL_MS * HEARTBEAT_MAX_MISSES) / 1000,
+      intervalSeconds: payload.heartbeat?.interval_seconds ?? HEARTBEAT_INTERVAL_MS / 1000,
+      timeoutSeconds:
+        payload.heartbeat?.timeout_seconds ?? (HEARTBEAT_INTERVAL_MS * HEARTBEAT_MAX_MISSES) / 1000,
     },
   }
 }
@@ -188,19 +234,36 @@ interface TrackedChannel {
   terminalId: string
   channelId: string
   consecutiveMisses: number
+  sequence: number
 }
 
 const tracked = new Map<string, TrackedChannel>()
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
-async function sendHeartbeatPing(url: string, token: string, channelId: string): Promise<boolean> {
+async function sendHeartbeatPing(
+  url: string,
+  channelId: string,
+  sequence: number,
+): Promise<boolean> {
   try {
-    const res = await exchangeFetch(url, '/v1/envelope', token, {
+    const envelope = {
+      msg_id: newMsgId(),
       from: channelId,
-      to: 'exchange',
-      ts: new Date().toISOString(),
-      schema_version: `${SUPPORTED_SCHEMA_MAJOR}.0`,
-      body: { kind: 'heartbeat.ping' },
+      to: EXCHANGE_SYSTEM_CHANNEL,
+      ts: nowIso(),
+      schema_version: EXCHANGE_SCHEMA_VERSION,
+      body: {
+        kind: 'heartbeat.ping',
+        payload: { channel_id: channelId, sequence },
+      },
+    }
+    const res = await _fetch(`${buildBaseUrl(url)}/v1/envelope`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [SENDER_HEADER]: channelId,
+      },
+      body: JSON.stringify(envelope),
     })
     return res.ok
   } catch {
@@ -217,13 +280,15 @@ export async function reRegister(terminalId: string): Promise<RegisterResult | n
   if (!row) return null
   // Compose taskId from the terminal name (`task-<id>` convention) so the
   // reRegister envelope's `desired_channel_id` keeps the same shape as the
-  // original register. If the terminal isn't task-bound we fall back to its
-  // raw id; exchange will append `#2`/`#3` when colliding.
+  // original register.
   const taskId = row.name?.startsWith('task-') ? row.name.slice('task-'.length) : row.id
   try {
     return await registerChannel({ taskId, terminalId })
   } catch (err) {
-    log.server.warn('channel re-register failed', { terminalId, error: err instanceof Error ? err.message : String(err) })
+    log.server.warn('channel re-register failed', {
+      terminalId,
+      error: err instanceof Error ? err.message : String(err),
+    })
     return null
   }
 }
@@ -232,7 +297,8 @@ async function heartbeatTick(): Promise<void> {
   const cfg = readExchangeConfig()
   if (!cfg.enabled || !cfg.url) return
   for (const entry of tracked.values()) {
-    const ok = await sendHeartbeatPing(cfg.url, cfg.token, entry.channelId)
+    entry.sequence += 1
+    const ok = await sendHeartbeatPing(cfg.url, entry.channelId, entry.sequence)
     if (ok) {
       entry.consecutiveMisses = 0
     } else {
@@ -246,6 +312,7 @@ async function heartbeatTick(): Promise<void> {
         if (result) {
           entry.channelId = result.channelId
           entry.consecutiveMisses = 0
+          entry.sequence = 0
         }
       }
     }
@@ -253,7 +320,7 @@ async function heartbeatTick(): Promise<void> {
 }
 
 export function trackChannel(terminalId: string, channelId: string): void {
-  tracked.set(terminalId, { terminalId, channelId, consecutiveMisses: 0 })
+  tracked.set(terminalId, { terminalId, channelId, consecutiveMisses: 0, sequence: 0 })
 }
 
 export function untrackChannel(terminalId: string): void {
@@ -262,11 +329,15 @@ export function untrackChannel(terminalId: string): void {
 
 export function startChannelHeartbeat(): void {
   if (heartbeatTimer) return
-  const cfg = readExchangeConfig()
-  if (!cfg.enabled) return
+  // Always run the timer — per-tick `heartbeatTick` short-circuits when
+  // `channels.exchange.enabled` is false or no channels are tracked. This
+  // lets the user enable the exchange at runtime via Settings without
+  // having to restart the server to wake up the heartbeat loop.
   heartbeatTimer = setInterval(() => {
     heartbeatTick().catch((err) => {
-      log.server.error('channel heartbeat tick error', { error: err instanceof Error ? err.message : String(err) })
+      log.server.error('channel heartbeat tick error', {
+        error: err instanceof Error ? err.message : String(err),
+      })
     })
   }, HEARTBEAT_INTERVAL_MS)
 }

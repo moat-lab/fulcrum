@@ -3,6 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+/**
+ * Wire-contract tests for #180 / #153. The exchange protocol package
+ * (`@agent-channel/protocol`) ships a typebox JSON Schema; the shapes asserted
+ * here mirror that schema. If these drift, the exchange will reject fulcrum's
+ * envelopes with `envelope_invalid` / `schema_version_incompatible` at runtime
+ * (see acceptance #6 e2e in the PR comment).
+ */
 describe('channel-heartbeat-service (#180)', () => {
   let tempDir: string
   let originalEnv: Record<string, string | undefined>
@@ -29,52 +36,50 @@ describe('channel-heartbeat-service (#180)', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  test('testExchangeConnection reports ok for compatible schema_version', async () => {
-    const { _setFetchForTests, testExchangeConnection } = await import('./channel-heartbeat-service')
+  test('testExchangeConnection reports ok for the exchange schema_version (0.1.0)', async () => {
+    const { _setFetchForTests, testExchangeConnection, EXCHANGE_SCHEMA_VERSION } = await import(
+      './channel-heartbeat-service'
+    )
 
     _setFetchForTests((async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString()
       expect(url).toContain('/version')
-      return new Response(JSON.stringify({ schemaVersion: '1.4' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
+      return new Response(
+        JSON.stringify({ schema_version: EXCHANGE_SCHEMA_VERSION, server_version: '0.1.0' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
     }) as typeof fetch)
 
-    const result = await testExchangeConnection({
-      url: 'https://exchange.example.com',
-      token: 'tok',
-    })
+    const result = await testExchangeConnection({ url: 'https://exchange.example.com' })
     expect(result.ok).toBe(true)
-    expect(result.schemaVersion).toBe('1.4')
+    expect(result.schemaVersion).toBe(EXCHANGE_SCHEMA_VERSION)
   })
 
   test('testExchangeConnection surfaces schema incompatibility instead of silently continuing', async () => {
     const { _setFetchForTests, testExchangeConnection } = await import('./channel-heartbeat-service')
 
     _setFetchForTests((async () =>
-      new Response(JSON.stringify({ schemaVersion: '2.0' }), {
+      new Response(JSON.stringify({ schema_version: '99.0.0' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })) as typeof fetch)
 
-    const result = await testExchangeConnection({
-      url: 'https://exchange.example.com',
-      token: '',
-    })
+    const result = await testExchangeConnection({ url: 'https://exchange.example.com' })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('incompatible')
   })
 
   test('testExchangeConnection fails fast when URL is empty', async () => {
     const { testExchangeConnection } = await import('./channel-heartbeat-service')
-    const result = await testExchangeConnection({ url: '', token: '' })
+    const result = await testExchangeConnection({ url: '' })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('not configured')
   })
 
-  test('registerChannel probes /version before POST /v1/register and writes channelId to DB', async () => {
-    const { _setFetchForTests, registerChannel } = await import('./channel-heartbeat-service')
+  test('registerChannel posts a register.request envelope and parses register.response envelope', async () => {
+    const { _setFetchForTests, registerChannel, EXCHANGE_SCHEMA_VERSION } = await import(
+      './channel-heartbeat-service'
+    )
     const { setFnoxValue, db, terminals } = await Promise.all([
       import('../lib/settings'),
       import('../db'),
@@ -83,10 +88,8 @@ describe('channel-heartbeat-service (#180)', () => {
 
     setFnoxValue('channels.exchange.enabled', true)
     setFnoxValue('channels.exchange.url', 'https://exchange.example.com')
-    setFnoxValue('channels.exchange.token', 'tok')
     setFnoxValue('channels.exchange.mailbox', 'fulcrum-test')
 
-    // Seed a terminal row so the channel id can be persisted onto it.
     const terminalId = 'term-180-test'
     const now = new Date().toISOString()
     db.insert(terminals)
@@ -101,19 +104,36 @@ describe('channel-heartbeat-service (#180)', () => {
       })
       .run()
 
-    const calls: string[] = []
-    _setFetchForTests((async (input: RequestInfo | URL) => {
-      const u = typeof input === 'string' ? input : input.toString()
-      calls.push(u)
-      if (u.endsWith('/version')) {
-        return new Response(JSON.stringify({ schemaVersion: '1.0' }), { status: 200 })
+    const calls: Array<{ url: string; body?: unknown }> = []
+    _setFetchForTests((async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined
+      calls.push({ url, body })
+      if (url.endsWith('/version')) {
+        return new Response(JSON.stringify({ schema_version: EXCHANGE_SCHEMA_VERSION }), {
+          status: 200,
+        })
       }
-      if (u.endsWith('/v1/register')) {
+      if (url.endsWith('/v1/register')) {
+        // Spec-correct register.response envelope (snake_case + wrapped body).
         return new Response(
           JSON.stringify({
-            channelId: 'fulcrum-test/task-42',
-            registeredAt: '2026-05-12T20:30:00Z',
-            heartbeat: { intervalSeconds: 30, timeoutSeconds: 90 },
+            msg_id: 'srv-1',
+            from: 'exchange/system',
+            to: 'fulcrum-test/task-42',
+            in_reply_to: body?.msg_id,
+            ts: '2026-05-13T05:30:00.000Z',
+            schema_version: EXCHANGE_SCHEMA_VERSION,
+            body: {
+              kind: 'register.response',
+              payload: {
+                channel_id: 'fulcrum-test/task-42',
+                registered_at: '2026-05-13T05:30:00.000Z',
+                heartbeat: { interval_seconds: 30, timeout_seconds: 90 },
+                delivery_endpoint: 'http://exchange.example.com/v1/envelope',
+                schema_version: EXCHANGE_SCHEMA_VERSION,
+              },
+            },
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
@@ -124,17 +144,27 @@ describe('channel-heartbeat-service (#180)', () => {
     const result = await registerChannel({ taskId: '42', terminalId })
     expect(result.channelId).toBe('fulcrum-test/task-42')
     expect(result.heartbeat.intervalSeconds).toBe(30)
-    // Version probe must precede /v1/register
-    expect(calls[0]).toContain('/version')
-    expect(calls[1]).toContain('/v1/register')
 
-    // DB row must be updated with the assigned channel_id + timestamp
+    // Probe ordering and request envelope shape.
+    expect(calls[0]?.url).toContain('/version')
+    expect(calls[1]?.url).toContain('/v1/register')
+    const registerBody = calls[1]?.body as Record<string, unknown>
+    expect(registerBody.schema_version).toBe(EXCHANGE_SCHEMA_VERSION)
+    expect(registerBody.from).toBe('fulcrum-test/task-42')
+    expect(registerBody.to).toBe('exchange/system')
+    expect((registerBody.body as { kind: string }).kind).toBe('register.request')
+    const payload = (registerBody.body as { payload: Record<string, unknown> }).payload
+    expect(payload.desired_channel_id).toBe('fulcrum-test/task-42')
+    expect(payload.capabilities).toEqual(['channel.send', 'channel.receive', 'discovery.list'])
+    expect((payload.identity as { agent_kind: string }).agent_kind).toBe('fulcrum-client')
+    expect((payload.identity as { instance_label: string }).instance_label).toBe('fulcrum-test')
+
+    // DB row must be updated with the assigned channel_id + timestamp.
     const { eq } = await import('drizzle-orm')
     const row = db.select().from(terminals).where(eq(terminals.id, terminalId)).all()[0]
     expect(row?.channelId).toBe('fulcrum-test/task-42')
-    expect(row?.channelRegisteredAt).toBe('2026-05-12T20:30:00Z')
+    expect(row?.channelRegisteredAt).toBe('2026-05-13T05:30:00.000Z')
 
-    // Clean up the row so test isolation holds.
     db.delete(terminals).where(eq(terminals.id, terminalId)).run()
   })
 
@@ -143,20 +173,21 @@ describe('channel-heartbeat-service (#180)', () => {
     const { setFnoxValue } = await import('../lib/settings')
 
     setFnoxValue('channels.exchange.url', 'https://exchange.example.com')
-    setFnoxValue('channels.exchange.token', 'tok')
     setFnoxValue('channels.exchange.mailbox', 'fulcrum-test')
 
     let registerHit = false
     _setFetchForTests((async (input: RequestInfo | URL) => {
       const u = typeof input === 'string' ? input : input.toString()
       if (u.endsWith('/version')) {
-        return new Response(JSON.stringify({ schemaVersion: '99.0' }), { status: 200 })
+        return new Response(JSON.stringify({ schema_version: '99.0.0' }), { status: 200 })
       }
       registerHit = true
       return new Response('{}', { status: 200 })
     }) as typeof fetch)
 
-    await expect(registerChannel({ taskId: '7', terminalId: 'nonexistent' })).rejects.toThrow(/incompatible/)
+    await expect(registerChannel({ taskId: '7', terminalId: 'nonexistent' })).rejects.toThrow(
+      /incompatible/,
+    )
     expect(registerHit).toBe(false)
   })
 })

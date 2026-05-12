@@ -28,7 +28,6 @@ const RegisterSchema = z.object({
 const TestConnectionSchema = z
   .object({
     url: z.string().min(1).optional(),
-    token: z.string().optional(),
   })
   .optional()
 
