@@ -96,30 +96,76 @@ async function pollPRs(): Promise<void> {
 
     // Best-effort: pull the merged commits into the main repo checkout.
     // Failure must not prevent task closure (already done above).
-    if (isMerged && task.repoPath) {
-      const result = gitPull(task.repoPath)
-      if (!result.success) {
-        log.pr.warn('git pull failed after PR-merge auto-close', {
-          taskId: task.id,
-          repoPath: task.repoPath,
-          error: result.error,
-        })
-        sendNotification({
-          title: 'Git pull failed',
-          message: `Could not pull merged changes into ${task.repoPath}: ${result.error ?? 'unknown error'}`,
-          type: 'deployment_failed',
-          taskId: task.id,
-          taskTitle: task.title,
-        }).catch((err) =>
-          log.pr.error('Failed to send git-pull-failed notification', { error: String(err) })
-        )
-      } else {
-        log.pr.info('Pulled merged changes into main repo', {
-          taskId: task.id,
-          repoPath: task.repoPath,
-        })
-      }
+    if (isMerged) {
+      pullAfterMerge(task)
     }
+  }
+}
+
+// Skip when the task is bound to a remote host: `gitPull` runs `git -C <path>`
+// in the server process, so a remote `repoPath` would always fail locally and
+// produce a noisy `Git pull failed` notification. Remote-host git pull is a
+// separate concern.
+type PullAfterMergeTask = {
+  id: string
+  title: string
+  repoPath: string | null
+  hostId: string | null
+}
+
+type PullAfterMergeDeps = {
+  gitPull: (repoPath: string) => { success: boolean; error?: string }
+  sendNotification: (payload: {
+    title: string
+    message: string
+    type: string
+    taskId?: string
+    taskTitle?: string
+  }) => Promise<unknown>
+}
+
+const defaultPullAfterMergeDeps: PullAfterMergeDeps = {
+  gitPull,
+  sendNotification: sendNotification as PullAfterMergeDeps['sendNotification'],
+}
+
+export function pullAfterMerge(
+  task: PullAfterMergeTask,
+  deps: PullAfterMergeDeps = defaultPullAfterMergeDeps
+): void {
+  if (task.hostId != null) {
+    log.pr.info('Skipped post-merge git pull for remote-host task', {
+      taskId: task.id,
+      hostId: task.hostId,
+    })
+    return
+  }
+
+  if (!task.repoPath) return
+
+  const result = deps.gitPull(task.repoPath)
+  if (!result.success) {
+    log.pr.warn('git pull failed after PR-merge auto-close', {
+      taskId: task.id,
+      repoPath: task.repoPath,
+      error: result.error,
+    })
+    deps
+      .sendNotification({
+        title: 'Git pull failed',
+        message: `Could not pull merged changes into ${task.repoPath}: ${result.error ?? 'unknown error'}`,
+        type: 'deployment_failed',
+        taskId: task.id,
+        taskTitle: task.title,
+      })
+      .catch((err) =>
+        log.pr.error('Failed to send git-pull-failed notification', { error: String(err) })
+      )
+  } else {
+    log.pr.info('Pulled merged changes into main repo', {
+      taskId: task.id,
+      repoPath: task.repoPath,
+    })
   }
 }
 
