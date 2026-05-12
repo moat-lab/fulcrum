@@ -643,7 +643,16 @@ function TaskView() {
                       <HugeiconsIcon icon={GitCommitIcon} size={14} strokeWidth={2} />
                       Commit
                     </DropdownMenuItem>
-                    {!task.prUrl && (
+                    {task.prUrl ? (
+                      <DropdownMenuItem onClick={() => openExternalUrl(task.prUrl!)}>
+                        <HugeiconsIcon
+                          icon={GitPullRequestIcon}
+                          size={14}
+                          strokeWidth={2}
+                        />
+                        View PR
+                      </DropdownMenuItem>
+                    ) : (
                       <DropdownMenuItem onClick={handleCreatePR} disabled={gitCreatePR.isPending}>
                         <HugeiconsIcon
                           icon={GitPullRequestIcon}
@@ -934,8 +943,22 @@ function TaskView() {
                 />
               </Button>
 
-              {/* Create PR Button */}
-              {!task.prUrl && (
+              {/* Create PR / View PR Button */}
+              {task.prUrl ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => openExternalUrl(task.prUrl!)}
+                  className="text-primary hover:text-primary"
+                  title="View Pull Request"
+                >
+                  <HugeiconsIcon
+                    icon={GitPullRequestIcon}
+                    size={16}
+                    strokeWidth={2}
+                  />
+                </Button>
+              ) : (
                 <Button
                   variant="ghost"
                   size="icon-sm"
