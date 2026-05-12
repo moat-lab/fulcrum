@@ -2,7 +2,7 @@
 
 **Harness Attention. Orchestrate Agents. Leverage Your Time Wisely.**
 
-![Fulcrum Kanban Board with AI Assistant](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/kanban-with-assistant-dark.jpg)
+![Fulcrum Kanban Board with AI Assistant](https://img.237575.xyz/media/QeyJTr0lhS2T-fUcEael4GDyYwILzvhQ-o3BFxHBYJI)
 
 ## What It Does
 
@@ -122,7 +122,7 @@ claude plugin install fulcrum@fulcrum --scope user
 
 Track tasks from planning to done. Set priority levels (high/medium/low), pin important tasks to the top of lists, and set up recurring tasks that auto-create the next occurrence when completed. The built-in AI assistant has full context of everything you're tracking—tasks, projects, apps—and can help with planning, documentation, or running MCP tools.
 
-![Kanban Board with AI Assistant](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/kanban-with-assistant-dark.jpg)
+![Kanban Board with AI Assistant](https://img.237575.xyz/media/QeyJTr0lhS2T-fUcEael4GDyYwILzvhQ-o3BFxHBYJI)
 
 ### Task Types
 
@@ -138,31 +138,31 @@ Three task types for different workflows:
 
 Run multiple AI coding agents simultaneously across different tasks. Git tasks get isolated worktrees, Scratch tasks get isolated directories. Monitor and interact with all sessions from one screen.
 
-![Parallel Agent Terminals](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/parallel-agent-terminals-dark.jpg)
+![Parallel Agent Terminals](https://img.237575.xyz/media/rZ95lMmzTBeqvs9WkXPace5t00g89t0e4LjY0UV7j9g)
 
 ### Projects
 
 Unified view of repositories and deployments. Link repos, manage tasks, configure default agents, and see active work at a glance.
 
-![Projects List](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/projects-list-dark.jpg)
+![Projects List](https://img.237575.xyz/media/gZFwLHL5Tfxvfz4NbBYzPngvyoXLYGU5i2L-zmn3_w0)
 
 ### Project Workspace
 
 Terminal with integrated file browser. Direct access to project files alongside your agent sessions.
 
-![Project Workspace](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/project-workspace-dark.jpg)
+![Project Workspace](https://img.237575.xyz/media/DJRMUZe4JlZb-jFJ4zWVV8r769XSSNZ8PrNlFxb52Q8)
 
 ### Task Dependencies
 
 Define prerequisite tasks that must complete before others can start. Visualize with an interactive dependency graph.
 
-![Task Dependency Graph](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/task-dependency-graph-dark.jpg)
+![Task Dependency Graph](https://img.237575.xyz/media/bknFGWt-89MGungIjSGQ33diCCZGStVhKI3JXxgXepA)
 
 ### AI Assistant
 
 Create documents with live preview. Generate charts and visualizations. The assistant uses the same MCP tools available to external agents.
 
-![AI Assistant Editor](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/assistant-editor-dark.jpg)
+![AI Assistant Editor](https://img.237575.xyz/media/gAWZZjFVkLApYZhqOAFO8cd9DFvdwwbwZKztaEzgUO4)
 
 ### Calendar Integration
 
@@ -218,7 +218,7 @@ A two-tier memory system gives agents both always-on context and on-demand recal
 
 Track CPU, memory, and disk usage while your agents work. Jobs is a top-level page (`/jobs`, Cmd+6) for managing systemd (Linux) or launchd (macOS) timers. The Messages tab under Monitoring shows all channel messages (WhatsApp, Discord, Telegram, Slack, Email) with filtering by channel and direction. The Observer tab tracks every observe-only message processing attempt with circuit breaker status, aggregate stats, and a filterable invocations list.
 
-![System Monitoring](https://raw.githubusercontent.com/knowsuchagency/fulcrum/main/screenshots/system-monitoring-dark.jpg)
+![System Monitoring](https://img.237575.xyz/media/ClU9VicmDKJV2jwvZlfNHx4e2OA2y9gUEuqQpWDlH_Y)
 
 ## Supported Agents
 
