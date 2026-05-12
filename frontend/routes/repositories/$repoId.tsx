@@ -83,6 +83,7 @@ interface RepoSearchParams {
   subtab?: DeploySubTab
   action?: 'deploy'
   file?: string
+  readOnly?: 'true'
 }
 
 const RepositoryDetailView = observer(function RepositoryDetailView() {
@@ -572,6 +573,7 @@ const RepositoryDetailView = observer(function RepositoryDetailView() {
               file={searchParams.file}
               onFileChange={handleFileChange}
               onFileSaved={handleFileSaved}
+              readOnly={searchParams.readOnly === 'true'}
             />
           </TabsContent>
 
@@ -756,6 +758,7 @@ export const Route = createFileRoute('/repositories/$repoId')({
       : undefined,
     action: search.action === 'deploy' ? 'deploy' : undefined,
     file: typeof search.file === 'string' ? search.file : undefined,
+    readOnly: search.readOnly === true || search.readOnly === 'true' ? 'true' : undefined,
   }),
   component: RepositoryDetailViewWithProvider,
 })

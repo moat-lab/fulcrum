@@ -43,6 +43,8 @@ export interface WorkspacePanelProps {
   onFileChange: (file: string | null) => void
   /** Callback when a file is saved */
   onFileSaved?: (file: string) => void
+  /** When true, FilesViewer hides rename/delete (Download stays). */
+  readOnly?: boolean
 }
 
 /**
@@ -57,6 +59,7 @@ export function WorkspacePanel({
   file,
   onFileChange,
   onFileSaved,
+  readOnly = false,
 }: WorkspacePanelProps) {
   const { t } = useTranslation('repositories')
   const isMobile = useIsMobile()
@@ -359,6 +362,7 @@ export function WorkspacePanel({
           initialSelectedFile={file}
           onFileChange={onFileChange}
           onFileSaved={onFileSaved}
+          readOnly={readOnly}
         />
       </TabsContent>
 
@@ -415,6 +419,7 @@ export function WorkspacePanel({
             initialSelectedFile={file}
             onFileChange={onFileChange}
             onFileSaved={onFileSaved}
+            readOnly={readOnly}
           />
         </TabsContent>
 
