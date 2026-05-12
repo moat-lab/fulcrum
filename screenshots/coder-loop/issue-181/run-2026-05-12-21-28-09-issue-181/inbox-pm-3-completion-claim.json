@@ -1,0 +1,19 @@
+[
+  {
+    "msg_id": "02e3c3c8-3e3d-48a4-b73c-741cea657e3d",
+    "from": "fulcrum-test-181/task-42",
+    "to": "pm-test-181/main",
+    "ts": "2026-05-12T21:43:45.253Z",
+    "schema_version": "0.1.0",
+    "body": {
+      "kind": "deliver.message",
+      "payload": {
+        "body_kind": "completion_claim",
+        "payload": {
+          "artifact_url": "pr#TBD",
+          "summary": "PM mode hook + 5 body_kind e2e green"
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "clientForm": "claude-mcp",
+  "mailbox": "pm-test-181/main",
+  "systemPromptRef": "fnox:pm.systemPrompt",
+  "exchange": {
+    "url": "http://127.0.0.1:18787",
+    "mailboxNamespace": "fulcrum-181-e2e"
+  }
+}

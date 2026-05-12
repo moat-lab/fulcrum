@@ -1,0 +1,64 @@
+{
+  "runId": "run-2026-05-12-21-28-09-issue-181",
+  "exchangeUrl": "http://127.0.0.1:18787",
+  "fulcrumUrl": "http://localhost:9921",
+  "pmChannelId": "pm-test-181/main",
+  "workerChannelId": "fulcrum-test-181/task-42",
+  "steps": [
+    {
+      "step": "0. exchange /version",
+      "detail": "{\"schema_version\":\"0.1.0\",\"server_version\":\"0.1.0\"}",
+      "artifact": "exchange-version.json"
+    },
+    {
+      "step": "1. register PM mailbox",
+      "detail": "pm-test-181/main",
+      "artifact": "register-pm.json"
+    },
+    {
+      "step": "2. register worker mailbox",
+      "detail": "fulcrum-test-181/task-42",
+      "artifact": "register-worker.json"
+    },
+    {
+      "step": "3a. PM→worker assignment delivered",
+      "detail": "msg_id=3a2e5075-f776-4682-9df2-21271a5309c8",
+      "artifact": "inbox-worker-1-assignment.json"
+    },
+    {
+      "step": "3b. worker→PM clarification_request delivered",
+      "artifact": "inbox-pm-1-clarification-request.json"
+    },
+    {
+      "step": "3c. PM→worker clarification_response delivered",
+      "artifact": "inbox-worker-2-clarification-response.json"
+    },
+    {
+      "step": "3d. worker→PM progress delivered",
+      "artifact": "inbox-pm-2-progress.json"
+    },
+    {
+      "step": "3e. worker→PM completion_claim delivered",
+      "artifact": "inbox-pm-3-completion-claim.json"
+    },
+    {
+      "step": "4a. worker mailbox deregistered",
+      "artifact": "deregister-worker.json"
+    },
+    {
+      "step": "4b. PM assignment after deregister → deliver.error/mailbox_deregistered",
+      "detail": "PM stops retrying (no protocol special path)",
+      "artifact": "mailbox-deregistered-response.json"
+    },
+    {
+      "step": "5a. GET /api/channels/pm/mode",
+      "detail": "status=200 clientForm=claude-mcp",
+      "artifact": "fulcrum-pm-mode-hook.json"
+    },
+    {
+      "step": "6. POST /api/tasks/:id/status HTTP single point",
+      "detail": "task=59d7b414-d4c4-456c-9d30-a6d2d2a8c56b transitions=IN_PROGRESS→IN_REVIEW→DONE",
+      "artifact": "fulcrum-task-status-transitions.json"
+    }
+  ]
+}

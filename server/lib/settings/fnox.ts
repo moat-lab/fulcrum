@@ -98,6 +98,12 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'channels.exchange.mailbox': { fnoxKey: 'FULCRUM_CHANNELS_EXCHANGE_MAILBOX', provider: 'plain', type: 'string' },
   'channels.exchange.mcpGitRef': { fnoxKey: 'FULCRUM_CHANNELS_EXCHANGE_MCP_GIT_REF', provider: 'plain', type: 'string' },
 
+  // Channels - PM Agent Mode hook (issue #181 / parent #153 §Chat 启动 UX hook)
+  'channels.pm.enabled': { fnoxKey: 'FULCRUM_CHANNELS_PM_ENABLED', provider: 'plain', type: 'boolean' },
+  'channels.pm.clientForm': { fnoxKey: 'FULCRUM_CHANNELS_PM_CLIENT_FORM', provider: 'plain', type: 'string' },
+  'channels.pm.mailbox': { fnoxKey: 'FULCRUM_CHANNELS_PM_MAILBOX', provider: 'plain', type: 'string' },
+  'channels.pm.systemPromptRef': { fnoxKey: 'FULCRUM_CHANNELS_PM_SYSTEM_PROMPT_REF', provider: 'plain', type: 'string' },
+
   // Channels - Mattermost
   'channels.mattermost.enabled': { fnoxKey: 'FULCRUM_MATTERMOST_ENABLED', provider: 'plain', type: 'boolean' },
   'channels.mattermost.serverUrl': { fnoxKey: 'FULCRUM_MATTERMOST_SERVER_URL', provider: 'plain', type: 'string' },

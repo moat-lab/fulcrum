@@ -1,0 +1,19 @@
+[
+  {
+    "msg_id": "12afb6cd-f42a-4373-ba07-f98252bf191a",
+    "from": "pm-test-181/main",
+    "to": "fulcrum-test-181/task-42",
+    "ts": "2026-05-12T21:43:45.250Z",
+    "in_reply_to": "0ea77f80-06f6-4ef0-aa3e-5f452bdb800d",
+    "schema_version": "0.1.0",
+    "body": {
+      "kind": "deliver.message",
+      "payload": {
+        "body_kind": "clarification_response",
+        "payload": {
+          "answer": "no — keep evidence in this task"
+        }
+      }
+    }
+  }
+]

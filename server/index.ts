@@ -17,6 +17,7 @@ import {
   startChannelHeartbeat,
   stopChannelHeartbeat,
 } from './services/channel-heartbeat-service'
+import { startPmMailboxPoller, stopPmMailboxPoller } from './services/pm-mode-service'
 import { startAssistantScheduler, stopAssistantScheduler } from './services/assistant-scheduler'
 import { startCaldavSync, stopCaldavSync } from './services/caldav'
 import { startGoogleCalendarSync, stopGoogleCalendarSync } from './services/google/google-calendar-service'
@@ -184,6 +185,10 @@ startMessagingChannels()
 // Start agent-channel heartbeat (no-op when `channels.exchange.enabled` is false)
 startChannelHeartbeat()
 
+// Start PM mailbox poller for the Chat 启动 UX hook online-status display
+// (issue #181 / #153 §824). Idle when `channels.pm.enabled` is false.
+startPmMailboxPoller()
+
 // Start assistant scheduler (hourly sweeps, daily rituals)
 startAssistantScheduler()
 
@@ -204,6 +209,7 @@ process.on('SIGINT', async () => {
   stopGoogleCalendarSync()
   await stopMessagingChannels()
   stopChannelHeartbeat()
+  stopPmMailboxPoller()
   ptyManager.detachAll()
   server.close()
   process.exit(0)
@@ -219,6 +225,7 @@ process.on('SIGTERM', async () => {
   stopGoogleCalendarSync()
   await stopMessagingChannels()
   stopChannelHeartbeat()
+  stopPmMailboxPoller()
   ptyManager.detachAll()
   server.close()
   process.exit(0)

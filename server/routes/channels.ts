@@ -16,6 +16,11 @@ import {
   trackChannel,
   testExchangeConnection,
 } from '../services/channel-heartbeat-service'
+import {
+  getPmMailboxesSnapshot,
+  pollPmMailboxes,
+  readPmModeHook,
+} from '../services/pm-mode-service'
 import { getFnoxValue } from '../lib/settings/fnox'
 
 const channelRoutes = new Hono()
@@ -61,6 +66,20 @@ channelRoutes.post('/test-connection', async (c) => {
   const result = await testExchangeConnection(parsed.data)
   // Surface result with a stable shape; UI maps `ok` to the badge state.
   return c.json(result, result.ok ? 200 : 502)
+})
+
+// PM Agent Mode chat hook (issue #181 / parent #153 §Chat 启动 UX hook).
+// Read-only: fulcrum does not spawn the PM process; chat surface / Settings
+// read this to decide whether to mount `@agent-channel/mcp` on the chat-side
+// Claude session, or to show the "external HTTP PM" mailbox status display.
+channelRoutes.get('/pm/mode', (c) => {
+  return c.json(readPmModeHook())
+})
+
+channelRoutes.get('/pm/mailboxes', async (c) => {
+  const refresh = c.req.query('refresh') === '1'
+  if (refresh) await pollPmMailboxes()
+  return c.json(getPmMailboxesSnapshot())
 })
 
 export default channelRoutes

@@ -64,6 +64,11 @@ export const CONFIG_KEYS = {
   CHANNELS_EXCHANGE_TOKEN: 'channels.exchange.token',
   CHANNELS_EXCHANGE_MAILBOX: 'channels.exchange.mailbox',
   CHANNELS_EXCHANGE_MCP_GIT_REF: 'channels.exchange.mcpGitRef',
+  // PM Agent Mode chat hook (issue #181 / parent #153)
+  CHANNELS_PM_ENABLED: 'channels.pm.enabled',
+  CHANNELS_PM_CLIENT_FORM: 'channels.pm.clientForm',
+  CHANNELS_PM_MAILBOX: 'channels.pm.mailbox',
+  CHANNELS_PM_SYSTEM_PROMPT_REF: 'channels.pm.systemPromptRef',
 } as const
 
 export type ConfigKey = (typeof CONFIG_KEYS)[keyof typeof CONFIG_KEYS]

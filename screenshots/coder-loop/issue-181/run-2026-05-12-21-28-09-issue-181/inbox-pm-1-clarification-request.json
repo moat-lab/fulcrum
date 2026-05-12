@@ -1,0 +1,19 @@
+[
+  {
+    "msg_id": "0ea77f80-06f6-4ef0-aa3e-5f452bdb800d",
+    "from": "fulcrum-test-181/task-42",
+    "to": "pm-test-181/main",
+    "ts": "2026-05-12T21:43:45.247Z",
+    "in_reply_to": "3a2e5075-f776-4682-9df2-21271a5309c8",
+    "schema_version": "0.1.0",
+    "body": {
+      "kind": "deliver.message",
+      "payload": {
+        "body_kind": "clarification_request",
+        "payload": {
+          "question": "Should worker spawn a child task for screenshots?"
+        }
+      }
+    }
+  }
+]
