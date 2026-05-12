@@ -1,0 +1,22 @@
+{
+  "status": 200,
+  "body": {
+    "response": {
+      "msg_id": "EXGmp35qu7t-0000000d",
+      "from": "exchange/system",
+      "to": "pm-test-181/main",
+      "ts": "2026-05-12T21:43:45.322Z",
+      "schema_version": "0.1.0",
+      "body": {
+        "kind": "deliver.error",
+        "payload": {
+          "error": "mailbox_deregistered",
+          "failed_msg_id": "73a8fa10-03ef-47a9-aab9-cda93f4d421d",
+          "human_message": "target mailbox fulcrum-test-181/task-42 was deregistered after heartbeat timeout"
+        }
+      },
+      "in_reply_to": "73a8fa10-03ef-47a9-aab9-cda93f4d421d"
+    },
+    "inbox": []
+  }
+}

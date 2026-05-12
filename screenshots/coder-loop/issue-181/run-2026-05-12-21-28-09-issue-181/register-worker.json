@@ -1,0 +1,21 @@
+{
+  "msg_id": "EXGmp35qu7t-00000002",
+  "from": "exchange/system",
+  "to": "fulcrum-test-181/task-42",
+  "in_reply_to": "4f520a39-7cf7-44c3-84e2-a175907a2f15",
+  "ts": "2026-05-12T21:43:45.310Z",
+  "schema_version": "0.1.0",
+  "body": {
+    "kind": "register.response",
+    "payload": {
+      "channel_id": "fulcrum-test-181/task-42",
+      "registered_at": "2026-05-12T21:43:45.310Z",
+      "heartbeat": {
+        "interval_seconds": 30,
+        "timeout_seconds": 90
+      },
+      "delivery_endpoint": "http://0.0.0.0:8787/v1/envelope",
+      "schema_version": "0.1.0"
+    }
+  }
+}

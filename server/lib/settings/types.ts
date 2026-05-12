@@ -378,6 +378,10 @@ export const VALID_SETTING_PATHS = new Set([
   'channels.exchange.token',
   'channels.exchange.mailbox',
   'channels.exchange.mcpGitRef',
+  'channels.pm.enabled',
+  'channels.pm.clientForm',
+  'channels.pm.mailbox',
+  'channels.pm.systemPromptRef',
   'caldav.enabled',
   'caldav.syncIntervalMinutes',
 ])

@@ -19,10 +19,38 @@ import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { TestTube01Icon, Loading03Icon, Tick02Icon, Cancel01Icon } from '@hugeicons/core-free-icons'
+import {
+  TestTube01Icon,
+  Loading03Icon,
+  Tick02Icon,
+  Cancel01Icon,
+  RefreshIcon,
+} from '@hugeicons/core-free-icons'
 import { useConfig, useUpdateConfig } from '@/hooks/use-config'
 import { CONFIG_KEYS } from '@shared/config-keys'
+
+type PmClientForm = 'claude-mcp' | 'external-http'
+
+interface PmMailboxDescriptor {
+  channelId: string
+  agentKind: string
+  instanceLabel?: string
+  registeredAt: string
+}
+
+interface PmMailboxesSnapshot {
+  generatedAt: string | null
+  channels: PmMailboxDescriptor[]
+  lastError: string | null
+}
 
 const API_BASE = ''
 
@@ -38,6 +66,11 @@ export function AgentChannelSection() {
   const tokenConfig = useConfig(CONFIG_KEYS.CHANNELS_EXCHANGE_TOKEN)
   const mailboxConfig = useConfig(CONFIG_KEYS.CHANNELS_EXCHANGE_MAILBOX)
   const mcpGitRefConfig = useConfig(CONFIG_KEYS.CHANNELS_EXCHANGE_MCP_GIT_REF)
+  // PM Agent Mode sub-block (issue #181 / #153 §Chat 启动 UX hook).
+  const pmEnabledConfig = useConfig(CONFIG_KEYS.CHANNELS_PM_ENABLED)
+  const pmClientFormConfig = useConfig(CONFIG_KEYS.CHANNELS_PM_CLIENT_FORM)
+  const pmMailboxConfig = useConfig(CONFIG_KEYS.CHANNELS_PM_MAILBOX)
+  const pmSystemPromptRefConfig = useConfig(CONFIG_KEYS.CHANNELS_PM_SYSTEM_PROMPT_REF)
   const updateConfig = useUpdateConfig()
 
   const [enabled, setEnabled] = useState<boolean>(false)
@@ -48,6 +81,13 @@ export function AgentChannelSection() {
   const [testing, setTesting] = useState(false)
   const [lastTest, setLastTest] = useState<TestConnectionResult | null>(null)
 
+  const [pmEnabled, setPmEnabled] = useState<boolean>(false)
+  const [pmClientForm, setPmClientForm] = useState<PmClientForm>('claude-mcp')
+  const [pmMailbox, setPmMailbox] = useState<string>('')
+  const [pmSystemPromptRef, setPmSystemPromptRef] = useState<string>('')
+  const [pmMailboxes, setPmMailboxes] = useState<PmMailboxesSnapshot | null>(null)
+  const [pmMailboxesLoading, setPmMailboxesLoading] = useState(false)
+
   useEffect(() => {
     if (enabledConfig.data?.value !== undefined) setEnabled(Boolean(enabledConfig.data.value))
     if (urlConfig.data?.value !== undefined) setUrl(String(urlConfig.data.value ?? ''))
@@ -55,6 +95,52 @@ export function AgentChannelSection() {
     if (mailboxConfig.data?.value !== undefined) setMailbox(String(mailboxConfig.data.value ?? ''))
     if (mcpGitRefConfig.data?.value !== undefined) setMcpGitRef(String(mcpGitRefConfig.data.value ?? ''))
   }, [enabledConfig.data, urlConfig.data, tokenConfig.data, mailboxConfig.data, mcpGitRefConfig.data])
+
+  useEffect(() => {
+    if (pmEnabledConfig.data?.value !== undefined) setPmEnabled(Boolean(pmEnabledConfig.data.value))
+    if (pmClientFormConfig.data?.value !== undefined) {
+      const raw = String(pmClientFormConfig.data.value ?? 'claude-mcp')
+      setPmClientForm(raw === 'external-http' ? 'external-http' : 'claude-mcp')
+    }
+    if (pmMailboxConfig.data?.value !== undefined) setPmMailbox(String(pmMailboxConfig.data.value ?? ''))
+    if (pmSystemPromptRefConfig.data?.value !== undefined)
+      setPmSystemPromptRef(String(pmSystemPromptRefConfig.data.value ?? ''))
+  }, [
+    pmEnabledConfig.data,
+    pmClientFormConfig.data,
+    pmMailboxConfig.data,
+    pmSystemPromptRefConfig.data,
+  ])
+
+  async function refreshPmMailboxes(forceRefresh: boolean): Promise<void> {
+    setPmMailboxesLoading(true)
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/channels/pm/mailboxes${forceRefresh ? '?refresh=1' : ''}`,
+      )
+      if (!res.ok) {
+        setPmMailboxes({ generatedAt: null, channels: [], lastError: `HTTP ${res.status}` })
+        return
+      }
+      const data = (await res.json()) as PmMailboxesSnapshot
+      setPmMailboxes(data)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setPmMailboxes({ generatedAt: null, channels: [], lastError: message })
+    } finally {
+      setPmMailboxesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!pmEnabled) {
+      setPmMailboxes(null)
+      return
+    }
+    void refreshPmMailboxes(false)
+    const id = setInterval(() => void refreshPmMailboxes(false), 30_000)
+    return () => clearInterval(id)
+  }, [pmEnabled])
 
   async function persistField(key: string, value: string | boolean): Promise<void> {
     try {
@@ -199,6 +285,159 @@ export function AgentChannelSection() {
             <HugeiconsIcon icon={lastTest.ok ? Tick02Icon : Cancel01Icon} size={12} strokeWidth={2} />
             {lastTest.ok ? `schema ${lastTest.schemaVersion ?? '?'}` : (lastTest.error ?? 'failed')}
           </span>
+        )}
+      </div>
+
+      {/* PM Agent Mode sub-block (issue #181 / #153 §Chat 启动 UX hook). */}
+      <div
+        className="space-y-4 border-t border-border pt-4 mt-4"
+        data-testid="pm-agent-mode-subblock"
+      >
+        <div>
+          <h3 className="text-sm font-semibold">PM Agent Mode</h3>
+          <p className="text-xs text-muted-foreground">
+            Read-only chat hook for an external PM agent (Claude-MCP form or
+            external HTTP form). Fulcrum never spawns the PM process.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="text-sm text-muted-foreground sm:w-32 sm:shrink-0">Enabled</label>
+            <Switch
+              checked={pmEnabled}
+              onCheckedChange={(v) => {
+                setPmEnabled(v)
+                void persistField(CONFIG_KEYS.CHANNELS_PM_ENABLED, v)
+              }}
+              data-testid="pm-agent-mode-enabled"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground sm:ml-32 sm:pl-2">
+            Off (default) hides the PM mode entry on the chat surface and
+            stops the mailbox poller.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="text-sm text-muted-foreground sm:w-32 sm:shrink-0">Client form</label>
+            <Select
+              value={pmClientForm}
+              onValueChange={(v) => {
+                const next = v === 'external-http' ? 'external-http' : 'claude-mcp'
+                setPmClientForm(next)
+                void persistField(CONFIG_KEYS.CHANNELS_PM_CLIENT_FORM, next)
+              }}
+            >
+              <SelectTrigger
+                className="flex-1 font-mono text-sm"
+                data-testid="pm-agent-mode-client-form"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="claude-mcp">claude-mcp</SelectItem>
+                <SelectItem value="external-http">external-http</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground sm:ml-32 sm:pl-2">
+            `claude-mcp` mounts `@agent-channel/mcp` on the chat-side Claude
+            session. `external-http` assumes an external PM process is online.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="text-sm text-muted-foreground sm:w-32 sm:shrink-0">PM mailbox</label>
+            <Input
+              value={pmMailbox}
+              onChange={(e) => setPmMailbox(e.target.value)}
+              onBlur={() => persistField(CONFIG_KEYS.CHANNELS_PM_MAILBOX, pmMailbox)}
+              placeholder="pm-mouriya/main (empty = exchange-assigned)"
+              className="flex-1 font-mono text-sm"
+              data-testid="pm-agent-mode-mailbox"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="text-sm text-muted-foreground sm:w-32 sm:shrink-0">
+              System prompt ref
+            </label>
+            <Input
+              value={pmSystemPromptRef}
+              onChange={(e) => setPmSystemPromptRef(e.target.value)}
+              onBlur={() =>
+                persistField(CONFIG_KEYS.CHANNELS_PM_SYSTEM_PROMPT_REF, pmSystemPromptRef)
+              }
+              placeholder="path / URL / fnox key — fulcrum does not parse this"
+              className="flex-1 font-mono text-sm"
+              data-testid="pm-agent-mode-system-prompt-ref"
+            />
+          </div>
+        </div>
+
+        {pmEnabled && (
+          <div
+            className="space-y-2 border border-border rounded-md p-3"
+            data-testid="pm-agent-mode-mailboxes"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">Online PM mailboxes</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void refreshPmMailboxes(true)}
+                disabled={pmMailboxesLoading}
+                data-testid="pm-agent-mode-refresh"
+              >
+                <HugeiconsIcon
+                  icon={pmMailboxesLoading ? Loading03Icon : RefreshIcon}
+                  size={14}
+                  strokeWidth={2}
+                  className={pmMailboxesLoading ? 'mr-1.5 animate-spin' : 'mr-1.5'}
+                />
+                Refresh
+              </Button>
+            </div>
+            {pmMailboxes?.lastError && (
+              <p
+                className="text-xs text-red-600 dark:text-red-400 font-mono"
+                data-testid="pm-agent-mode-mailboxes-error"
+              >
+                {pmMailboxes.lastError}
+              </p>
+            )}
+            {pmMailboxes && pmMailboxes.channels.length === 0 && !pmMailboxes.lastError && (
+              <p className="text-xs text-muted-foreground">
+                No PM mailboxes online (exchange discovery returned empty).
+              </p>
+            )}
+            {pmMailboxes && pmMailboxes.channels.length > 0 && (
+              <ul className="space-y-1 text-xs font-mono">
+                {pmMailboxes.channels.map((c) => (
+                  <li
+                    key={c.channelId}
+                    className="flex items-center justify-between gap-2"
+                    data-testid="pm-agent-mode-mailbox-row"
+                  >
+                    <span>{c.channelId}</span>
+                    <span className="text-muted-foreground">
+                      {c.instanceLabel ?? c.agentKind} · {c.registeredAt}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {pmMailboxes?.generatedAt && (
+              <p className="text-[11px] text-muted-foreground">
+                generated_at {pmMailboxes.generatedAt}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>

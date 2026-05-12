@@ -1,0 +1,25 @@
+{
+  "msgId": "0ea77f80-06f6-4ef0-aa3e-5f452bdb800d",
+  "ack": {
+    "response": {
+      "msg_id": "EXGmp35qu7t-00000005",
+      "from": "exchange/system",
+      "to": "fulcrum-test-181/task-42",
+      "in_reply_to": "0ea77f80-06f6-4ef0-aa3e-5f452bdb800d",
+      "ts": "2026-05-12T21:43:45.315Z",
+      "schema_version": "0.1.0",
+      "body": {
+        "kind": "deliver.message",
+        "payload": {
+          "body_kind": "exchange.delivery_ack",
+          "payload": {
+            "accepted": true,
+            "target": "pm-test-181/main",
+            "msg_id": "0ea77f80-06f6-4ef0-aa3e-5f452bdb800d"
+          }
+        }
+      }
+    },
+    "inbox": []
+  }
+}

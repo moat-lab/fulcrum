@@ -1,0 +1,24 @@
+[
+  {
+    "msg_id": "3a2e5075-f776-4682-9df2-21271a5309c8",
+    "from": "pm-test-181/main",
+    "to": "fulcrum-test-181/task-42",
+    "ts": "2026-05-12T21:43:45.244Z",
+    "schema_version": "0.1.0",
+    "body": {
+      "kind": "deliver.message",
+      "payload": {
+        "body_kind": "assignment",
+        "payload": {
+          "task_id": "task-42",
+          "summary": "Wire PM agent e2e for issue #181",
+          "acceptance": [
+            "register form ok",
+            "5 body_kind closed",
+            "mailbox_deregistered ok"
+          ]
+        }
+      }
+    }
+  }
+]

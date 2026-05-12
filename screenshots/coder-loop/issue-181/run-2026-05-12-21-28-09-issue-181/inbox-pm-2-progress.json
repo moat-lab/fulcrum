@@ -1,0 +1,20 @@
+[
+  {
+    "msg_id": "cc1db99e-c45c-4da1-88c6-216ab3764ec8",
+    "from": "fulcrum-test-181/task-42",
+    "to": "pm-test-181/main",
+    "ts": "2026-05-12T21:43:45.252Z",
+    "schema_version": "0.1.0",
+    "body": {
+      "kind": "deliver.message",
+      "payload": {
+        "body_kind": "progress",
+        "payload": {
+          "percent": 75,
+          "note": "wire-loop happy path passes",
+          "fulcrum_status": "IN_PROGRESS"
+        }
+      }
+    }
+  }
+]
