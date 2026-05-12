@@ -15,6 +15,11 @@ import {
   useFilesStoreActions,
 } from '@/stores'
 import { useFileTreePolling } from '@/hooks/use-file-tree-polling'
+import { useUploadToFilesystem } from '@/hooks/use-upload-to-filesystem'
+import {
+  handleFilesDroppedFlow,
+  type UploadFlowDeps,
+} from '@/lib/upload-files-flow'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -90,6 +95,8 @@ const FilesViewerInner = observer(function FilesViewerInner() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const { uploadFile } = useUploadToFilesystem()
 
   useEffect(() => {
     if (renameTarget) {
@@ -225,6 +232,22 @@ const FilesViewerInner = observer(function FilesViewerInner() {
     if (isDeleting) return
     setDeleteTarget(null)
   }, [isDeleting])
+
+  const handleFilesDropped = useCallback(
+    async (files: File[], targetDir: string) => {
+      if (!worktreePath) return
+      const deps: UploadFlowDeps = {
+        worktreePath,
+        uploadFile,
+        refreshTree,
+        closeFile,
+        toast,
+        t,
+      }
+      await handleFilesDroppedFlow(deps, files, targetDir)
+    },
+    [worktreePath, uploadFile, refreshTree, closeFile, t]
+  )
 
   const confirmDelete = useCallback(async () => {
     if (!worktreePath || !deleteTarget) return
@@ -364,6 +387,7 @@ const FilesViewerInner = observer(function FilesViewerInner() {
         onRenameFile={readOnly ? undefined : openRename}
         onDownloadFile={handleDownload}
         onDeleteFile={readOnly ? undefined : openDelete}
+        onFilesDropped={readOnly || !worktreePath ? undefined : handleFilesDropped}
       />
 
       <Dialog

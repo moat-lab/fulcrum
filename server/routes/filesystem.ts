@@ -49,6 +49,9 @@ function isPathWithinRoot(filePath: string, root: string): boolean {
   return resolvedPath.startsWith(resolvedRoot + path.sep) || resolvedPath === resolvedRoot
 }
 
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024 // 50 MB
+const MAX_FILENAME_LENGTH = 255
+
 // Directories to exclude from tree traversal (large dependency/build directories)
 const EXCLUDED_DIRECTORIES = new Set([
   'node_modules',
@@ -574,6 +577,85 @@ app.post('/write', async (c) => {
     })
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'Failed to write file' }, 500)
+  }
+})
+
+// POST /api/fs/upload
+// Multipart form: file (binary), root (string), targetDir (string), overwrite ('true' | undefined)
+// Uploads a binary file into the worktree at root/targetDir.
+app.post('/upload', async (c) => {
+  try {
+    const form = await c.req.formData()
+    const file = form.get('file')
+    const root = form.get('root')
+    const targetDirRaw = form.get('targetDir')
+    const overwrite = form.get('overwrite') === 'true'
+
+    if (!(file instanceof File) || typeof file.name !== 'string') {
+      return c.json({ error: 'file is required' }, 400)
+    }
+    if (typeof root !== 'string' || !root) {
+      return c.json({ error: 'root is required' }, 400)
+    }
+    if (typeof targetDirRaw !== 'string') {
+      return c.json({ error: 'targetDir is required' }, 400)
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE) {
+      return c.json(
+        { error: `File too large. Maximum size is ${MAX_UPLOAD_SIZE / 1024 / 1024} MB` },
+        413
+      )
+    }
+
+    const safeName = path.basename(file.name)
+    if (!safeName || safeName === '.' || safeName === '..') {
+      return c.json({ error: 'invalid filename' }, 400)
+    }
+    if (safeName.length > MAX_FILENAME_LENGTH) {
+      return c.json({ error: 'filename too long' }, 400)
+    }
+
+    const resolvedRoot = path.resolve(root)
+    const resolvedDir = path.resolve(resolvedRoot, targetDirRaw || '')
+
+    if (!isPathWithinRoot(resolvedDir, resolvedRoot)) {
+      return c.json({ error: 'Access denied: targetDir outside root' }, 403)
+    }
+
+    if (!fs.existsSync(resolvedDir)) {
+      return c.json({ error: 'targetDir does not exist' }, 400)
+    }
+    const dirStat = fs.statSync(resolvedDir)
+    if (!dirStat.isDirectory()) {
+      return c.json({ error: 'targetDir is not a directory' }, 400)
+    }
+
+    const resolvedPath = path.resolve(resolvedDir, safeName)
+    if (!isPathWithinRoot(resolvedPath, resolvedRoot)) {
+      return c.json({ error: 'Access denied: path outside root' }, 403)
+    }
+
+    const relPath = path.relative(resolvedRoot, resolvedPath)
+
+    if (fs.existsSync(resolvedPath) && !overwrite) {
+      return c.json({ error: 'File already exists', path: relPath, conflict: true }, 409)
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    fs.writeFileSync(resolvedPath, buffer)
+
+    const stat = fs.statSync(resolvedPath)
+    return c.json(
+      {
+        path: relPath,
+        size: stat.size,
+        mtime: stat.mtime.toISOString(),
+      },
+      201
+    )
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to upload file' }, 500)
   }
 })
 

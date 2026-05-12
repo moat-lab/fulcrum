@@ -177,6 +177,14 @@
       "deleteToast": {
         "success": "文件已删除",
         "error": "删除文件失败"
+      },
+      "uploadToast": {
+        "success_one": "已上传 {{count}} 个文件",
+        "success_other": "已上传 {{count}} 个文件",
+        "error": "上传失败",
+        "conflict": "{{name}} 已存在",
+        "overwrite": "覆盖",
+        "dropHint": "拖放文件以上传"
       }
     },
     "settings": {
