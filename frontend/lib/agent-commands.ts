@@ -8,6 +8,26 @@
 import type { AgentType } from '@/types'
 import { escapeForShell, escapeForShellIfNeeded } from './shell-escape'
 
+/**
+ * Agent channel exchange launcher spec (issue #180 / parent #153).
+ *
+ * Frontend passes this only when the exchange-backed Agent Channel is enabled
+ * and the fulcrum-client mailbox has been registered for this terminal. The
+ * exchange `token` is intentionally absent — MCP child reads it from a fnox
+ * key on its own side so it does not appear in dtach stdin.
+ */
+export interface ChannelLaunchSpec {
+  /** Exchange-assigned mailbox id for the fulcrum-client mailbox driving this terminal. */
+  channelId: string
+  /** Exchange base URL (e.g. `https://agent-channel.example.com`). */
+  exchangeUrl: string
+  /**
+   * Command string passed to `claude --channels server:<mcpInvocation>` to
+   * fork-exec the MCP child. Typically `bun x @agent-channel/mcp`.
+   */
+  mcpInvocation: string
+}
+
 export interface AgentCommandOptions {
   /** The task prompt/description */
   prompt: string
@@ -23,6 +43,13 @@ export interface AgentCommandOptions {
   opencodeDefaultAgent?: string
   /** OpenCode agent name for plan mode (e.g., 'plan', 'Planner-Sisyphus') */
   opencodePlanAgent?: string
+  /**
+   * Agent channel exchange launch spec. When present, `claudeBuilder`
+   * prefixes a `--channels server:"<mcpInvocation>"` flag so the spawned
+   * `claude` process fork-execs the `@agent-channel/mcp` child (issue #180).
+   * Absent (or other agent types) leaves the command unchanged.
+   */
+  channel?: ChannelLaunchSpec
 }
 
 export interface AgentCommandBuilder {
@@ -39,7 +66,7 @@ export interface AgentCommandBuilder {
  * https://docs.anthropic.com/en/docs/claude-code/cli
  */
 const claudeBuilder: AgentCommandBuilder = {
-  buildCommand({ prompt, systemPrompt, mode, additionalOptions }) {
+  buildCommand({ prompt, systemPrompt, mode, additionalOptions, channel }) {
     const escapedPrompt = escapeForShell(prompt)
     const escapedSystemPrompt = escapeForShell(systemPrompt)
 
@@ -51,10 +78,17 @@ const claudeBuilder: AgentCommandBuilder = {
         .join('')
     }
 
+    // Agent channel exchange (#180): prefix `--channels server:"<cmd>"` so the
+    // spawned `claude` process fork-execs the MCP child for this mailbox.
+    // Absent `channel` leaves the command byte-identical to the legacy path.
+    const channelFlag = channel
+      ? ` --channels server:${escapeForShell(channel.mcpInvocation)}`
+      : ''
+
     if (mode === 'plan') {
-      return `claude ${escapedPrompt} --append-system-prompt ${escapedSystemPrompt} --allow-dangerously-skip-permissions --permission-mode plan${extraFlags}`
+      return `claude ${escapedPrompt} --append-system-prompt ${escapedSystemPrompt} --allow-dangerously-skip-permissions --permission-mode plan${channelFlag}${extraFlags}`
     }
-    return `claude ${escapedPrompt} --append-system-prompt ${escapedSystemPrompt} --dangerously-skip-permissions${extraFlags}`
+    return `claude ${escapedPrompt} --append-system-prompt ${escapedSystemPrompt} --dangerously-skip-permissions${channelFlag}${extraFlags}`
   },
   notFoundPatterns: [
     /claude: command not found/,

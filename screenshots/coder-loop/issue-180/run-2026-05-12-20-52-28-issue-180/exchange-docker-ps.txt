@@ -1,0 +1,2 @@
+NAMES                  STATUS         PORTS                                           IMAGE
+fulcrum-180-exchange   Up 9 minutes   0.0.0.0:18787->8787/tcp, [::]:18787->8787/tcp   agent-channel-exchange:dev

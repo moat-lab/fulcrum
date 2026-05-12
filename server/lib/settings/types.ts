@@ -62,6 +62,17 @@ export interface TelegramSettings {
   botToken: string
 }
 
+// Agent Channel Exchange settings (issue #180 / parent #153)
+// `token` is encrypted via fnox age provider; the rest are plain.
+export interface ExchangeChannelSettings {
+  enabled: boolean
+  url: string
+  token: string
+  mailbox: string
+  /** Git ref (sha or tag) of Mouriya-Emma/agent-channel-exchange to consume `@agent-channel/mcp` from. */
+  mcpGitRef: string
+}
+
 // Mattermost integration settings
 export interface MattermostSettings {
   enabled: boolean
@@ -103,6 +114,7 @@ export interface ChannelsSettings {
   discord: DiscordSettings
   telegram: TelegramSettings
   mattermost: MattermostSettings
+  exchange: ExchangeChannelSettings
 }
 
 // Nested settings interface
@@ -275,6 +287,13 @@ Then store the action plan as a memory tagged with: ritual, plan, evening-ritual
       commandToken: '',
       allowedUserIds: [],
     },
+    exchange: {
+      enabled: false,
+      url: '',
+      token: '',
+      mailbox: '',
+      mcpGitRef: '',
+    },
   },
   caldav: {
     enabled: false,
@@ -354,6 +373,11 @@ export const VALID_SETTING_PATHS = new Set([
   'channels.mattermost.channelId',
   'channels.mattermost.commandToken',
   'channels.mattermost.allowedUserIds',
+  'channels.exchange.enabled',
+  'channels.exchange.url',
+  'channels.exchange.token',
+  'channels.exchange.mailbox',
+  'channels.exchange.mcpGitRef',
   'caldav.enabled',
   'caldav.syncIntervalMinutes',
 ])

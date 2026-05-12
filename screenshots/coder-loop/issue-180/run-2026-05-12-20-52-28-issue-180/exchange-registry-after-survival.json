@@ -1,0 +1,63 @@
+{
+  "msg_id": "EXGmp346xzm-0000000o",
+  "from": "exchange/system",
+  "to": "probe-evidence",
+  "in_reply_to": "5c9de50a-ef16-4f77-99a3-df670faa2b0b",
+  "ts": "2026-05-12T21:09:43.743Z",
+  "schema_version": "0.1.0",
+  "body": {
+    "kind": "discovery.list_response",
+    "payload": {
+      "channels": [
+        {
+          "channel_id": "fulcrum-e2e-180/task-issue180-e2e",
+          "agent_kind": "fulcrum-client",
+          "instance_label": "fulcrum-e2e-180",
+          "capabilities": [
+            "channel.send",
+            "channel.receive",
+            "discovery.list"
+          ],
+          "registered_at": "2026-05-12T21:06:50.863Z"
+        },
+        {
+          "channel_id": "probe-t70-58284",
+          "agent_kind": "observer",
+          "instance_label": "probe-probe-t70-58284",
+          "capabilities": [
+            "discovery.list"
+          ],
+          "registered_at": "2026-05-12T21:08:12.134Z"
+        },
+        {
+          "channel_id": "probe-t100-58284",
+          "agent_kind": "observer",
+          "instance_label": "probe-probe-t100-58284",
+          "capabilities": [
+            "discovery.list"
+          ],
+          "registered_at": "2026-05-12T21:08:42.115Z"
+        },
+        {
+          "channel_id": "probe-t140-58284",
+          "agent_kind": "observer",
+          "instance_label": "probe-probe-t140-58284",
+          "capabilities": [
+            "discovery.list"
+          ],
+          "registered_at": "2026-05-12T21:09:22.415Z"
+        },
+        {
+          "channel_id": "probe-evidence",
+          "agent_kind": "observer",
+          "instance_label": "probe-evidence",
+          "capabilities": [
+            "discovery.list"
+          ],
+          "registered_at": "2026-05-12T21:09:43.724Z"
+        }
+      ],
+      "generated_at": "2026-05-12T21:09:43.743Z"
+    }
+  }
+}

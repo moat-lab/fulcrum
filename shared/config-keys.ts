@@ -58,6 +58,12 @@ export const CONFIG_KEYS = {
   MATTERMOST_CHANNEL_ID: 'channels.mattermost.channelId',
   MATTERMOST_COMMAND_TOKEN: 'channels.mattermost.commandToken',
   MATTERMOST_ALLOWED_USER_IDS: 'channels.mattermost.allowedUserIds',
+  // Agent channel exchange (issue #180 / parent #153)
+  CHANNELS_EXCHANGE_ENABLED: 'channels.exchange.enabled',
+  CHANNELS_EXCHANGE_URL: 'channels.exchange.url',
+  CHANNELS_EXCHANGE_TOKEN: 'channels.exchange.token',
+  CHANNELS_EXCHANGE_MAILBOX: 'channels.exchange.mailbox',
+  CHANNELS_EXCHANGE_MCP_GIT_REF: 'channels.exchange.mcpGitRef',
 } as const
 
 export type ConfigKey = (typeof CONFIG_KEYS)[keyof typeof CONFIG_KEYS]

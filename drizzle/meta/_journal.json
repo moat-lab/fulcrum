@@ -568,6 +568,13 @@
       "when": 1777957200000,
       "tag": "0080_add_system_metrics_host_id",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "6",
+      "when": 1778043600000,
+      "tag": "0081_add_terminal_channel_id",
+      "breakpoints": true
     }
   ]
 }

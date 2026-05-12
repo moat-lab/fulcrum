@@ -97,6 +97,7 @@ import { useLanguageSync } from '@/hooks/use-language-sync'
 import { useThemeSync } from '@/hooks/use-theme-sync'
 import { useOpencodeModels } from '@/hooks/use-opencode-models'
 import { RemoteHostsSettings } from '@/components/hosts/remote-hosts-settings'
+import { AgentChannelSection } from '@/components/settings/agent-channel-section'
 
 type SettingsTab = 'general' | 'ai' | 'messaging' | 'calendar'
 
@@ -1930,6 +1931,11 @@ function SettingsPage() {
                     {t('fields.agent.claudeCodePath.description')}
                   </p>
                 </div>
+              </SettingsSection>
+
+              {/* Agent Channel (#180 / parent #153) — agent-to-agent exchange */}
+              <SettingsSection title="Agent Channel">
+                <AgentChannelSection />
               </SettingsSection>
 
               {/* AI Assistant */}

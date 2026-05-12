@@ -1,0 +1,113 @@
+Issue #180 — task D retry evidence (run-2026-05-12-20-52-28-issue-180)
+
+Prior review (#182 comment 4434701972) required acceptance #6 to be executed for real,
+not stubbed. This retry rewrites the wire layer to match the exchange protocol and
+demonstrates the full e2e against a live `agent-channel-exchange` docker container.
+
+=== root cause uncovered while attempting #6 ===
+
+The previous run's `channel-heartbeat-service.ts` was incompatible with the actual
+`@agent-channel/exchange` wire contract on every layer:
+
+- `/version` returns snake_case `schema_version`; the old service parsed `schemaVersion`
+  (camelCase) → always `undefined` → schema-compat probe could never succeed.
+- The old probe expected major "1.x"; protocol `SCHEMA_VERSION = "0.1.0"` (pre-1.0).
+- `POST /v1/register` requires a full wire envelope with `body.kind = "register.request"`
+  and `body.payload.{schema_version, desired_channel_id, capabilities, identity}`;
+  the old service POSTed a flat object plus `Authorization: Bearer <token>`.
+- Response is also an envelope; old code read `data.channelId` (camelCase, flat) and
+  always failed shape validation.
+- Capabilities used `channel.list_channels`; protocol enum is
+  `[channel.send, channel.receive, discovery.list]`.
+- `POST /v1/envelope` (heartbeat) requires `X-Agent-Channel-Sender: <channel_id>`;
+  old code sent only `Authorization: Bearer`. Heartbeat body was missing the
+  `{ channel_id, sequence }` payload required by `heartbeat.ping`.
+
+Result: unit tests passed (they faked the camelCase / flat-shape response), but every
+real register / heartbeat would 400 at the exchange. Acceptance #6 caught this.
+
+=== fix landed in this run ===
+
+`server/services/channel-heartbeat-service.ts` rewritten to speak the real protocol:
+
+- `EXCHANGE_SCHEMA_VERSION = "0.1.0"` exact match (strict, like the exchange).
+- `probeExchangeVersion`: GET /version, read `schema_version` (snake_case).
+- `registerChannel`: build envelope `{ msg_id, from, to:"exchange/system", ts,
+  schema_version, body: { kind:"register.request", payload: { schema_version,
+  desired_channel_id, capabilities, identity:{ agent_kind:"fulcrum-client",
+  instance_label } } } }`, POST `/v1/register`, parse `body.payload.channel_id /
+  registered_at / heartbeat.{interval_seconds,timeout_seconds}`, write back to
+  `terminals.channel_id` + `terminals.channel_registered_at`.
+- `sendHeartbeatPing`: POST `/v1/envelope` with `X-Agent-Channel-Sender: <channel_id>`,
+  envelope `body.kind = "heartbeat.ping"`, payload `{ channel_id, sequence }`.
+- `startChannelHeartbeat`: drop the boot-time `cfg.enabled` gate; the timer is always
+  running but each tick re-reads fnox and short-circuits if disabled or no channels
+  tracked. This means enabling exchange via Settings UI at runtime (without restart)
+  now actually starts ticking. Fixes the latent issue caught during e2e setup.
+- Capabilities corrected to `[channel.send, channel.receive, discovery.list]`.
+
+Token fnox key is preserved as forward-compat (not transmitted; exchange uses
+`X-Agent-Channel-Sender`, not Bearer auth).
+
+`server/services/channel-heartbeat-service.test.ts` rewritten to assert envelope
+shape rather than the old flat camelCase shape, so future wire drift is caught
+in CI.
+
+=== live e2e (acceptance #6) ===
+
+Setup:
+- agent-channel-exchange built from local checkout @9fb7fda (task C).
+  `bun run --filter='@agent-channel/exchange' docker:build` → tag `agent-channel-exchange:dev`.
+- `docker run -d --name fulcrum-180-exchange -p 18787:8787 agent-channel-exchange:dev`.
+  See `exchange-docker-ps.txt`, `exchange-docker-log.txt`.
+- Fulcrum dev (`bun --watch server/index.ts` + `vite`), FULCRUM_DIR=~/tmp/fulcrum,
+  port 8888, fnox keys set via `PUT /api/config/channels.exchange.*`:
+    enabled=true, url=http://127.0.0.1:18787, mailbox=fulcrum-e2e-180,
+    mcpGitRef=9fb7fda, token=<placeholder, currently unused>.
+
+Steps and proof:
+
+1. `GET http://127.0.0.1:18787/version` → `{schema_version:"0.1.0", server_version:"0.1.0"}`.
+   See `exchange-version.json`.
+
+2. Seed `terminals` row id=`term-e2e-issue-180-1778619661` name=`task-issue180-e2e`.
+
+3. `POST /api/channels/register {taskId:"issue180-e2e", terminalId:"term-e2e-issue-180-1778619661"}`
+   → `{channelId:"fulcrum-e2e-180/task-issue180-e2e", registeredAt:"2026-05-12T21:06:50.863Z",
+   heartbeat:{intervalSeconds:30, timeoutSeconds:90}}`. See `fulcrum-register-response.json`.
+
+4. `terminals` DB row reflects the assigned id:
+     id|name|channel_id|channel_registered_at|updated_at
+     term-e2e-issue-180-1778619661|task-issue180-e2e|fulcrum-e2e-180/task-issue180-e2e|2026-05-12T21:06:50.863Z|...
+   See `fulcrum-terminals-row.txt`.
+
+5. Heartbeat survival. Exchange evicts mailboxes whose lastSeenAtMs is older than
+   90s. Snapshots of the exchange registry via `POST /v1/discovery/list` taken from
+   ad-hoc probe channels at t≈+35s / +70s / +100s / +140s / +173s post-register
+   all show `fulcrum-e2e-180/task-issue180-e2e` still present with its original
+   `registered_at = 2026-05-12T21:06:50.863Z` — i.e., fulcrum's 30s heartbeat ping
+   kept the mailbox alive past two full 90s timeout windows. Final snapshot saved
+   in `exchange-registry-after-survival.json` (taken at 21:09:43.724Z, T+173s).
+
+=== Settings UI (Layer 4 screenshots) ===
+
+- `01-settings-disabled.jpg` — Settings → AI 与开发 → Agent Channel section.
+  enabled=false, URL/mailbox/mcpGitRef populated, Token masked. Confirms
+  default-off rendering on the new HEAD.
+- `02-enabled-test-connection-ok.jpg` — toggled enabled via the Switch; Test
+  Connection green badge reads `✓ schema 0.1.0`, success toast
+  "Exchange OK (schema 0.1.0)" visible. End-to-end UI ↔ fnox ↔ heartbeat-service
+  ↔ live docker exchange path.
+- `03-test-connection-fail.jpg` — pointed URL at `http://exchange.invalid.localhost:18787`,
+  Test Connection red badge "Unable to connect. Is the computer able to access the url?"
+  — negative/wire-incompat path surfaces in UI rather than silently continuing
+  (per #153 §Settings 全局开关 expectation).
+
+=== acceptance #2 soft-deviation decision ===
+
+`drizzle/0081_add_terminal_channel_id.sql` + handwritten `drizzle/meta/_journal.json`
+entry are kept as-is for this PR. The migration is two `ALTER TABLE ... ADD COLUMN`
+statements; running `mise run db:generate` would not produce materially different
+output and risks reshuffling the journal across `main` rebases. Recording this
+explicitly in the PR comment as a one-off; future schema changes that touch more
+than column adds should go back to the generator.

@@ -91,6 +91,13 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'channels.telegram.enabled': { fnoxKey: 'FULCRUM_TELEGRAM_ENABLED', provider: 'plain', type: 'boolean' },
   'channels.telegram.botToken': { fnoxKey: 'FULCRUM_TELEGRAM_BOT_TOKEN', provider: 'age', type: 'string' },
 
+  // Channels - Agent Channel Exchange (issue #180 / parent #153)
+  'channels.exchange.enabled': { fnoxKey: 'FULCRUM_CHANNELS_EXCHANGE_ENABLED', provider: 'plain', type: 'boolean' },
+  'channels.exchange.url': { fnoxKey: 'FULCRUM_CHANNELS_EXCHANGE_URL', provider: 'plain', type: 'string' },
+  'channels.exchange.token': { fnoxKey: 'FULCRUM_CHANNELS_EXCHANGE_TOKEN', provider: 'age', type: 'string' },
+  'channels.exchange.mailbox': { fnoxKey: 'FULCRUM_CHANNELS_EXCHANGE_MAILBOX', provider: 'plain', type: 'string' },
+  'channels.exchange.mcpGitRef': { fnoxKey: 'FULCRUM_CHANNELS_EXCHANGE_MCP_GIT_REF', provider: 'plain', type: 'string' },
+
   // Channels - Mattermost
   'channels.mattermost.enabled': { fnoxKey: 'FULCRUM_MATTERMOST_ENABLED', provider: 'plain', type: 'boolean' },
   'channels.mattermost.serverUrl': { fnoxKey: 'FULCRUM_MATTERMOST_SERVER_URL', provider: 'plain', type: 'string' },
