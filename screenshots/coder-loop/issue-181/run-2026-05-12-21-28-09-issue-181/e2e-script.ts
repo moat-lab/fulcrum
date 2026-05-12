@@ -183,7 +183,7 @@ const steps: Step[] = []
 
 function recordStep(s: Step): void {
   steps.push(s)
-  // eslint-disable-next-line no-console
+   
   console.log(`[step] ${s.step}${s.detail ? ` — ${s.detail}` : ''}${s.artifact ? ` (${s.artifact})` : ''}`)
 }
 
