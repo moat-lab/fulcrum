@@ -1,0 +1,44 @@
+=== Acceptance #7: fulcrum source does NOT register PM ===
+
+--- A. Any 'spawn'-style code targeting a PM channel/process? ---
+(expect: empty)
+
+--- B. Anywhere fulcrum POSTs /v1/register with agent_kind=pm-agent? ---
+server/services/pm-mode-service.ts:14: *   exchange with `filter.agent_kind = ["pm-agent"]`. The cached snapshot
+server/services/pm-mode-service.ts:227:        filter: { agent_kind: ['pm-agent'] },
+server/services/pm-mode-service.test.ts:15: *     `discovery.list_request` with `filter.agent_kind = ["pm-agent"]`, schema
+server/services/pm-mode-service.test.ts:85:  test('pollPmMailboxes posts a discovery.list_request envelope with filter agent_kind=["pm-agent"]', async () => {
+server/services/pm-mode-service.test.ts:129:                agent_kind: 'pm-agent',
+server/services/pm-mode-service.test.ts:159:          filter: { agent_kind: ['pm-agent'] },
+(expect: only 'agent_kind:["pm-agent"]' as a discovery FILTER, never as the poller's own identity)
+
+--- C. The poller's own register identity (must stay 'fulcrum-client') ---
+168-        identity: {
+169-          agent_kind: 'fulcrum-client',
+170:          instance_label: 'pm-mode-poller',
+171-        },
+172-      },
+173-    },
+174-  }
+175-  await _fetch(`${buildBaseUrl(url)}/v1/register`, {
+176-    method: 'POST',
+--
+185- * Single discovery sweep. Polls the exchange for currently-registered PM
+186- * mailboxes. The poller registers a lightweight fulcrum-client mailbox
+187: * `${exchange.mailbox}/pm-mode-poller` on first use because the exchange
+188- * requires a registered sender for `POST /v1/discovery/list`; this mailbox
+189- * is observe-only (`capabilities: ["discovery.list"]`) and does not change
+190- * the boundary in #153 §824 — fulcrum still does not spawn or hold the PM
+191- * agent process.
+192- */
+193-export async function pollPmMailboxes(): Promise<PmMailboxesSnapshot> {
+--
+212-  }
+213-
+214:  const sender = `${exchange.mailbox}/pm-mode-poller`
+215-  await ensurePollerRegistered(exchange.url, sender).catch(() => {
+216-    /* register is best-effort; if already registered exchange returns 409 */
+217-  })
+218-  const envelope = {
+219-    msg_id: newMsgId(),
+220-    from: sender,
