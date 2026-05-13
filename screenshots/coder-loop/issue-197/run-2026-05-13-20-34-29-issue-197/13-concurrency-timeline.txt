@@ -1,0 +1,5 @@
+OAuth (PID 69384): first_event_ts=2026-05-13T20:40:43.854Z  last_event_ts=2026-05-13T20:43:26.446Z  duration_ms=171840
+Webhook (PID 69424): first_event_ts=2026-05-13T20:40:50.555Z  last_event_ts=2026-05-13T20:43:25.612Z  duration_ms=162011
+PM (claude --print): first_event_ts=2026-05-13T20:41:12.994Z  last_event_ts=2026-05-13T20:41:34.918Z  duration_ms=33067
+
+All three claude processes overlapped during 2026-05-13T20:41:08Z (PM registered) → 2026-05-13T20:41:38Z (PM finished sending 5th channel_send), at which point OAuth and Webhook task agents were both still in their 18-poll loop. Concurrency window ≥ 30s.

@@ -1,0 +1,38 @@
+# 串台 + FIFO 审计（grep-based negative & positive）
+
+## 业务问题
+PM 给 OAuth 发了 4 条（A, C1, C2, C3），给 Webhook 发了 1 条（B）。验证：
+- Webhook session jsonl 不应出现任何 OAuth-bound msg_id（不串台）
+- OAuth session jsonl 不应出现 Webhook-bound msg_id（不串台对称）
+- OAuth 收到的 C1→C2→C3 顺序与 PM 发送顺序一致（FIFO same-from）
+
+## PM 发送 5 条 channel_send 的 msg_id 与时序（来自 PM jsonl 的 tool_result）
+
+| step | to                                            | msg_id                          | sent_at                  | payload                              |
+|------|-----------------------------------------------|---------------------------------|--------------------------|--------------------------------------|
+| A    | alice-d5/oauth-task-T1778704743-1             | 01KRHH55N9FT5G49PFWXVV3ZC2      | 2026-05-13T20:41:21.321Z | "OAuth task，请汇报进度。"           |
+| B    | alice-d5/webhook-task-T1778704743-2           | 01KRHH58ZZ78FKP6WJW0T6ZTMP      | 2026-05-13T20:41:24.735Z | "Webhook task，请汇报进度。"         |
+| C1   | alice-d5/oauth-task-T1778704743-1             | 01KRHH5CC3NHN5F0HS62XM7ABN      | 2026-05-13T20:41:28.195Z | "OAuth task 第二轮问题：进度怎么样？" |
+| C2   | alice-d5/oauth-task-T1778704743-1             | 01KRHH5FCG87W66QZ6Q0XZ1WVM      | 2026-05-13T20:41:31.280Z | "OAuth task 第三个问题：测试通过了吗？" |
+| C3   | alice-d5/oauth-task-T1778704743-1             | 01KRHH5JY3H6BG0GC04S3XXHXD      | 2026-05-13T20:41:34.915Z | "OAuth task 第四个问题：文档写了吗？" |
+
+## 负向（不串台）：grep 各 msg_id 在另一侧 jsonl 中的出现次数
+  01KRHH55N9FT5G49PFWXVV3ZC2 (OAuth-bound) in 06-webhook-session.jsonl: 0 occurrence(s) — expect 0
+  01KRHH5CC3NHN5F0HS62XM7ABN (OAuth-bound) in 06-webhook-session.jsonl: 0 occurrence(s) — expect 0
+  01KRHH5FCG87W66QZ6Q0XZ1WVM (OAuth-bound) in 06-webhook-session.jsonl: 0 occurrence(s) — expect 0
+  01KRHH5JY3H6BG0GC04S3XXHXD (OAuth-bound) in 06-webhook-session.jsonl: 0 occurrence(s) — expect 0
+  01KRHH58ZZ78FKP6WJW0T6ZTMP (Webhook-bound) in 06-oauth-session.jsonl: 0 occurrence(s) — expect 0
+
+结论：OAuth-bound 4 条 msg_id 在 Webhook jsonl 中 0 命中；Webhook-bound 1 条 msg_id 在 OAuth jsonl 中 0 命中。**无串台**。
+
+## 正向（FIFO same-from）：OAuth 接收 envelope_meta.msg_id 顺序
+
+按 OAuth jsonl 中 poll_inbox tool_result 抽出的 envelope 顺序：
+  1. msg_id=01KRHH55N9FT5G49PFWXVV3ZC2  ts=2026-05-13T20:41:21.321Z  payload=OAuth task，请汇报进度。
+  2. msg_id=01KRHH5CC3NHN5F0HS62XM7ABN  ts=2026-05-13T20:41:28.195Z  payload=OAuth task 第二轮问题：进度怎么样？
+  3. msg_id=01KRHH5FCG87W66QZ6Q0XZ1WVM  ts=2026-05-13T20:41:31.280Z  payload=OAuth task 第三个问题：测试通过了吗？
+  4. msg_id=01KRHH5JY3H6BG0GC04S3XXHXD  ts=2026-05-13T20:41:34.915Z  payload=OAuth task 第四个问题：文档写了吗？
+
+expected: ['01KRHH55N9FT5G49PFWXVV3ZC2', '01KRHH5CC3NHN5F0HS62XM7ABN', '01KRHH5FCG87W66QZ6Q0XZ1WVM', '01KRHH5JY3H6BG0GC04S3XXHXD']
+got     : ['01KRHH55N9FT5G49PFWXVV3ZC2', '01KRHH5CC3NHN5F0HS62XM7ABN', '01KRHH5FCG87W66QZ6Q0XZ1WVM', '01KRHH5JY3H6BG0GC04S3XXHXD']
+match   : True

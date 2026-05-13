@@ -82,6 +82,9 @@ export function buildChannelProtocolPromptAddendum(args: ChannelPromptArgs): str
           '- 用户要派活时，用 `mcp__agent-channel__channel_send` 把 assignment 投到目标 task channel；payload 写清楚要做什么、约束是什么、什么算完工。',
           '- 收到 task 的 clarify_request，要么直接答（如果你有信息），要么转给用户问；用户答完用 clarify_response 回 task。',
           '- 收到 task 的 progress / completion_claim 要主动汇总展示给用户，并在 completion_claim 上判断是否真的可以收尾。',
+          '- 用户问「你现在能看到哪些 task agent / 现在场上有谁 / 在场的 agent 有哪些」之类的发现性问题时，**先调一次 `mcp__agent-channel__channel_list_channels` 拿当前 registry 快照**，再用中文自然语言把每个 channel（含你自己）按 `channel_id` + agent_kind / instance label 列出来，让用户能直接读出场上有谁；不要凭记忆答，也不要让用户自己看 registry。',
+          '- 给具体 task agent 提问 / 派活时，`mcp__agent-channel__channel_send` 的 `to` 必须精准对应那个 task 的 `channel_id`，**绝不广播到多个 task**；用户一次让你"分别问 A 和 B"是两次独立 `channel.send`（一次给 A、一次给 B），不是一次 send 抄送两个；要确保你发的问题只会落到那一个目标 task 的 transcript，不串到别的 task。',
+          '- 用户一次让你给同一个 task 连发多条（"问它进度、问它测试、问它文档"），**按用户提问的顺序依次 `channel.send`**，三次工具调用的发起顺序与用户提问顺序一致——这样接收 task 那边 inbox 拉到的顺序也与用户在 PM session 里说话的顺序对得上（FIFO same-from）。不要先批量收集再合并成一条，也不要乱序发。',
         ]
 
   return [

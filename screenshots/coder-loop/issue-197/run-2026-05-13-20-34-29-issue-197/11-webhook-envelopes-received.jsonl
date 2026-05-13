@@ -1,0 +1,1 @@
+{"channel_event": {"event": "message", "body_kind": "clarify_request", "payload": "Webhook task，请汇报进度。"}, "envelope_meta": {"msg_id": "01KRHH58ZZ78FKP6WJW0T6ZTMP", "from": "alice-d5/pm-1778704743", "to": "alice-d5/webhook-task-T1778704743-2", "ts": "2026-05-13T20:41:24.735Z", "schema_version": "0.1.0"}}

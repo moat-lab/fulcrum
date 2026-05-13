@@ -1,0 +1,6 @@
+{"name": "mcp__agent-channel__channel_list_channels", "input": {}}
+{"name": "mcp__agent-channel__channel_send", "input": {"to": "alice-d5/oauth-task-T1778704743-1", "body_kind": "clarify_request", "payload": "OAuth task，请汇报进度。"}}
+{"name": "mcp__agent-channel__channel_send", "input": {"to": "alice-d5/webhook-task-T1778704743-2", "body_kind": "clarify_request", "payload": "Webhook task，请汇报进度。"}}
+{"name": "mcp__agent-channel__channel_send", "input": {"to": "alice-d5/oauth-task-T1778704743-1", "body_kind": "clarify_request", "payload": "OAuth task 第二轮问题：进度怎么样？"}}
+{"name": "mcp__agent-channel__channel_send", "input": {"to": "alice-d5/oauth-task-T1778704743-1", "body_kind": "clarify_request", "payload": "OAuth task 第三个问题：测试通过了吗？"}}
+{"name": "mcp__agent-channel__channel_send", "input": {"to": "alice-d5/oauth-task-T1778704743-1", "body_kind": "clarify_request", "payload": "OAuth task 第四个问题：文档写了吗？"}}
