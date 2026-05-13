@@ -1,1 +1,0 @@
-{"enabled":true,"clientForm":"claude-mcp","mailbox":"pm-issue-185/main","systemPromptRef":"fnox:pm.systemPrompt","exchange":{"url":"http://127.0.0.1:18787","mailboxNamespace":"fulcrum-issue-185-host"}}
