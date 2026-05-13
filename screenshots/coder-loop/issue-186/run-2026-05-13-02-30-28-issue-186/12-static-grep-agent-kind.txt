@@ -1,0 +1,6 @@
+server/services/pm-mode-service.ts:14: *   exchange with `filter.agent_kind = ["pm-agent"]`. The cached snapshot
+server/services/pm-mode-service.ts:227:        filter: { agent_kind: ['pm-agent'] },
+server/services/pm-mode-service.test.ts:15: *     `discovery.list_request` with `filter.agent_kind = ["pm-agent"]`, schema
+server/services/pm-mode-service.test.ts:85:  test('pollPmMailboxes posts a discovery.list_request envelope with filter agent_kind=["pm-agent"]', async () => {
+server/services/pm-mode-service.test.ts:129:                agent_kind: 'pm-agent',
+server/services/pm-mode-service.test.ts:159:          filter: { agent_kind: ['pm-agent'] },

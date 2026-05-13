@@ -1,0 +1,21 @@
+{
+  "msg_id": "EXGmp3gj9sp-00000002",
+  "from": "exchange/system",
+  "to": "fulcrum-issue-186/main/task-186-d1",
+  "in_reply_to": "5c74b59f-c122-47e1-b111-1e90ae913c8f",
+  "ts": "2026-05-13T02:45:42.254Z",
+  "schema_version": "0.1.0",
+  "body": {
+    "kind": "register.response",
+    "payload": {
+      "channel_id": "fulcrum-issue-186/main/task-186-d1",
+      "registered_at": "2026-05-13T02:45:42.254Z",
+      "heartbeat": {
+        "interval_seconds": 30,
+        "timeout_seconds": 90
+      },
+      "delivery_endpoint": "http://0.0.0.0:8787/v1/envelope",
+      "schema_version": "0.1.0"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+Error: fulcrum-client register failed: 409 {"error":"channel_id already registered","channel_id":"fulcrum-issue-186/main/task-186-d1"}
+    at preRegisterFulcrumClient (/Users/mouriya/Ext/code/fulcrum/screenshots/coder-loop/issue-186/run-2026-05-13-02-30-28-issue-186/probe-d1-task-agent.ts:83:15)
+    at async main (/Users/mouriya/Ext/code/fulcrum/screenshots/coder-loop/issue-186/run-2026-05-13-02-30-28-issue-186/probe-d1-task-agent.ts:246:21)

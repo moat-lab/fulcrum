@@ -1,0 +1,2 @@
+path=/Users/mouriya/.claude/projects/-Users-mouriya-Ext-code-fulcrum/ac837ed1-9201-4d67-af28-d7a5a0c120db.jsonl
+tool_use_count=1

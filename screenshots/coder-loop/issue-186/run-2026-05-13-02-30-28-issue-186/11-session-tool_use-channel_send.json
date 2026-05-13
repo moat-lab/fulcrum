@@ -1,0 +1,20 @@
+[
+  {
+    "type": "tool_use",
+    "id": "toolu_01N6qHH1GK2zYfzwjvsq9Wa8",
+    "name": "mcp__agent-channel__channel_send",
+    "input": {
+      "to": "fulcrum-task-target-issue-186/main",
+      "body_kind": "deliver.message",
+      "payload": {
+        "schema_version": "0.1.0",
+        "title": "wave-2 D1 probe outbound",
+        "summary": "Issue #186 acceptance: real fulcrum task agent → MCP child → exchange",
+        "issue": 186
+      }
+    },
+    "caller": {
+      "type": "direct"
+    }
+  }
+]

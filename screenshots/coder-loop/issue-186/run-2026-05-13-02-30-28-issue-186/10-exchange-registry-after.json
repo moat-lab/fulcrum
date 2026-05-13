@@ -1,0 +1,37 @@
+{
+  "msg_id": "EXGmp3gj9sp-00000007",
+  "from": "exchange/system",
+  "to": "fulcrum-issue-186/main/task-186-d1",
+  "in_reply_to": "a77075a5-6394-4964-b980-408b8ad7e79c",
+  "ts": "2026-05-13T02:45:55.995Z",
+  "schema_version": "0.1.0",
+  "body": {
+    "kind": "discovery.list_response",
+    "payload": {
+      "channels": [
+        {
+          "channel_id": "fulcrum-task-target-issue-186/main",
+          "agent_kind": "observer",
+          "instance_label": "issue-186 task target",
+          "capabilities": [
+            "channel.send",
+            "channel.receive"
+          ],
+          "registered_at": "2026-05-13T02:45:42.243Z"
+        },
+        {
+          "channel_id": "fulcrum-issue-186/main/task-186-d1",
+          "agent_kind": "fulcrum-client",
+          "instance_label": "fulcrum-issue-186 task 186-d1",
+          "capabilities": [
+            "channel.send",
+            "channel.receive",
+            "discovery.list"
+          ],
+          "registered_at": "2026-05-13T02:45:42.254Z"
+        }
+      ],
+      "generated_at": "2026-05-13T02:45:55.995Z"
+    }
+  }
+}

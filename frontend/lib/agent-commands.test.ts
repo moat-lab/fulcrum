@@ -54,12 +54,14 @@ describe('Agent Commands', () => {
         expect(cmd).not.toContain("'quotes'")
       })
 
-      test('omits --channels flag when channel spec is absent (zero regression)', () => {
+      test('omits channel flags when channel spec is absent (zero regression)', () => {
         const cmd = buildAgentCommand('claude', baseOptions)
         expect(cmd).not.toContain('--channels')
+        expect(cmd).not.toContain('--mcp-config')
+        expect(cmd).not.toContain('--strict-mcp-config')
       })
 
-      test('prefixes --channels server:<mcpInvocation> when channel spec is provided', () => {
+      test('emits --mcp-config + --channels server:agent-channel + tool allowlist when channel spec is provided', () => {
         const cmd = buildAgentCommand('claude', {
           ...baseOptions,
           channel: {
@@ -69,14 +71,46 @@ describe('Agent Commands', () => {
           },
         })
 
-        expect(cmd).toContain('--channels server:')
-        // Both the legacy flags and the new --channels coexist
-        expect(cmd).toContain('--dangerously-skip-permissions')
-        // mcpInvocation passed through shell escaping
+        // Channel filter only allows the named agent-channel server, not the
+        // user-level MCP graph.
+        expect(cmd).toContain('--channels server:agent-channel')
+        // The inline mcp-config carries the MCP child stanza + env.
+        expect(cmd).toContain('--mcp-config')
+        expect(cmd).toContain('--strict-mcp-config')
         expect(cmd).toContain('@agent-channel/mcp')
+        // Channel-aware claude must be able to call channel.send,
+        // channel.receive, and discovery.list — narrow allowlist per #153.
+        expect(cmd).toContain('mcp__agent-channel__channel_send')
+        expect(cmd).toContain('mcp__agent-channel__channel_receive')
+        expect(cmd).toContain('mcp__agent-channel__discovery_list')
+        // Legacy flags still coexist.
+        expect(cmd).toContain('--dangerously-skip-permissions')
       })
 
-      test('--channels flag is also injected in plan mode', () => {
+      test('emitted --mcp-config JSON carries exchange URL, parent id, and :mcp desired id', () => {
+        const cmd = buildAgentCommand('claude', {
+          ...baseOptions,
+          channel: {
+            channelId: 'fulcrum-host/task-7',
+            exchangeUrl: 'https://exchange.example.com',
+            mcpInvocation: 'bun x @agent-channel/mcp',
+          },
+        })
+
+        // The shell-escaped JSON ends up in the command — assert on key
+        // substrings rather than parsing back out of the shell-quoted form.
+        expect(cmd).toContain('"AGENT_CHANNEL_EXCHANGE_URL"')
+        expect(cmd).toContain('https://exchange.example.com')
+        expect(cmd).toContain('"AGENT_CHANNEL_AGENT_KIND"')
+        expect(cmd).toContain('mcp-child')
+        expect(cmd).toContain('"AGENT_CHANNEL_PARENT_ID"')
+        expect(cmd).toContain('fulcrum-host/task-7')
+        expect(cmd).toContain('"AGENT_CHANNEL_DESIRED_ID"')
+        // MCP child mailbox carries the `:mcp` suffix per #153 §Channel-id 形态.
+        expect(cmd).toContain('fulcrum-host/task-7:mcp')
+      })
+
+      test('channel flags are also injected in plan mode', () => {
         const cmd = buildAgentCommand('claude', {
           ...baseOptions,
           mode: 'plan',
@@ -88,7 +122,8 @@ describe('Agent Commands', () => {
         })
 
         expect(cmd).toContain('--permission-mode plan')
-        expect(cmd).toContain('--channels server:')
+        expect(cmd).toContain('--channels server:agent-channel')
+        expect(cmd).toContain('--mcp-config')
       })
     })
 

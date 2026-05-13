@@ -1,0 +1,4 @@
+# pgrep -P 66377 found pids: 66386
+
+  PID  PPID COMMAND
+66386 66377 bun run /Users/mouriya/Ext/code/agent-channel-exchange/packages/mcp/src/bin.ts

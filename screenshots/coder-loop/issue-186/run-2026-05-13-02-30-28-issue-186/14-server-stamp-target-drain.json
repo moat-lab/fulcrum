@@ -1,0 +1,35 @@
+{
+  "response": {
+    "msg_id": "EXGmp3gj9sp-0000000a",
+    "from": "exchange/system",
+    "to": "fulcrum-task-target-issue-186/main",
+    "in_reply_to": "bb84e244-e470-4c30-a157-ea3f1f92f59e",
+    "ts": "2026-05-13T02:46:03.657Z",
+    "schema_version": "0.1.0",
+    "body": {
+      "kind": "heartbeat.pong",
+      "payload": {
+        "server_ts": "2026-05-13T02:46:03.657Z",
+        "next_expected_in_seconds": 30
+      }
+    }
+  },
+  "inbox": [
+    {
+      "msg_id": "43fb19e0-87fe-4527-bc54-23c55d334c9b",
+      "from": "fulcrum-issue-186/main/stamp-probe-1778640363649",
+      "to": "fulcrum-task-target-issue-186/main",
+      "ts": "2026-05-13T02:46:03.656Z",
+      "schema_version": "0.1.0",
+      "body": {
+        "kind": "deliver.message",
+        "payload": {
+          "body_kind": "spoof-test",
+          "payload": {
+            "note": "probe acceptance #6"
+          }
+        }
+      }
+    }
+  ]
+}

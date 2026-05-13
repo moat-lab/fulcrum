@@ -1,0 +1,38 @@
+{
+  "response": {
+    "msg_id": "EXGmp3gj9sp-00000006",
+    "from": "exchange/system",
+    "to": "fulcrum-task-target-issue-186/main",
+    "in_reply_to": "cfec1f75-4de1-4396-b8db-c2305c69ea9d",
+    "ts": "2026-05-13T02:45:55.987Z",
+    "schema_version": "0.1.0",
+    "body": {
+      "kind": "heartbeat.pong",
+      "payload": {
+        "server_ts": "2026-05-13T02:45:55.987Z",
+        "next_expected_in_seconds": 30
+      }
+    }
+  },
+  "inbox": [
+    {
+      "msg_id": "01KRFKKX23KJWSBF1PMW9SBFZY",
+      "from": "fulcrum-issue-186/main/task-186-d1:mcp",
+      "to": "fulcrum-task-target-issue-186/main",
+      "ts": "2026-05-13T02:45:52.323Z",
+      "schema_version": "0.1.0",
+      "body": {
+        "kind": "deliver.message",
+        "payload": {
+          "body_kind": "deliver.message",
+          "payload": {
+            "schema_version": "0.1.0",
+            "title": "wave-2 D1 probe outbound",
+            "summary": "Issue #186 acceptance: real fulcrum task agent → MCP child → exchange",
+            "issue": 186
+          }
+        }
+      }
+    }
+  ]
+}

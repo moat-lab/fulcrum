@@ -9,7 +9,7 @@ import type { AgentType } from '@/types'
 import { escapeForShell, escapeForShellIfNeeded } from './shell-escape'
 
 /**
- * Agent channel exchange launcher spec (issue #180 / parent #153).
+ * Agent channel exchange launcher spec (issue #180 / parent #153, #186 wave-2 D1).
  *
  * Frontend passes this only when the exchange-backed Agent Channel is enabled
  * and the fulcrum-client mailbox has been registered for this terminal. The
@@ -22,10 +22,49 @@ export interface ChannelLaunchSpec {
   /** Exchange base URL (e.g. `https://agent-channel.example.com`). */
   exchangeUrl: string
   /**
-   * Command string passed to `claude --channels server:<mcpInvocation>` to
-   * fork-exec the MCP child. Typically `bun x @agent-channel/mcp`.
+   * Whitespace-separated command that fork-execs `@agent-channel/mcp` as a
+   * stdio MCP child (typically `bun x @agent-channel/mcp`). The first token
+   * becomes the `mcpServers.agent-channel.command` and the rest become its
+   * `args` in the inline `--mcp-config` JSON injected on the claude CLI.
    */
   mcpInvocation: string
+}
+
+/**
+ * MCP server name under which the `agent-channel` stdio child is registered
+ * inside the `--mcp-config` JSON and referenced by `claude --channels server:`.
+ */
+const AGENT_CHANNEL_MCP_SERVER_NAME = 'agent-channel'
+
+interface AgentChannelMcpServerStanza {
+  command: string
+  args: string[]
+  env: Record<string, string>
+}
+
+function buildAgentChannelMcpConfig(channel: ChannelLaunchSpec): string {
+  const tokens = channel.mcpInvocation.trim().split(/\s+/).filter(Boolean)
+  const command = tokens[0] ?? ''
+  const args = tokens.slice(1)
+  // MCP child env per `@agent-channel/mcp` config contract (loadMcpChildConfig).
+  // `:mcp` suffix per #153 §Channel-id 形态 marks the MCP child mailbox; the
+  // parent fulcrum-client mailbox keeps the base channel_id so the two are
+  // reconcilable in `discovery.list` via `parent_channel_id`.
+  const stanza: AgentChannelMcpServerStanza = {
+    command,
+    args,
+    env: {
+      AGENT_CHANNEL_EXCHANGE_URL: channel.exchangeUrl,
+      AGENT_CHANNEL_AGENT_KIND: 'mcp-child',
+      AGENT_CHANNEL_INSTANCE_LABEL: channel.channelId,
+      AGENT_CHANNEL_DESIRED_ID: `${channel.channelId}:mcp`,
+      AGENT_CHANNEL_PARENT_ID: channel.channelId,
+      AGENT_CHANNEL_CAPABILITIES: 'channel.send,channel.receive,discovery.list',
+    },
+  }
+  return JSON.stringify({
+    mcpServers: { [AGENT_CHANNEL_MCP_SERVER_NAME]: stanza },
+  })
 }
 
 export interface AgentCommandOptions {
@@ -78,12 +117,25 @@ const claudeBuilder: AgentCommandBuilder = {
         .join('')
     }
 
-    // Agent channel exchange (#180): prefix `--channels server:"<cmd>"` so the
-    // spawned `claude` process fork-execs the MCP child for this mailbox.
-    // Absent `channel` leaves the command byte-identical to the legacy path.
-    const channelFlag = channel
-      ? ` --channels server:${escapeForShell(channel.mcpInvocation)}`
-      : ''
+    // Agent channel exchange (#180 + #186 D1 fix): inject `--mcp-config <json>`
+    // so claude fork-execs `@agent-channel/mcp` as a stdio MCP child with the
+    // exchange URL, agent_kind, instance_label, desired_id, and parent_id env
+    // it needs to self-register. Then narrow visibility with `--channels
+    // server:agent-channel` and gate the toolset to the three exchange tools.
+    // `--strict-mcp-config` keeps any user-level `~/.claude/mcp.json` from
+    // leaking into the task agent's MCP graph. Absent `channel` leaves the
+    // command byte-identical to the legacy path (`--mcp-config` is NOT
+    // emitted, so non-channel tasks see zero behavior change).
+    let channelFlag = ''
+    if (channel) {
+      const mcpConfigJson = buildAgentChannelMcpConfig(channel)
+      const escapedMcpConfig = escapeForShell(mcpConfigJson)
+      channelFlag =
+        ` --mcp-config ${escapedMcpConfig}` +
+        ` --strict-mcp-config` +
+        ` --channels server:${AGENT_CHANNEL_MCP_SERVER_NAME}` +
+        ` --allowedTools mcp__${AGENT_CHANNEL_MCP_SERVER_NAME}__channel_send,mcp__${AGENT_CHANNEL_MCP_SERVER_NAME}__channel_receive,mcp__${AGENT_CHANNEL_MCP_SERVER_NAME}__discovery_list`
+    }
 
     if (mode === 'plan') {
       return `claude ${escapedPrompt} --append-system-prompt ${escapedSystemPrompt} --allow-dangerously-skip-permissions --permission-mode plan${channelFlag}${extraFlags}`

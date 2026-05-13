@@ -1,0 +1,27 @@
+{
+  "stamp_sender": "fulcrum-issue-186/main/stamp-probe-1778640363649",
+  "fake_from_in_envelope": "fake-attacker-mailbox/main",
+  "status": 200,
+  "body": {
+    "response": {
+      "msg_id": "EXGmp3gj9sp-00000009",
+      "from": "exchange/system",
+      "to": "fulcrum-issue-186/main/stamp-probe-1778640363649",
+      "in_reply_to": "43fb19e0-87fe-4527-bc54-23c55d334c9b",
+      "ts": "2026-05-13T02:46:03.656Z",
+      "schema_version": "0.1.0",
+      "body": {
+        "kind": "deliver.message",
+        "payload": {
+          "body_kind": "exchange.delivery_ack",
+          "payload": {
+            "accepted": true,
+            "target": "fulcrum-task-target-issue-186/main",
+            "msg_id": "43fb19e0-87fe-4527-bc54-23c55d334c9b"
+          }
+        }
+      }
+    },
+    "inbox": []
+  }
+}
