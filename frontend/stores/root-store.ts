@@ -200,6 +200,13 @@ export const RootStore = types
       isScratch?: boolean
     }>(),
     /**
+     * PM Agent Mode launch commands pending auto-type after attach (issue #205).
+     * Maps terminal ID (temp or real) to the `claude --mcp-config ...` shell
+     * command produced by `POST /api/channels/pm/prepare-launch`. Migrated
+     * tempId → realId on `terminal:created` so the attach handler can find it.
+     */
+    terminalsPendingPmLaunch: new Map<string, string>(),
+    /**
      * Pending tab creation tempId.
      * Set when createTab is called, cleared when tab:created confirms.
      * Prevents redirect effect from interfering during tab creation.
@@ -307,6 +314,37 @@ export const RootStore = types
       /** Set the last focused terminal ID (for reconnection focus restoration) */
       setLastFocusedTerminal(terminalId: string) {
         self.lastFocusedTerminalId = terminalId
+      },
+
+      /**
+       * Register a PM Agent Mode launch command to auto-type into the first
+       * terminal that attaches under the given tab (issue #205). Keyed by
+       * tabId (tempId or real). The tab:created handler migrates tempId →
+       * realId so the entry stays findable across the optimistic boundary.
+       *
+       * Keying by tabId (rather than terminalId) lets the regular
+       * shell-terminal auto-creation own the terminal — we just attach a
+       * one-shot "after this tab's first terminal is ready, run the launch
+       * command" hook. This avoids the duplicate-terminal failure where the
+       * caller's own createTerminal races shell-terminal's auto-create.
+       */
+      registerPendingPmLaunch(tabId: string, command: string) {
+        self.terminalsPendingPmLaunch.set(tabId, command)
+        getWs().log.ws.info('registerPendingPmLaunch', { tabId, commandHead: command.slice(0, 60) })
+      },
+
+      /**
+       * Consume the PM launch command for a tab. Returns the command and
+       * removes the entry. Used by the terminal:attached handler to auto-type
+       * `claude --mcp-config ...` after the shell prompt is up.
+       */
+      consumePendingPmLaunch(tabId: string): string | undefined {
+        const cmd = self.terminalsPendingPmLaunch.get(tabId)
+        if (cmd) {
+          self.terminalsPendingPmLaunch.delete(tabId)
+          getWs().log.ws.info('consumePendingPmLaunch', { tabId })
+        }
+        return cmd
       },
 
       /**
@@ -735,7 +773,7 @@ export const RootStore = types
        * 5. On server confirm: replace temp ID with real ID
        * 6. On server reject: apply inverse patches to rollback
        */
-      createTab(name: string, position?: number, directory?: string, adoptTerminalId?: string) {
+      createTab(name: string, position?: number, directory?: string, adoptTerminalId?: string): string {
         const requestId = generateRequestId()
         const tempId = generateTempId()
 
@@ -778,6 +816,8 @@ export const RootStore = types
         })
 
         getWs().log.ws.debug('createTab optimistic', { requestId, tempId, name, adoptTerminalId })
+
+        return tempId
       },
 
       /** Request tab update */
@@ -942,6 +982,7 @@ export const RootStore = types
                       getWs().log.ws.debug('transferred pending startup', { tempId, realId: terminal.id })
                     }
 
+
                     getWs().log.ws.debug('terminal:created confirmed', {
                       requestId,
                       tempId,
@@ -1086,6 +1127,40 @@ export const RootStore = types
             } else {
               invokeCallback()
             }
+
+            // PM Agent Mode auto-type (issue #205). Keyed by tabId so the
+            // regular shell-terminal auto-create owns the terminal and we
+            // just pick the first one that attaches under the PM tab. Delay
+            // 2s so `$SHELL -li` finishes sourcing init (mise/PATH) and
+            // renders a prompt before we paste the
+            // `claude --mcp-config <pm.json> --append-system-prompt ...`
+            // command.
+            //
+            // The launch command contains the system prompt inside single
+            // quotes with embedded newlines. Without bracketed-paste markers
+            // (ESC[200~ … ESC[201~), each embedded `\n` is treated as Enter
+            // by the line discipline and bash starts executing the partial
+            // command before the closing quote arrives. Wrapping in
+            // bracketed-paste tells bash to buffer the whole block, then
+            // we send `\r` to submit. Single fire; consume to avoid
+            // re-typing on reattach.
+            const pmTabId = terminal?.tabId
+            const pendingCmd = pmTabId ? self.terminalsPendingPmLaunch.get(pmTabId) : undefined
+            if (pmTabId && pendingCmd) {
+              self.terminalsPendingPmLaunch.delete(pmTabId)
+              getWs().log.ws.info('pm-launch auto-type scheduled', { terminalId, tabId: pmTabId, commandHead: pendingCmd.slice(0, 60) })
+              const BRACKET_START = '\x1b[200~'
+              const BRACKET_END = '\x1b[201~'
+              setTimeout(() => {
+                getWs().send({
+                  type: 'terminal:input',
+                  payload: { terminalId, data: `${BRACKET_START}${pendingCmd}${BRACKET_END}` },
+                })
+                setTimeout(() => {
+                  getWs().send({ type: 'terminal:input', payload: { terminalId, data: '\r' } })
+                }, 100)
+              }, 2000)
+            }
             break
           }
 
@@ -1153,6 +1228,16 @@ export const RootStore = types
                   // We need to remove the temp and add the real one since ID is an identifier
                   self.tabs.remove(tempId)
                   self.tabs.add(tab)
+
+                  // Migrate pending PM launch (issue #205) from tempId → realId
+                  // so terminal:attached can find it once the shell-terminal
+                  // auto-create produces a terminal under this real tab.
+                  const pendingPmLaunch = self.terminalsPendingPmLaunch.get(tempId)
+                  if (pendingPmLaunch) {
+                    self.terminalsPendingPmLaunch.delete(tempId)
+                    self.terminalsPendingPmLaunch.set(tab.id, pendingPmLaunch)
+                    getWs().log.ws.debug('transferred pending pm launch (tab)', { tempId, realId: tab.id })
+                  }
 
                   // Clear pending
                   self.pendingTabCreation = null
@@ -1277,6 +1362,7 @@ export const RootStore = types
                 }
               }
               self.terminalsPendingStartup.delete(entityId)
+              self.terminalsPendingPmLaunch.delete(entityId)
             } else if (entityType === 'tab') {
               if (self.tabs.has(entityId)) {
                 self.tabs.remove(entityId)
@@ -1308,6 +1394,7 @@ export const RootStore = types
         self.newTerminalIds.clear()
         self.pendingUpdates.clear()
         self.terminalsPendingStartup.clear()
+        self.terminalsPendingPmLaunch.clear()
       },
     }
   })

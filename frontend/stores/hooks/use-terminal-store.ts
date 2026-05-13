@@ -90,7 +90,7 @@ export interface UseTerminalStoreReturn {
   assignTerminalToTab: (terminalId: string, tabId: string | null, positionInTab?: number) => void
 
   // Tab actions
-  createTab: (name: string, position?: number, directory?: string) => void
+  createTab: (name: string, position?: number, directory?: string) => string
   updateTab: (tabId: string, updates: { name?: string; directory?: string | null }) => void
   deleteTab: (tabId: string) => void
   reorderTab: (tabId: string, position: number) => void
@@ -102,6 +102,9 @@ export interface UseTerminalStoreReturn {
   // Startup management
   consumePendingStartup: (terminalId: string) => PendingStartupInfo | undefined
   clearStartingUp: (terminalId: string) => void
+
+  // PM Agent Mode launch (issue #205)
+  registerPendingPmLaunch: (terminalId: string, command: string) => void
 
   // Tab creation navigation
   clearLastCreatedTabId: () => void
@@ -207,6 +210,9 @@ export function useTerminalStore(): UseTerminalStoreReturn {
       // Startup management
       consumePendingStartup: store.consumePendingStartup.bind(store),
       clearStartingUp: store.clearStartingUp.bind(store),
+
+      // PM Agent Mode launch (issue #205)
+      registerPendingPmLaunch: store.registerPendingPmLaunch.bind(store),
 
       // Tab creation navigation
       clearLastCreatedTabId: store.clearLastCreatedTabId.bind(store),
