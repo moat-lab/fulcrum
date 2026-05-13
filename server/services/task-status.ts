@@ -3,7 +3,8 @@ import { tasks, taskTags, terminalViewState } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { broadcast } from '../websocket/terminal-ws'
 import { sendNotification } from './notification-service'
-import { killClaudeInTerminalsForWorktree } from '../terminal/pty-instance'
+import { killClaudeInTerminalsForWorktree, getPTYManager } from '../terminal/pty-instance'
+import { cleanupMcpConfigForTerminal } from './channel-launch-service'
 import { log } from '../lib/logger'
 import { getWorktreeBasePath, getScratchBasePath } from '../lib/settings'
 import { createGitWorktree, copyFilesToWorktree } from '../lib/git-utils'
@@ -304,6 +305,25 @@ export async function updateTaskStatus(
         killClaudeInTerminalsForWorktree(updated.worktreePath)
       } catch (err) {
         log.api.error('Failed to kill Claude in worktree', {
+          worktreePath: updated.worktreePath,
+          error: String(err),
+        })
+      }
+      // Issue #196: the SIGKILL above also tears down each terminal's
+      // `agent-channel` MCP child (it is a fork-exec child of claude). The
+      // per-terminal `--mcp-config` JSON file `prepareTaskLaunch` wrote stays
+      // on disk forever otherwise — unlink it now so a re-run from the same
+      // terminal id starts from a clean slate and `ls runtime/mcp-configs/`
+      // reflects only currently-live tasks.
+      try {
+        const manager = getPTYManager()
+        for (const t of manager.listTerminals()) {
+          if (t.cwd === updated.worktreePath) {
+            cleanupMcpConfigForTerminal(t.id)
+          }
+        }
+      } catch (err) {
+        log.api.error('Failed to cleanup mcp-configs for worktree', {
           worktreePath: updated.worktreePath,
           error: String(err),
         })

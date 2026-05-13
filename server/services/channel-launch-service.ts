@@ -55,7 +55,7 @@
  * concrete MCP child to spawn.
  */
 
-import { writeFileSync, mkdirSync, chmodSync } from 'node:fs'
+import { writeFileSync, mkdirSync, chmodSync, unlinkSync } from 'node:fs'
 import { join, isAbsolute } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { db, terminals } from '../db'
@@ -208,4 +208,37 @@ export function prepareTaskLaunch(args: PrepareTaskLaunchArgs): TaskLaunchSpec {
     .run()
 
   return { channelId: desiredChannelId, mcpConfigPath }
+}
+
+/**
+ * Resolve the absolute path `prepareTaskLaunch` would have written for this
+ * terminal id. Exposed so cleanup code can name the same file without
+ * recomputing the directory layout in two places.
+ */
+export function mcpConfigPathForTerminal(terminalId: string): string {
+  return join(getFulcrumDir(), 'runtime', 'mcp-configs', `${terminalId}.json`)
+}
+
+/**
+ * Delete the per-terminal `--mcp-config` JSON file that `prepareTaskLaunch`
+ * wrote. Called when a task transitions to DONE/CANCELED: the claude PID is
+ * already being SIGKILL'd by `killClaudeInTerminalsForWorktree`, and the
+ * SIGKILL also tears down the MCP child process — but the JSON file lingers
+ * on disk forever otherwise (issue #196 cleanup leg).
+ *
+ * Safe to call multiple times for the same terminal id and safe to call for
+ * terminals that never had a channel config written (channel disabled, dtach
+ * reattach to a non-task terminal, etc.) — both surface as ENOENT which is
+ * swallowed. Any other unlink failure is rethrown so the caller can log it.
+ */
+export function cleanupMcpConfigForTerminal(terminalId: string): boolean {
+  const path = mcpConfigPathForTerminal(terminalId)
+  try {
+    unlinkSync(path)
+    return true
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException
+    if (e?.code === 'ENOENT') return false
+    throw err
+  }
 }

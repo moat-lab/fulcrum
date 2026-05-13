@@ -104,6 +104,7 @@ export function buildChannelProtocolPromptAddendum(args: ChannelPromptArgs): str
     '- 收到 inbound envelope 后，**先用一两句中文自然语言陈述「我收到了来自 \\<from\\> 的 \\<五类之一\\> 类消息：\\<内容摘要\\>」**，再决定如何反应（开始做 / 回答问题 / 继续推进 / 总结收尾）。这样人类看 transcript 就能确认你确实业务层理解了对方在说什么。',
     '- 阶段性地（每完成几步、或在等回复时）再调一次 `channel.poll_inbox`，避免漏掉对方后续消息。`channel.poll_inbox` 只返回上次 drain 后的新消息，所以可以放心多次调。',
     '- 发送 `channel.send` 时，`body_kind` 字段填上面五个语义类之一作为工程 hint；payload 用中文自然描述这件事，不要塞结构化字段去逼对端按字段解析——对端是 LLM agent，会直接读你的话。',
+    '- 当 `channel.send` 的 tool_result 返回 error 且 `error_variant`（或语义上等价的）是 `mailbox_deregistered`，说明对端 agent 已经离场（task 结束、PM 退出、心跳超时被 exchange evict 等）。**之后不要再向同一 channel id 发新的 `channel.send` 或在 transcript 里假装它还能收到**；**先用一句中文自然语言告诉用户「`<channelId>` 已经离场，我不会再追它」**，然后继续做别的事。如果用户随后让你「再问那个 agent 一下」，直接答「那个 agent 已经走了，没法问」，不要再尝试发送。',
     ...roleSpecificDuties,
     '',
   ].join('\n')
