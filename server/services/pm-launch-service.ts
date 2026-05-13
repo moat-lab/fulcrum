@@ -34,6 +34,7 @@ import { join } from 'node:path'
 import { getFnoxValue } from '../lib/settings/fnox'
 import { getFulcrumDir } from '../lib/settings/paths'
 import { resolveMcpCommand, MCP_SERVER_NAME, type McpCommandSpec } from './channel-launch-service'
+import { buildChannelProtocolPromptAddendum } from '../../shared/channel-prompt'
 
 const CAPABILITIES = 'channel.send,channel.receive,discovery.list' as const
 /** Single string the env-builder uses; matches `AgentKind` in protocol/schema. */
@@ -118,6 +119,14 @@ export interface PmLaunchSpec {
   pmMailbox: string
   /** Ready-to-copy `claude --mcp-config <path>` shell invocation. */
   command: string
+  /**
+   * Channel-protocol system prompt addendum (#195). Symmetric to the task
+   * side wired in `frontend/components/terminal/task-terminal.tsx`; we hand
+   * it back so the Settings → PM Agent Mode quick-start UI can show Alice a
+   * `claude --append-system-prompt '<addendum>' --mcp-config <path>` form
+   * for copy-paste, ensuring the launched PM claude knows the same protocol.
+   */
+  promptAddendum: string
 }
 
 /**
@@ -161,9 +170,23 @@ export function preparePmLaunch(): PmLaunchSpec {
   // existing 0644 file from a prior overwrite.
   chmodSync(mcpConfigPath, 0o600)
 
+  const promptAddendum = buildChannelProtocolPromptAddendum({
+    role: 'pm',
+    ownChannelId: pm.mailbox,
+  })
+
+  // Inline the addendum via `--append-system-prompt` so Alice's launched PM
+  // claude immediately knows to call `channel.poll_inbox` and recognize the
+  // five business message kinds. Single-quoted with embedded `'\''` escape so
+  // the shell sees one argument even with literal single quotes inside the
+  // addendum text.
+  const escaped = promptAddendum.replace(/'/g, `'\\''`)
+  const command = `claude --mcp-config ${mcpConfigPath} --append-system-prompt '${escaped}'`
+
   return {
     mcpConfigPath,
     pmMailbox: pm.mailbox,
-    command: `claude --mcp-config ${mcpConfigPath}`,
+    command,
+    promptAddendum,
   }
 }

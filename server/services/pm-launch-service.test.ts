@@ -95,7 +95,17 @@ describe('pm-launch-service (#194)', () => {
     const result = preparePmLaunch()
     expect(result.pmMailbox).toBe('pm-mouriya/main')
     expect(result.mcpConfigPath).toContain('runtime/mcp-configs/pm.json')
-    expect(result.command).toBe(`claude --mcp-config ${result.mcpConfigPath}`)
+    // #195: command now embeds `--append-system-prompt '<addendum>'` so the
+    // launched PM claude actually polls inbox + recognizes the five business
+    // message kinds. We assert structure (flags present, mcpConfigPath
+    // intact) rather than the exact byte string so the addendum text can
+    // evolve without breaking the test, while still pinning the contract.
+    expect(result.command).toContain(`--mcp-config ${result.mcpConfigPath}`)
+    expect(result.command).toContain(`--append-system-prompt '`)
+    expect(result.command).toMatch(/^claude /)
+    expect(result.promptAddendum).toContain('`pm-mouriya/main`')
+    expect(result.promptAddendum).toContain('completion_claim')
+    expect(result.command).toContain(result.promptAddendum.replace(/'/g, `'\\''`))
 
     const stat = statSync(result.mcpConfigPath)
     expect(stat.mode & 0o777).toBe(0o600)
