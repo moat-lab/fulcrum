@@ -1,9 +1,14 @@
 /**
- * Agent channel exchange routes (issue #180 / parent #153).
+ * Agent channel exchange routes (issue #180 / parent #153, rewired #193 / #192).
  *
- * Owns the fulcrum-side proxy to the agent-channel exchange:
- *   POST /api/channels/register         — server-side register-and-track for a terminal
- *   POST /api/channels/test-connection  — Settings UI button; hits exchange `/version`
+ * Owns the fulcrum-side endpoints for the agent-channel exchange:
+ *   POST /api/channels/prepare-task-launch — UI task launcher (writes
+ *                                            terminals.channel_id + an
+ *                                            `--mcp-config` JSON file)
+ *   POST /api/channels/register            — exchange-side register-and-track;
+ *                                            wave-1 path retained for parity
+ *                                            with non-claude callers
+ *   POST /api/channels/test-connection     — Settings UI button; GETs /version
  *
  * The exchange token never crosses the frontend boundary — frontend sends only
  * `{ taskId, terminalId }` and the server reads `channels.exchange.*` fnox keys.
@@ -16,6 +21,7 @@ import {
   trackChannel,
   testExchangeConnection,
 } from '../services/channel-heartbeat-service'
+import { prepareTaskLaunch } from '../services/channel-launch-service'
 import {
   getPmMailboxesSnapshot,
   pollPmMailboxes,
@@ -54,6 +60,24 @@ channelRoutes.post('/register', async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return c.json({ error: 'register failed', message }, 502)
+  }
+})
+
+// Task-launch preparation for the UI (issue #193 / parent #192). The MCP
+// child does its own `POST /v1/register` at boot, so fulcrum-server skips the
+// wave-1 exchange round-trip on this path and only writes `terminals.channel_id`
+// + the `--mcp-config` JSON file. See `channel-launch-service.ts` for why.
+channelRoutes.post('/prepare-task-launch', async (c) => {
+  const parsed = RegisterSchema.safeParse(await c.req.json())
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', details: parsed.error.flatten() }, 400)
+  }
+  try {
+    const result = prepareTaskLaunch(parsed.data)
+    return c.json(result)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return c.json({ error: 'prepare failed', message }, 502)
   }
 })
 
