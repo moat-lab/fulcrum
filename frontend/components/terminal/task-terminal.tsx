@@ -15,6 +15,7 @@ import { log } from '@/lib/logger'
 import { useTheme } from 'next-themes'
 import { getTerminalTheme } from './terminal-theme'
 import { buildAgentCommand, matchesAgentNotFound, type ChannelLaunchSpec } from '@/lib/agent-commands'
+import { buildChannelProtocolPromptAddendum } from '../../../shared/channel-prompt'
 import { AGENT_DISPLAY_NAMES, AGENT_INSTALL_COMMANDS, AGENT_DOC_URLS, type AgentType } from '@/types'
 import { useOpencodeDefaultAgent, useOpencodePlanAgent } from '@/hooks/use-config'
 import { waitForShellPrompt } from './shell-readiness'
@@ -519,10 +520,23 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
           }
         }
 
+        // Channel-protocol prompt addendum (#195): when the channel is wired,
+        // append guidance so the spawned task claude (a) actually polls its
+        // mailbox, and (b) recognizes inbound payloads as one of the five
+        // business message kinds defined in #153 instead of silently
+        // discarding the notification stream. See `shared/channel-prompt.ts`.
+        const finalSystemPrompt = channelLaunch
+          ? systemPrompt +
+            buildChannelProtocolPromptAddendum({
+              role: 'task',
+              ownChannelId: channelLaunch.channelId,
+            })
+          : systemPrompt
+
         // Use the agent command builder to construct the appropriate CLI command
         const taskCommand = buildAgentCommand(currentAgent as AgentType, {
           prompt: taskInfo,
-          systemPrompt,
+          systemPrompt: finalSystemPrompt,
           mode: currentAiMode === 'plan' ? 'plan' : 'default',
           additionalOptions: currentAgentOptions ?? {},
           opencodeModel: currentOpencodeModel,
