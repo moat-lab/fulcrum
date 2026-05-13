@@ -242,48 +242,22 @@ function restoreOriginalBranch(repoPath: string, originalBranch: string, default
   }
 }
 
-type SquashMergeResult =
+type MergeCommitResult =
   | { ok: true }
   | { ok: false; hasConflicts: true; conflictFiles: string[] }
   | { ok: false; hasConflicts?: never; error: string }
 
-// Perform a squash merge of worktreeBranch into the currently checked-out branch.
+// Perform a --no-ff merge of worktreeBranch into the currently checked-out branch,
+// producing a merge commit even when fast-forward is possible.
 // Caller must ensure the repo is on the target branch before calling.
-function performSquashMerge(repoPath: string, worktreeBranch: string, defaultBranch: string): SquashMergeResult {
-  // Collect commit messages for the squash commit
-  let commitMessages = ''
-  try {
-    commitMessages = gitExec(repoPath, `log ${defaultBranch}..${worktreeBranch} --pretty=format:%s%n%b --reverse`)
-  } catch {
-    // Fall back to simple message if we can't get commit history
-  }
-  const squashMessage = commitMessages.trim() || `Merge branch '${worktreeBranch}'`
-
-  const squashMsgPath = path.join(repoPath, '.git', 'SQUASH_MSG')
+function performMergeCommit(repoPath: string, worktreeBranch: string): MergeCommitResult {
+  const mergeMessage = `Merge branch '${worktreeBranch}'`
 
   try {
-    gitExec(repoPath, `merge --squash ${worktreeBranch}`)
-
-    // Use a temp file for the commit message to handle special characters
-    const tempFile = path.join(repoPath, '.git', 'SQUASH_MSG_TEMP')
-    fs.writeFileSync(tempFile, squashMessage)
-    try {
-      gitExec(repoPath, `commit -F "${tempFile}"`)
-    } finally {
-      fs.unlinkSync(tempFile)
-      if (fs.existsSync(squashMsgPath)) {
-        fs.unlinkSync(squashMsgPath)
-      }
-    }
-
+    // -m avoids launching $GIT_EDITOR for the merge message under --no-ff
+    gitExec(repoPath, `merge --no-ff ${worktreeBranch} -m "${mergeMessage}"`)
     return { ok: true }
   } catch (mergeErr) {
-    // Always clean up SQUASH_MSG on failure
-    if (fs.existsSync(squashMsgPath)) {
-      fs.unlinkSync(squashMsgPath)
-    }
-
-    // Detect merge conflicts
     try {
       const mergeStatus = gitExec(repoPath, 'status')
       if (mergeStatus.includes('Unmerged paths') || mergeStatus.includes('fix conflicts')) {
@@ -755,7 +729,7 @@ app.post('/merge-to-main', async (c) => {
 
     // Detect default branch, resolving remote refs (e.g. "origin/main") to a
     // local branch we can check out. Without this, `git checkout origin/main`
-    // would land in detached HEAD and the squash commit would be discarded.
+    // would land in detached HEAD and the merge commit would be discarded.
     const rawDefaultBranch = getDefaultBranch(repoPath, baseBranch)
     const defaultBranch = resolveLocalBranch(repoPath, rawDefaultBranch)
     if (!defaultBranch) {
@@ -783,7 +757,7 @@ app.post('/merge-to-main', async (c) => {
       }, 500)
     }
 
-    const result = performSquashMerge(repoPath, worktreeBranch, defaultBranch)
+    const result = performMergeCommit(repoPath, worktreeBranch)
     restoreOriginalBranch(repoPath, originalBranch, defaultBranch)
 
     if (!result.ok && result.hasConflicts) {

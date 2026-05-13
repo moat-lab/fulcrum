@@ -103,7 +103,7 @@ export function GitActionsButtons({
         action: terminalId && sendInputToTerminal ? {
           label: 'Resolve with Claude',
           onClick: () => resolveWithClaude(
-            `Merge this worktree's branch into the parent repo's ${branch}. Error: "${errorMessage}". Steps: 1) Ensure all changes in worktree are committed, 2) In parent repo at ${repoPath}, checkout ${branch} and pull latest from origin, 3) Squash merge the worktree branch into ${branch} (use git merge --squash, then commit), 4) Resolve any conflicts carefully - do not lose functionality or introduce regressions, 5) Push ${branch} to origin. Worktree: ${worktreePath}, Parent repo: ${repoPath}.`
+            `Merge this worktree's branch into the parent repo's ${branch}. Error: "${errorMessage}". Steps: 1) Ensure all changes in worktree are committed, 2) In parent repo at ${repoPath}, checkout ${branch} and pull latest from origin, 3) Merge the worktree branch into ${branch} with a merge commit (use git merge --no-ff), 4) Resolve any conflicts carefully - do not lose functionality or introduce regressions, 5) Push ${branch} to origin. Worktree: ${worktreePath}, Parent repo: ${repoPath}.`
           ),
         } : undefined,
       })

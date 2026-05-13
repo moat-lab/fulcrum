@@ -378,7 +378,7 @@ describe('Git Routes', () => {
   })
 
   describe('POST /api/git/merge-to-main', () => {
-    test('squash-merges into local branch when baseBranch is a remote ref', async () => {
+    test('creates a merge commit into local branch when baseBranch is a remote ref', async () => {
       // Set up: parent repo with an "origin" remote pointing at a bare clone.
       // Worktree branched off origin/<default> with a new commit.
       const barePath = mkdtempSync(join(tmpdir(), 'fulcrum-bare-'))
@@ -391,11 +391,11 @@ describe('Git Routes', () => {
         repo.git('fetch origin')
 
         // Capture the parent repo's default-branch tip before the merge so we
-        // can assert the squash commit landed on it.
+        // can assert the merge commit landed on it.
         const parentTipBefore = repo.git(`rev-parse ${repo.defaultBranch}`)
 
-        // Create a real change in the worktree so the squash merge has
-        // something to commit.
+        // Create a real change in the worktree so the merge has something to
+        // bring in.
         const gitEnv = {
           ...process.env,
           GIT_COMMITTER_NAME: 'Fulcrum Test',
@@ -413,6 +413,11 @@ describe('Git Routes', () => {
           encoding: 'utf-8',
           env: gitEnv,
         })
+        const featureSha = execSync('git rev-parse HEAD', {
+          cwd: wt.path,
+          encoding: 'utf-8',
+          env: gitEnv,
+        }).trim()
 
         const { post } = createTestApp()
         const res = await post('/api/git/merge-to-main', {
@@ -428,14 +433,21 @@ describe('Git Routes', () => {
         // ref it was given.
         expect(body.baseBranch).toBe(repo.defaultBranch)
 
-        // The squash commit should have advanced the local default branch.
+        // The merge commit should have advanced the local default branch.
         // Before the fix, the merge committed onto a detached HEAD and the
         // local branch tip stayed at parentTipBefore.
         const parentTipAfter = repo.git(`rev-parse ${repo.defaultBranch}`)
         expect(parentTipAfter).not.toBe(parentTipBefore)
 
-        // The new tip's first-parent log should include the squash commit
-        // reachable from the local default branch.
+        // The new tip must be a merge commit (two parents) — --no-ff guarantees
+        // this even though fast-forward would have been possible here.
+        const parents = repo.git(`rev-list -1 --parents ${repo.defaultBranch}`).split(/\s+/)
+        expect(parents).toHaveLength(3)
+        expect(parents[1]).toBe(parentTipBefore)
+        expect(parents[2]).toBe(featureSha)
+
+        // The individual worktree commit should be reachable from the new tip,
+        // not collapsed away.
         const log = repo.git(`log ${repo.defaultBranch} --oneline`)
         expect(log).toContain('feature commit')
 
