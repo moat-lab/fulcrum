@@ -195,6 +195,54 @@ describe('channel-launch-service (#193)', () => {
     db.delete(terminals).where(eq(terminals.id, terminalId)).run()
   })
 
+  test('cleanupMcpConfigForTerminal unlinks the file prepareTaskLaunch wrote and is idempotent (#196)', async () => {
+    const { prepareTaskLaunch, cleanupMcpConfigForTerminal, mcpConfigPathForTerminal } = await import(
+      './channel-launch-service'
+    )
+    const { setFnoxValue, db, terminals } = await Promise.all([
+      import('../lib/settings'),
+      import('../db'),
+      import('../db/schema'),
+    ]).then(([s, d, sch]) => ({ setFnoxValue: s.setFnoxValue, db: d.db, terminals: sch.terminals }))
+    const { existsSync } = await import('node:fs')
+
+    setFnoxValue('channels.exchange.enabled', true)
+    setFnoxValue('channels.exchange.url', 'http://127.0.0.1:18787')
+    setFnoxValue('channels.exchange.token', 'bearer-secret-xyz')
+    setFnoxValue('channels.exchange.mailbox', 'fulcrum-test')
+    setFnoxValue('channels.exchange.mcpGitRef', '/abs/path/bin.ts')
+
+    const terminalId = 'term-196-cleanup'
+    const now = new Date().toISOString()
+    db.insert(terminals)
+      .values({
+        id: terminalId,
+        name: 'task-cleanup',
+        cwd: '/tmp',
+        tmuxSession: 'fulcrum-test',
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const { mcpConfigPath } = prepareTaskLaunch({ taskId: 'cleanup', terminalId })
+    expect(mcpConfigPath).toBe(mcpConfigPathForTerminal(terminalId))
+    expect(existsSync(mcpConfigPath)).toBe(true)
+
+    // First cleanup actually removes the file.
+    expect(cleanupMcpConfigForTerminal(terminalId)).toBe(true)
+    expect(existsSync(mcpConfigPath)).toBe(false)
+
+    // Second cleanup on the same id is a no-op (ENOENT swallowed), not an error.
+    expect(cleanupMcpConfigForTerminal(terminalId)).toBe(false)
+    // Cleanup on a never-launched terminal id is also a no-op.
+    expect(cleanupMcpConfigForTerminal('term-196-never-launched')).toBe(false)
+
+    const { eq } = await import('drizzle-orm')
+    db.delete(terminals).where(eq(terminals.id, terminalId)).run()
+  })
+
   test('prepareTaskLaunch fails fast when exchange is disabled / unconfigured', async () => {
     const { prepareTaskLaunch } = await import('./channel-launch-service')
     const { setFnoxValue } = await import('../lib/settings')

@@ -1,0 +1,17 @@
+{
+  "platform": "darwin",
+  "rootPid": 95491,
+  "descendantPids": [
+    95492,
+    95493
+  ],
+  "descendantCount": 2,
+  "pgrepDirectChildren": [
+    95492
+  ]
+}
+ps: illegal option -- -
+usage: ps [-AaCcEefhjlMmrSTvwXx] [-O fmt | -o fmt] [-G gid[,gid...]]
+          [-g grp[,grp...]] [-u [uid,uid...]]
+---uname---
+Darwin MouriyadeMac-mini.local 24.6.0 Darwin Kernel Version 24.6.0: Fri Feb 27 19:34:58 PST 2026; root:xnu-11417.140.69.709.8~1/RELEASE_ARM64_T8132 arm64

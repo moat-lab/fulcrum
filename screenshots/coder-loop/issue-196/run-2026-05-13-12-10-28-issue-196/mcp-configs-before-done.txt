@@ -1,0 +1,15 @@
+total 96
+drwxr-xr-x@ 14 mouriya  staff  448 May 13 21:18 .
+drwxr-xr-x@  3 mouriya  staff   96 May 13 13:21 ..
+-rw-------@  1 mouriya  staff  499 May 13 15:34 15b29aec-ebbe-480b-9005-d581cccec724.json
+-rw-------@  1 mouriya  staff  499 May 13 15:27 49270dc3-3e1f-4fd1-b865-0ae8ae5b4399.json
+-rw-r--r--@  1 mouriya  staff  315 May 13 21:18 4d3c318b-3bd8-4734-b694-e03e3e16dd53.json
+-rw-------@  1 mouriya  staff  499 May 13 14:42 64e6d563-7419-4649-893a-3a8d9e5043bc.json
+-rw-------@  1 mouriya  staff  499 May 13 14:49 9c8511f5-398e-4397-9812-082b14170d2c.json
+-rw-------@  1 mouriya  staff  499 May 13 14:47 e66a7953-5fb3-40e7-bc67-438df5d396d6.json
+-rw-------@  1 mouriya  staff  431 May 13 20:30 pm.json
+-rw-------@  1 mouriya  staff  445 May 13 13:26 smoke-term-1.json
+-rw-------@  1 mouriya  staff  465 May 13 14:15 term-alice-d1-1778649310.json
+-rw-------@  1 mouriya  staff  465 May 13 14:09 term-d1-smoke-1778648971.json
+-rw-------@  1 mouriya  staff  465 May 13 14:10 term-d1-smoke-1778649000.json
+-rw-------@  1 mouriya  staff  520 May 13 13:21 term-issue193-d1-e2e-mp3jy1fg.json

@@ -84,6 +84,22 @@ describe('buildChannelProtocolPromptAddendum (#195)', () => {
     expect(text).toContain('内容摘要')
   })
 
+  test('teaches both roles to stop sending after mailbox_deregistered (#196)', () => {
+    for (const role of ['task', 'pm'] as const) {
+      const text = buildChannelProtocolPromptAddendum({
+        role,
+        ownChannelId: 'x/y',
+      })
+      // Must name the exact error variant so the agent matches on it.
+      expect(text).toContain('mailbox_deregistered')
+      // Must instruct natural-language narration to the user when peer is gone
+      // (D4 business gate: Alice 不切 session 就能看到 PM 自然宣告 task agent 离场).
+      expect(text).toContain('已经离场，我不会再追它')
+      // Must instruct refusing future channel.send on that mailbox.
+      expect(text).toContain('不要再向同一 channel id 发新的 `channel.send`')
+    }
+  })
+
   test('output is deterministic across calls with the same args (no timestamps / randoms)', () => {
     const args = {
       role: 'task' as const,

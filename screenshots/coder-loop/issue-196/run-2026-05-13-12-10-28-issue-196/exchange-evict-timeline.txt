@@ -1,0 +1,34 @@
+# Exchange evict timeline (issue #196 D4)
+# Heartbeat timeout per register.response: 90s
+# sender_id=auto/EXGmp3gj9sp-00000475
+# target_id=auto/EXGmp3gj9sp-00000473
+# target register response:
+{"msg_id":"EXGmp3gj9sp-00000474","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000473","in_reply_to":"reg-probe-target-v2-93512","ts":"2026-05-13T12:21:21.996Z","schema_version":"0.1.0","body":{"kind":"register.response","payload":{"channel_id":"auto/EXGmp3gj9sp-00000473","registered_at":"2026-05-13T12:21:21.996Z","heartbeat":{"interval_seconds":30,"timeout_seconds":90},"delivery_endpoint":"http://0.0.0.0:8787/v1/envelope","schema_version":"0.1.0"}}}
+
+# sender register response:
+{"msg_id":"EXGmp3gj9sp-00000476","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000475","in_reply_to":"reg-probe-sender-v2-93512","ts":"2026-05-13T12:21:22.046Z","schema_version":"0.1.0","body":{"kind":"register.response","payload":{"channel_id":"auto/EXGmp3gj9sp-00000475","registered_at":"2026-05-13T12:21:22.046Z","heartbeat":{"interval_seconds":30,"timeout_seconds":90},"delivery_endpoint":"http://0.0.0.0:8787/v1/envelope","schema_version":"0.1.0"}}}
+
+
+=== t=0s @ 2026-05-13T12:21:22.000Z ===
+{"response":{"msg_id":"EXGmp3gj9sp-00000477","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000475","in_reply_to":"probe-deliver-v2-93512-0","ts":"2026-05-13T12:21:22.077Z","schema_version":"0.1.0","body":{"kind":"deliver.message","payload":{"body_kind":"exchange.delivery_ack","payload":{"accepted":true,"target":"auto/EXGmp3gj9sp-00000473","msg_id":"probe-deliver-v2-93512-0"}}}},"inbox":[]}
+HTTPSTATUS:200
+
+=== t=5s @ 2026-05-13T12:21:27.000Z ===
+{"response":{"msg_id":"EXGmp3gj9sp-00000478","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000475","in_reply_to":"probe-deliver-v2-93512-5","ts":"2026-05-13T12:21:27.160Z","schema_version":"0.1.0","body":{"kind":"deliver.message","payload":{"body_kind":"exchange.delivery_ack","payload":{"accepted":true,"target":"auto/EXGmp3gj9sp-00000473","msg_id":"probe-deliver-v2-93512-5"}}}},"inbox":[]}
+HTTPSTATUS:200
+
+=== t=30s @ 2026-05-13T12:21:52.000Z ===
+{"response":{"msg_id":"EXGmp3gj9sp-0000047g","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000475","in_reply_to":"probe-deliver-v2-93512-30","ts":"2026-05-13T12:21:52.262Z","schema_version":"0.1.0","body":{"kind":"deliver.message","payload":{"body_kind":"exchange.delivery_ack","payload":{"accepted":true,"target":"auto/EXGmp3gj9sp-00000473","msg_id":"probe-deliver-v2-93512-30"}}}},"inbox":[]}
+HTTPSTATUS:200
+
+=== t=60s @ 2026-05-13T12:22:22.000Z ===
+{"response":{"msg_id":"EXGmp3gj9sp-0000047n","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000475","in_reply_to":"probe-deliver-v2-93512-60","ts":"2026-05-13T12:22:22.342Z","schema_version":"0.1.0","body":{"kind":"deliver.message","payload":{"body_kind":"exchange.delivery_ack","payload":{"accepted":true,"target":"auto/EXGmp3gj9sp-00000473","msg_id":"probe-deliver-v2-93512-60"}}}},"inbox":[]}
+HTTPSTATUS:200
+
+=== t=95s @ 2026-05-13T12:22:57.000Z ===
+{"response":{"msg_id":"EXGmp3gj9sp-0000047u","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000475","in_reply_to":"probe-deliver-v2-93512-95","ts":"2026-05-13T12:22:57.456Z","schema_version":"0.1.0","body":{"kind":"deliver.message","payload":{"body_kind":"exchange.delivery_ack","payload":{"accepted":true,"target":"auto/EXGmp3gj9sp-00000473","msg_id":"probe-deliver-v2-93512-95"}}}},"inbox":[]}
+HTTPSTATUS:200
+
+=== t=120s @ 2026-05-13T12:23:22.000Z ===
+{"response":{"msg_id":"EXGmp3gj9sp-00000481","from":"exchange/system","to":"auto/EXGmp3gj9sp-00000475","ts":"2026-05-13T12:23:22.574Z","schema_version":"0.1.0","body":{"kind":"deliver.error","payload":{"error":"mailbox_deregistered","failed_msg_id":"probe-deliver-v2-93512-120","human_message":"target mailbox auto/EXGmp3gj9sp-00000473 was deregistered after heartbeat timeout"}},"in_reply_to":"probe-deliver-v2-93512-120"},"inbox":[]}
+HTTPSTATUS:200

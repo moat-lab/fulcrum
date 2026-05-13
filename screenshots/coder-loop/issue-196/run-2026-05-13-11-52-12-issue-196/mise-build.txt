@@ -1,0 +1,40 @@
+dist/assets/stata-BH5u7GGu.js                                         56.99 kB │ gzip:    12.32 kB
+dist/assets/html-GMplVEZG.js                                          57.25 kB │ gzip:    11.75 kB
+dist/assets/ballerina-BFfxhgS-.js                                     58.69 kB │ gzip:     8.19 kB
+dist/assets/markdown-Cvjx9yec.js                                      59.34 kB │ gzip:     5.63 kB
+dist/assets/ocaml-C0hk2d4L.js                                         62.45 kB │ gzip:     5.04 kB
+dist/assets/mojo-1DNp92w6.js                                          69.29 kB │ gzip:     9.20 kB
+dist/assets/python-B6aJPvgy.js                                        69.95 kB │ gzip:     9.16 kB
+dist/assets/c-BIGW1oBm.js                                             72.11 kB │ gzip:    10.48 kB
+dist/assets/latex-BdAV_C_H.js                                         72.19 kB │ gzip:     6.63 kB
+dist/assets/vyper-CDx5xZoG.js                                         74.65 kB │ gzip:    10.74 kB
+dist/assets/hack-CaT9iCJl.js                                          80.24 kB │ gzip:    26.09 kB
+dist/assets/swift-Dg5xB15N.js                                         86.61 kB │ gzip:    14.68 kB
+dist/assets/fortran-free-form-D22FLkUw.js                             87.15 kB │ gzip:    10.93 kB
+dist/assets/csharp-K5feNrxe.js                                        87.72 kB │ gzip:    10.50 kB
+dist/assets/racket-BqYA7rlc.js                                        92.39 kB │ gzip:    15.08 kB
+dist/assets/less-B1dDrJ26.js                                          97.63 kB │ gzip:    14.79 kB
+dist/assets/blade-DVc8C-J4.js                                        103.80 kB │ gzip:    27.99 kB
+dist/assets/objective-c-DXmwc3jG.js                                  105.41 kB │ gzip:    23.35 kB
+dist/assets/php-CDn_0X-4.js                                          111.00 kB │ gzip:    28.46 kB
+dist/assets/asciidoc-Dv7Oe6Be.js                                     131.51 kB │ gzip:     9.32 kB
+dist/assets/mdx-Cmh6b_Ma.js                                          136.11 kB │ gzip:    23.58 kB
+dist/assets/objective-cpp-CLxacb5B.js                                171.97 kB │ gzip:    30.74 kB
+dist/assets/javascript-wDzz0qaB.js                                   174.83 kB │ gzip:    16.60 kB
+dist/assets/tsx-COt5Ahok.js                                          175.54 kB │ gzip:    16.59 kB
+dist/assets/jsx-g9-lgVsj.js                                          177.79 kB │ gzip:    16.72 kB
+dist/assets/typescript-BPQ3VLAy.js                                   181.08 kB │ gzip:    16.11 kB
+dist/assets/angular-ts-BwZT4LLn.js                                   183.82 kB │ gzip:    16.70 kB
+dist/assets/vue-vine-8moa0y9V.js                                     190.22 kB │ gzip:    18.12 kB
+dist/assets/wolfram-lXgVvXCa.js                                      262.39 kB │ gzip:    77.07 kB
+dist/assets/wasm-CG6Dc4jp.js                                         622.34 kB │ gzip:   231.16 kB
+dist/assets/cpp-CofmeUqb.js                                          626.08 kB │ gzip:    44.90 kB
+dist/assets/emacs-lisp-C9XAeP06.js                                   779.85 kB │ gzip:   196.53 kB
+dist/assets/index-ljt6zvQw.js                                      4,749.86 kB │ gzip: 1,378.94 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 12.54s
+Finished in 21.60s

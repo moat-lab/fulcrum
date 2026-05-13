@@ -1,0 +1,8 @@
+# Pre-existing macOS killClaude observation
+killClaudeInTerminalsForWorktree (server/terminal/pty-instance.ts:33) relies on dtach-service.getDescendantPids
+which uses 'ps --ppid' (GNU ps option, NOT supported on macOS BSD ps).
+Effect on macOS: dtach PID is found but no descendants returned, so claude PID survives.
+Confirmed live: claude PID 29166 still alive in ps-after-done.txt (CPU time 0:31.50, unchanged from before-done).
+Scope: this is a pre-existing bug in dtach-service.ts:38-52, NOT introduced by #196.
+Cleanup branch in task-status.ts:316-329 (the D4 deliverable) is INDEPENDENT and worked correctly:
+  - mcp-configs/15b29aec*.json + mcp-configs/4d3c318b*.json: BOTH REMOVED (see mcp-configs-after-done.txt)

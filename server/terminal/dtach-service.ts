@@ -34,21 +34,28 @@ function findProcessesByArg(searchArg: string): number[] {
   return pids
 }
 
-// Get all descendant PIDs of a process
+// Get direct child PIDs of a process. Uses `pgrep -P` which exists on both
+// macOS (BSD) and Linux; macOS BSD `ps` has no `--ppid` flag.
+function getChildPids(pid: number): number[] {
+  try {
+    const result = execSync(`pgrep -P ${pid} || true`, { encoding: 'utf-8' })
+    const out: number[] = []
+    for (const line of result.split('\n')) {
+      const childPid = parseInt(line.trim(), 10)
+      if (!isNaN(childPid)) out.push(childPid)
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
+// Get all descendant PIDs of a process (transitive closure).
 function getDescendantPids(pid: number): number[] {
   const descendants: number[] = []
-  try {
-    // Use ps to get all children recursively
-    const result = execSync(`ps --ppid ${pid} -o pid= 2>/dev/null || true`, { encoding: 'utf-8' })
-    for (const line of result.trim().split('\n')) {
-      const childPid = parseInt(line.trim(), 10)
-      if (!isNaN(childPid)) {
-        descendants.push(childPid)
-        descendants.push(...getDescendantPids(childPid))
-      }
-    }
-  } catch {
-    // Ignore errors
+  for (const childPid of getChildPids(pid)) {
+    descendants.push(childPid)
+    descendants.push(...getDescendantPids(childPid))
   }
   return descendants
 }

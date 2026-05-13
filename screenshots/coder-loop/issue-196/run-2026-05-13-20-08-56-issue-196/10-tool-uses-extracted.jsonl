@@ -1,0 +1,3 @@
+{"name":"ToolSearch","input":{"query":"select:mcp__agent-channel__channel_send,mcp__agent-channel__channel_poll_inbox","max_results":2}}
+{"name":"mcp__agent-channel__channel_send","input":{"to":"task-d4-pm-jsonl-probe-1778703177","body_kind":"task.handoff","payload":{"question":"你那个 task 做完了吗"}}}
+{"name":"mcp__agent-channel__channel_poll_inbox","input":{}}
