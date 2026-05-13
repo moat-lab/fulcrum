@@ -1,0 +1,6 @@
+[probe] FULCRUM_DIR=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-185-probe-cDhgQZ
+[probe] listening on http://127.0.0.1:19185
+[probe] HTTP 200
+[probe] body: {"enabled":true,"clientForm":"claude-mcp","mailbox":"pm-issue-185/main","systemPromptRef":"fnox:pm.systemPrompt","exchange":{"url":"http://127.0.0.1:18787","mailboxNamespace":"fulcrum-issue-185-host"}}
+[probe] token leak check: clean
+[probe] shape check: {"enabled":true,"clientForm":true,"mailbox":true,"systemPromptRef":true,"exchange.url":true,"exchange.mailboxNamespace":true,"exchange.token absent":true}

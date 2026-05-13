@@ -1,0 +1,1 @@
+[mcp] registered channel_id=auto/EXGmp3f9qp6-0000000c
