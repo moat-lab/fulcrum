@@ -1,0 +1,44 @@
+{
+  "platform": "darwin",
+  "scenario": "D4 SIGKILL chain: dtach->shell->claude->mcp",
+  "rootPid": 95552,
+  "descendantCountBeforeKill": 3,
+  "aliveBefore": [
+    {
+      "pid": 95552,
+      "alive": true
+    },
+    {
+      "pid": 95553,
+      "alive": true
+    },
+    {
+      "pid": 95554,
+      "alive": true
+    },
+    {
+      "pid": 95555,
+      "alive": true
+    }
+  ],
+  "aliveAfter": [
+    {
+      "pid": 95552,
+      "alive": false
+    },
+    {
+      "pid": 95553,
+      "alive": false
+    },
+    {
+      "pid": 95554,
+      "alive": false
+    },
+    {
+      "pid": 95555,
+      "alive": false
+    }
+  ],
+  "allDead": true,
+  "verdict": "PASS — kill walked tree, all 4 PIDs dead"
+}

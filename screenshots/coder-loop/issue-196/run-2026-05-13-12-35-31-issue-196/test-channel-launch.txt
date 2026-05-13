@@ -1,0 +1,8 @@
+[test:file] $ #!/usr/bin/env bash
+[test:file] Isolated environment: HOME=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-home-XXXXXX.ypcR6bb0Su FULCRUM_DIR=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-dir-XXXXXX.ZlRQTpjZj3
+bun test v1.3.13 (bf2e2cec)
+
+ 7 pass
+ 0 fail
+ 39 expect() calls
+Ran 7 tests across 1 file. [81.00ms]
