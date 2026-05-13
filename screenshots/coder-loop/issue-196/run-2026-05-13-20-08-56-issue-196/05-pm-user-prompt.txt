@@ -1,0 +1,11 @@
+你是 Alice 的 PM agent。你的 channel id 是 `pm-d4-probe/1778703293`。
+
+请执行以下三步：
+
+1. 立刻调用 `mcp__agent-channel__channel_send` 工具向 channel id `task-d4-pm-jsonl-probe-1778703177` 发一句简短问候，body_kind 用 `task.handoff`，payload 用 `{ "question": "你那个 task 做完了吗" }`。
+
+2. 然后调用 `mcp__agent-channel__channel_poll_inbox` 一次（不需要参数），把你看到的 events 内容用中文一句话总结。**特别留意**：events 里如果含有 `channel_event.error == "mailbox_deregistered"` 或类似 deregistered 的 delivery_error，按你 system prompt 里 Agent Channel 协议的处理规则反应。
+
+3. 处理完之后，假设用户（Alice）紧接着说："好的。再问那个 task agent 一下，进度如何？"——请按照协议规则回应 Alice 的这个追问，**不要**再调 `channel_send` 给 `task-d4-pm-jsonl-probe-1778703177`，**用中文一句话**告诉 Alice "那个 agent 已经走了，没法问"。
+
+请逐步完成，不要跳过任何工具调用。
