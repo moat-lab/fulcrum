@@ -27,6 +27,7 @@ import {
   pollPmMailboxes,
   readPmModeHook,
 } from '../services/pm-mode-service'
+import { preparePmLaunch } from '../services/pm-launch-service'
 import { getFnoxValue } from '../lib/settings/fnox'
 
 const channelRoutes = new Hono()
@@ -104,6 +105,20 @@ channelRoutes.get('/pm/mailboxes', async (c) => {
   const refresh = c.req.query('refresh') === '1'
   if (refresh) await pollPmMailboxes()
   return c.json(getPmMailboxesSnapshot())
+})
+
+// PM launch-config preparation (issue #194 / parent #192). Writes a 0600
+// `--mcp-config` JSON file and returns the suggested `claude` command Alice
+// runs in her own terminal. Does NOT register on behalf of PM and does NOT
+// spawn a process — that responsibility is Alice's.
+channelRoutes.post('/pm/prepare-launch', (c) => {
+  try {
+    const result = preparePmLaunch()
+    return c.json(result)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return c.json({ error: 'prepare-launch failed', message }, 400)
+  }
 })
 
 export default channelRoutes

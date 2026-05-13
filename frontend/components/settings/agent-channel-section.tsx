@@ -87,6 +87,12 @@ export function AgentChannelSection() {
   const [pmSystemPromptRef, setPmSystemPromptRef] = useState<string>('')
   const [pmMailboxes, setPmMailboxes] = useState<PmMailboxesSnapshot | null>(null)
   const [pmMailboxesLoading, setPmMailboxesLoading] = useState(false)
+  // PM Quick start (issue #194): generates a `claude --mcp-config <path>`
+  // command Alice runs in her own terminal. fulcrum never spawns / holds the
+  // resulting claude process.
+  const [pmLaunch, setPmLaunch] = useState<{ command: string; mcpConfigPath: string; pmMailbox: string } | null>(null)
+  const [pmLaunchError, setPmLaunchError] = useState<string | null>(null)
+  const [pmLaunchLoading, setPmLaunchLoading] = useState(false)
 
   useEffect(() => {
     if (enabledConfig.data?.value !== undefined) setEnabled(Boolean(enabledConfig.data.value))
@@ -147,6 +153,47 @@ export function AgentChannelSection() {
       await updateConfig.mutateAsync({ key, value })
     } catch (err) {
       toast.error(`Failed to save ${key}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  async function handleGeneratePmLaunch(): Promise<void> {
+    setPmLaunchLoading(true)
+    setPmLaunchError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/channels/pm/prepare-launch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const data = (await res.json()) as
+        | { command: string; mcpConfigPath: string; pmMailbox: string }
+        | { error: string; message?: string }
+      if (!res.ok || !('command' in data)) {
+        const message = 'message' in data && data.message ? data.message : 'unknown error'
+        setPmLaunch(null)
+        setPmLaunchError(message)
+        toast.error(`PM launch prep failed: ${message}`)
+        return
+      }
+      setPmLaunch(data)
+      toast.success('PM launch command generated')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setPmLaunch(null)
+      setPmLaunchError(message)
+      toast.error(`PM launch prep failed: ${message}`)
+    } finally {
+      setPmLaunchLoading(false)
+    }
+  }
+
+  async function copyPmCommand(): Promise<void> {
+    if (!pmLaunch) return
+    try {
+      await navigator.clipboard.writeText(pmLaunch.command)
+      toast.success('Copied to clipboard')
+    } catch (err) {
+      toast.error(`Copy failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -379,6 +426,69 @@ export function AgentChannelSection() {
             />
           </div>
         </div>
+
+        {pmEnabled && pmClientForm === 'claude-mcp' && (
+          <div
+            className="space-y-2 border border-border rounded-md p-3"
+            data-testid="pm-agent-mode-quickstart"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">PM session quick start</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleGeneratePmLaunch()}
+                disabled={pmLaunchLoading || !pmMailbox}
+                data-testid="pm-agent-mode-generate-launch"
+              >
+                <HugeiconsIcon
+                  icon={pmLaunchLoading ? Loading03Icon : TestTube01Icon}
+                  size={14}
+                  strokeWidth={2}
+                  className={pmLaunchLoading ? 'mr-1.5 animate-spin' : 'mr-1.5'}
+                />
+                Generate command
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Run this in your own terminal (not under fulcrum). The MCP child
+              spawned by your <code>claude</code> registers as
+              <code> pm-agent</code> against the exchange — fulcrum does not
+              hold the PM process.
+            </p>
+            {pmLaunchError && (
+              <p
+                className="text-xs text-red-600 dark:text-red-400 font-mono"
+                data-testid="pm-agent-mode-launch-error"
+              >
+                {pmLaunchError}
+              </p>
+            )}
+            {pmLaunch && (
+              <div className="space-y-1.5">
+                <pre
+                  className="text-[11px] font-mono whitespace-pre-wrap break-all rounded bg-muted px-2 py-1.5"
+                  data-testid="pm-agent-mode-launch-command"
+                >
+                  {pmLaunch.command}
+                </pre>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    mailbox: {pmLaunch.pmMailbox}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void copyPmCommand()}
+                    data-testid="pm-agent-mode-copy-launch"
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {pmEnabled && (
           <div
