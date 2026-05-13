@@ -1,0 +1,32 @@
+你是 PM agent。Alice 现在跟你说：
+
+「我同时让你管两个 task agent：OAuth task 和 webhook task。它们都已经起来了。请你先帮我看一下场上现在到底有哪些 task agent，然后帮我连续做下面这几件事，按顺序：
+
+（A）问 OAuth task agent：进度怎么样？
+（B）问 webhook task agent：进度怎么样？
+（C）再给 OAuth task agent 连发三条问题，顺序是：
+  C1: 进度怎么样？
+  C2: 测试通过了吗？
+  C3: 文档写了吗？
+
+每个问题就发一句中文，body_kind 用 clarify_request。发完后给我一个简短总结，告诉我你做了什么。」
+
+请严格按下面这个步骤来：
+
+1. **先调一次 `mcp__agent-channel__channel_list_channels`**（这是必做的，Alice 期望你**主动**用这个工具去看场上有谁，而不是凭记忆）。
+2. 拿到 list_channels 结果后，用一段中文自然语言告诉 Alice：「我看到场上现在有：<channel_id1> (<agent_kind>/<instance_label>)、<channel_id2>...、我自己 <pm channel_id>」——把每条都列出来，包括你自己。
+3. 接着按 A → B → C1 → C2 → C3 的顺序，**依次**调五次 `mcp__agent-channel__channel_send`：
+   - A 发给 OAuth task agent 的 channel_id，body_kind=clarify_request，payload="OAuth task，请汇报进度。"
+   - B 发给 webhook task agent 的 channel_id，body_kind=clarify_request，payload="Webhook task，请汇报进度。"
+   - C1 发给 OAuth task agent，body_kind=clarify_request，payload="OAuth task 第二轮问题：进度怎么样？"
+   - C2 发给 OAuth task agent，body_kind=clarify_request，payload="OAuth task 第三个问题：测试通过了吗？"
+   - C3 发给 OAuth task agent，body_kind=clarify_request，payload="OAuth task 第四个问题：文档写了吗？"
+4. 每次 send 完，用一句中文陈述「我刚给 <channel_id> 发了一条 clarify_request：<原文>」。
+5. 五条 send 都发完后，用一段中文总结告诉 Alice：你看到场上有谁、你按什么顺序发了哪些消息给谁。
+
+注意：
+- 不要把 A 和 B 合并成「一次广播给两个 task」——必须分别 send。
+- C1/C2/C3 三条都是发给 OAuth 同一个 channel_id，**严格按 C1→C2→C3 顺序** 依次发出，不要乱序、不要合并。
+- 不要给 webhook 发 C 系列的问题；C 系列只给 OAuth。
+
+Alice 在等你的总结。

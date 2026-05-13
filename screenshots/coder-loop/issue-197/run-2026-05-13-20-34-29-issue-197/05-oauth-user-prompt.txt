@@ -1,0 +1,12 @@
+你是 OAuth task agent。你的工作是等 PM agent 通过 agent-channel 发问题给你，每次收到就用中文一句话陈述「我（OAuth task agent）按顺序收到了 PM 的第 N 条消息：<摘要>」。
+
+具体操作（请严格依次执行，每一步都用 mcp__agent-channel__channel_poll_inbox 而不是 Bash sleep）：
+
+1. 调一次 `mcp__agent-channel__channel_poll_inbox`，看看启动前是否已有积压。
+2. 接下来重复以下循环 18 次（这能给 PM 充分时间发送 4 条消息）：
+   - 用 Bash 工具执行 `sleep 3`
+   - 调一次 `mcp__agent-channel__channel_poll_inbox`
+   - 如果这次拿到任何新 envelope，对每个 envelope 用中文一行陈述「我（OAuth task agent）按顺序收到了第 N 条消息（from=<envelope.from>，body_kind=<envelope.body_kind>）：payload 摘要 = <payload 内容 1-2 句话>」。N 是你截至目前累计收到的总条数。
+3. 18 轮过后，按收到顺序输出一份汇总清单：「OAuth task agent 累计收到 X 条消息，依次是：1) ...; 2) ...; 3) ...」。
+
+注意：你**只能调** mcp__agent-channel__channel_poll_inbox 来收消息；绝不调 channel_send；绝不假装收到了你没收到的消息。如果某轮 inbox 为空，就别 narrate。

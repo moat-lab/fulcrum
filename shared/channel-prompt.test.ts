@@ -100,6 +100,38 @@ describe('buildChannelProtocolPromptAddendum (#195)', () => {
     }
   })
 
+  test('pm role teaches discovery / precise routing / FIFO same-from (#197)', () => {
+    const text = buildChannelProtocolPromptAddendum({
+      role: 'pm',
+      ownChannelId: 'pm-mouriya/main',
+    })
+    // Acceptance #2/#3: PM must autonomously call list_channels when user asks
+    // "who do you see?", instead of guessing or asking the user.
+    expect(text).toContain('mcp__agent-channel__channel_list_channels')
+    expect(text).toContain('现在场上有谁')
+    expect(text).toContain('不要凭记忆答')
+    // Acceptance #4/#5: PM must address by exact channel_id and never broadcast.
+    expect(text).toContain('精准对应那个 task 的 `channel_id`')
+    expect(text).toContain('绝不广播到多个 task')
+    // Acceptance #6: PM must preserve user-prompt order when sending multiple
+    // messages to the same target so receiver sees FIFO same-from order.
+    expect(text).toContain('按用户提问的顺序依次 `channel.send`')
+    expect(text).toContain('FIFO same-from')
+  })
+
+  test('task role is not weighed down by PM-only discovery duties (#197 negative)', () => {
+    const text = buildChannelProtocolPromptAddendum({
+      role: 'task',
+      ownChannelId: 'fulcrum-issue197/task-xyz',
+    })
+    // The PM-only discovery / broadcast-forbid / FIFO-order lines should not
+    // be injected into a task agent, otherwise task agents would proactively
+    // start enumerating peers, which is not their role.
+    expect(text).not.toContain('现在场上有谁')
+    expect(text).not.toContain('绝不广播到多个 task')
+    expect(text).not.toContain('FIFO same-from')
+  })
+
   test('output is deterministic across calls with the same args (no timestamps / randoms)', () => {
     const args = {
       role: 'task' as const,

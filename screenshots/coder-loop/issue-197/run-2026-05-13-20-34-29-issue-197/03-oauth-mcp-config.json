@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "agent-channel": {
+      "command": "bun",
+      "args": ["run", "/Users/mouriya/Ext/code/agent-channel-exchange/packages/mcp/src/bin.ts"],
+      "env": {
+        "AGENT_CHANNEL_EXCHANGE_URL": "http://127.0.0.1:18787",
+        "AGENT_CHANNEL_AGENT_KIND": "worker-agent",
+        "AGENT_CHANNEL_INSTANCE_LABEL": "OAuth task agent",
+        "AGENT_CHANNEL_DESIRED_ID": "alice-d5/oauth-task-T1778704743-1",
+        "AGENT_CHANNEL_CAPABILITIES": "channel.send,channel.receive,discovery.list"
+      }
+    }
+  }
+}
