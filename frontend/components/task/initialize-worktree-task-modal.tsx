@@ -196,12 +196,11 @@ export function InitializeWorktreeTaskModal({ task, open, onOpenChange }: Initia
         setRepoTab('saved')
       }
 
-      // Set AI mode based on task description
-      if (task.description?.trim()) {
-        setAiMode('plan')
-      } else {
-        setAiMode('default')
-      }
+      // PM Agent Mode + agent-channel exchange tooling needs the default
+      // bypass-permissions mode to call MCP tools (issue #202 / parent #192).
+      // Description content is not a signal to flip into plan mode — keep the
+      // toggle entirely user-controlled.
+      setAiMode('default')
     }
   }, [open, repositories, projects, defaultAgent, globalOpencodeModel, task.description, task.repositoryId])
 
