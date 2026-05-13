@@ -1,0 +1,131 @@
+[2026-05-13T06:24:45.213Z] start EXCHANGE_URL=http://127.0.0.1:18787 PM_ID=pm-issue193/main POLL_INTERVAL=15.0s
+[2026-05-13T06:24:45.214Z] evidence file: /Users/mouriya/Ext/code/fulcrum/.coder-loop/runtime/evidence/issue-193/run-2026-05-13-06-19-27-issue-193/pm-keepalive-inbox.ndjson
+[2026-05-13T06:24:45.224Z] register: 409 body_keys=str
+[2026-05-13T06:24:45.225Z] poll#1 status=200 inbox_count=0
+[2026-05-13T06:25:00.401Z] poll#2 status=200 inbox_count=0
+[2026-05-13T06:25:15.550Z] poll#3 status=200 inbox_count=0
+[2026-05-13T06:25:30.705Z] poll#4 status=200 inbox_count=0
+[2026-05-13T06:25:45.855Z] poll#5 status=200 inbox_count=0
+[2026-05-13T06:26:01.006Z] poll#6 status=200 inbox_count=0
+[2026-05-13T06:26:01.007Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:26:01.010Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:26:16.161Z] poll#7 status=200 inbox_count=0
+[2026-05-13T06:26:31.335Z] poll#8 status=200 inbox_count=0
+[2026-05-13T06:26:46.489Z] poll#9 status=200 inbox_count=0
+[2026-05-13T06:27:01.643Z] poll#10 status=200 inbox_count=0
+[2026-05-13T06:27:16.792Z] poll#11 status=200 inbox_count=0
+[2026-05-13T06:27:31.931Z] poll#12 status=200 inbox_count=0
+[2026-05-13T06:27:46.975Z] poll#13 status=200 inbox_count=0
+[2026-05-13T06:28:02.143Z] poll#14 status=200 inbox_count=0
+[2026-05-13T06:28:02.143Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:28:02.148Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:28:17.285Z] poll#15 status=200 inbox_count=0
+[2026-05-13T06:28:32.439Z] poll#16 status=200 inbox_count=0
+[2026-05-13T06:28:47.567Z] poll#17 status=200 inbox_count=0
+[2026-05-13T06:29:02.718Z] poll#18 status=200 inbox_count=0
+[2026-05-13T06:29:17.892Z] poll#19 status=200 inbox_count=0
+[2026-05-13T06:29:33.035Z] poll#20 status=200 inbox_count=0
+[2026-05-13T06:29:48.182Z] poll#21 status=200 inbox_count=0
+[2026-05-13T06:29:48.183Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:29:48.187Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:30:03.341Z] poll#22 status=200 inbox_count=0
+[2026-05-13T06:30:18.487Z] poll#23 status=200 inbox_count=0
+[2026-05-13T06:30:33.637Z] poll#24 status=200 inbox_count=0
+[2026-05-13T06:30:48.817Z] poll#25 status=200 inbox_count=0
+[2026-05-13T06:31:03.967Z] poll#26 status=200 inbox_count=0
+[2026-05-13T06:31:19.117Z] poll#27 status=200 inbox_count=0
+[2026-05-13T06:31:34.278Z] poll#28 status=200 inbox_count=0
+[2026-05-13T06:31:49.426Z] poll#29 status=200 inbox_count=0
+[2026-05-13T06:31:49.427Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:31:49.431Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:32:04.578Z] poll#30 status=200 inbox_count=0
+[2026-05-13T06:32:19.746Z] poll#31 status=200 inbox_count=0
+[2026-05-13T06:32:34.901Z] poll#32 status=200 inbox_count=0
+[2026-05-13T06:32:50.051Z] poll#33 status=200 inbox_count=0
+[2026-05-13T06:33:05.210Z] poll#34 status=200 inbox_count=0
+[2026-05-13T06:33:20.361Z] poll#35 status=200 inbox_count=0
+[2026-05-13T06:33:35.514Z] poll#36 status=200 inbox_count=0
+[2026-05-13T06:33:50.637Z] poll#37 status=200 inbox_count=0
+[2026-05-13T06:33:50.638Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:33:50.640Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:34:05.789Z] poll#38 status=200 inbox_count=0
+[2026-05-13T06:34:20.936Z] poll#39 status=200 inbox_count=0
+[2026-05-13T06:34:36.091Z] poll#40 status=200 inbox_count=0
+[2026-05-13T06:34:51.234Z] poll#41 status=200 inbox_count=0
+[2026-05-13T06:35:06.385Z] poll#42 status=200 inbox_count=0
+[2026-05-13T06:35:21.547Z] poll#43 status=200 inbox_count=0
+[2026-05-13T06:35:36.686Z] poll#44 status=200 inbox_count=0
+[2026-05-13T06:35:51.837Z] poll#45 status=200 inbox_count=0
+[2026-05-13T06:35:51.838Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:35:51.842Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:36:07.012Z] poll#46 status=200 inbox_count=0
+[2026-05-13T06:36:22.163Z] poll#47 status=200 inbox_count=0
+[2026-05-13T06:36:37.316Z] poll#48 status=200 inbox_count=0
+[2026-05-13T06:36:52.489Z] poll#49 status=200 inbox_count=0
+[2026-05-13T06:37:07.638Z] poll#50 status=200 inbox_count=0
+[2026-05-13T06:37:22.785Z] poll#51 status=200 inbox_count=0
+[2026-05-13T06:37:37.940Z] poll#52 status=200 inbox_count=0
+[2026-05-13T06:37:53.034Z] poll#53 status=200 inbox_count=0
+[2026-05-13T06:37:53.037Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:37:53.038Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:38:08.183Z] poll#54 status=200 inbox_count=0
+[2026-05-13T06:38:23.333Z] poll#55 status=200 inbox_count=0
+[2026-05-13T06:38:38.458Z] poll#56 status=200 inbox_count=0
+[2026-05-13T06:38:53.576Z] poll#57 status=200 inbox_count=0
+[2026-05-13T06:39:08.699Z] poll#58 status=200 inbox_count=0
+[2026-05-13T06:39:23.742Z] poll#59 status=200 inbox_count=0
+[2026-05-13T06:39:38.855Z] poll#60 status=200 inbox_count=0
+[2026-05-13T06:39:54.023Z] poll#61 status=200 inbox_count=0
+[2026-05-13T06:39:54.025Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:39:54.028Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:40:09.170Z] poll#62 status=200 inbox_count=0
+[2026-05-13T06:40:24.317Z] poll#63 status=200 inbox_count=0
+[2026-05-13T06:40:39.407Z] poll#64 status=200 inbox_count=0
+[2026-05-13T06:40:54.498Z] poll#65 status=200 inbox_count=0
+[2026-05-13T06:41:09.647Z] poll#66 status=200 inbox_count=0
+[2026-05-13T06:41:24.783Z] poll#67 status=200 inbox_count=0
+[2026-05-13T06:41:39.936Z] poll#68 status=200 inbox_count=0
+[2026-05-13T06:41:55.085Z] poll#69 status=200 inbox_count=0
+[2026-05-13T06:41:55.087Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:41:55.091Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:42:10.237Z] poll#70 status=200 inbox_count=0
+[2026-05-13T06:42:25.387Z] poll#71 status=200 inbox_count=0
+[2026-05-13T06:42:40.536Z] poll#72 status=200 inbox_count=0
+[2026-05-13T06:42:55.708Z] poll#73 status=200 inbox_count=0
+[2026-05-13T06:43:10.863Z] poll#74 status=200 inbox_count=0
+[2026-05-13T06:43:26.019Z] poll#75 status=200 inbox_count=0
+[2026-05-13T06:43:41.170Z] poll#76 status=200 inbox_count=0
+[2026-05-13T06:43:56.323Z] poll#77 status=200 inbox_count=0
+[2026-05-13T06:43:56.327Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:43:56.330Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:44:11.479Z] poll#78 status=200 inbox_count=0
+[2026-05-13T06:44:26.635Z] poll#79 status=200 inbox_count=0
+[2026-05-13T06:44:41.787Z] poll#80 status=200 inbox_count=0
+[2026-05-13T06:44:56.938Z] poll#81 status=200 inbox_count=0
+[2026-05-13T06:45:12.092Z] poll#82 status=200 inbox_count=0
+[2026-05-13T06:45:27.244Z] poll#83 status=200 inbox_count=0
+[2026-05-13T06:45:42.396Z] poll#84 status=200 inbox_count=0
+[2026-05-13T06:45:57.561Z] poll#85 status=200 inbox_count=0
+[2026-05-13T06:45:57.575Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:45:57.580Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:46:12.726Z] poll#86 status=200 inbox_count=0
+[2026-05-13T06:46:27.875Z] poll#87 status=200 inbox_count=0
+[2026-05-13T06:46:43.029Z] poll#88 status=200 inbox_count=0
+[2026-05-13T06:46:58.173Z] poll#89 status=200 inbox_count=0
+[2026-05-13T06:47:13.324Z] poll#90 status=200 inbox_count=0
+[2026-05-13T06:47:28.345Z] poll#91 status=200 inbox_count=1
+[2026-05-13T06:47:28.346Z] NEW envelope msg_id=01KRG1E10HERT8VH0MP549SY0A from=fulcrum-issue193/task-50583350-d952-41a5-93cf-7b40585934d6 body.kind=deliver.message
+[2026-05-13T06:47:43.411Z] poll#92 status=200 inbox_count=0
+[2026-05-13T06:47:58.564Z] poll#93 status=200 inbox_count=0
+[2026-05-13T06:47:58.566Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:47:58.590Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
+[2026-05-13T06:48:13.739Z] poll#94 status=200 inbox_count=0
+[2026-05-13T06:48:28.888Z] poll#95 status=200 inbox_count=0
+[2026-05-13T06:48:44.040Z] poll#96 status=200 inbox_count=0
+[2026-05-13T06:48:59.205Z] poll#97 status=200 inbox_count=0
+[2026-05-13T06:49:14.359Z] poll#98 status=200 inbox_count=0
+[2026-05-13T06:49:29.510Z] poll#99 status=200 inbox_count=0
+[2026-05-13T06:49:44.651Z] poll#100 status=200 inbox_count=0
+[2026-05-13T06:49:59.808Z] poll#101 status=200 inbox_count=0
+[2026-05-13T06:49:59.812Z] got mailbox_deregistered, re-registering...
+[2026-05-13T06:49:59.815Z] register: 200 body_keys=['msg_id', 'from', 'to', 'in_reply_to', 'ts', 'schema_version', 'body']
