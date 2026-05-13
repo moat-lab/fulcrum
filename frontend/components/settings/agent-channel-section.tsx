@@ -15,10 +15,12 @@
  */
 
 import { useEffect, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { useTerminalStore } from '@/stores'
 import {
   Select,
   SelectContent,
@@ -61,6 +63,8 @@ interface TestConnectionResult {
 }
 
 export function AgentChannelSection() {
+  const navigate = useNavigate()
+  const { registerPendingPmLaunch, tabs, createTab } = useTerminalStore()
   const enabledConfig = useConfig(CONFIG_KEYS.CHANNELS_EXCHANGE_ENABLED)
   const urlConfig = useConfig(CONFIG_KEYS.CHANNELS_EXCHANGE_URL)
   const tokenConfig = useConfig(CONFIG_KEYS.CHANNELS_EXCHANGE_TOKEN)
@@ -93,6 +97,7 @@ export function AgentChannelSection() {
   const [pmLaunch, setPmLaunch] = useState<{ command: string; mcpConfigPath: string; pmMailbox: string } | null>(null)
   const [pmLaunchError, setPmLaunchError] = useState<string | null>(null)
   const [pmLaunchLoading, setPmLaunchLoading] = useState(false)
+  const [pmTerminalLaunchLoading, setPmTerminalLaunchLoading] = useState(false)
 
   useEffect(() => {
     if (enabledConfig.data?.value !== undefined) setEnabled(Boolean(enabledConfig.data.value))
@@ -184,6 +189,66 @@ export function AgentChannelSection() {
       toast.error(`PM launch prep failed: ${message}`)
     } finally {
       setPmLaunchLoading(false)
+    }
+  }
+
+  /**
+   * Issue #205: "Launch in Fulcrum terminal" hook.
+   *
+   * 1. POST `/api/channels/pm/prepare-launch` to refresh
+   *    `${FULCRUM_DIR}/runtime/mcp-configs/pm.json` and grab the canonical
+   *    `claude --mcp-config <pm.json> --append-system-prompt '...'` command
+   *    line. Fails the action surface-error path on config-validation throw.
+   * 2. Ensure a "PM Agent" tab exists. If we already own one we reuse it so
+   *    repeated clicks don't fan out. We don't wait for the tab:created ack
+   *    because the new-tab path also handles unresolved tempIds.
+   * 3. Optimistically create a terminal scoped to that tab via the existing
+   *    `createTerminal` store action. The store returns nothing usable
+   *    synchronously, so we pull the latest pending tempId out of
+   *    `newTerminalIds` immediately after the dispatch — this works because
+   *    optimistic creation adds the tempId to that set in the same tick.
+   * 4. Register the launch command against that tempId via
+   *    `registerPendingPmLaunch`. The store's `terminal:created` migration
+   *    keeps the entry findable once the realId arrives; the
+   *    `terminal:attached` handler then auto-types the command after a 2s
+   *    delay so the `$SHELL -li` prompt has time to render (mise/PATH).
+   * 5. Navigate to `/terminals` so Alice lands on the new tab and watches
+   *    `claude` come up. We don't pre-type the user prompt — acceptance #3
+   *    requires Alice to ask the PM to channel.send.
+   */
+  async function handleLaunchInFulcrumTerminal(): Promise<void> {
+    setPmTerminalLaunchLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/channels/pm/prepare-launch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const data = (await res.json()) as
+        | { command: string; mcpConfigPath: string; pmMailbox: string }
+        | { error: string; message?: string }
+      if (!res.ok || !('command' in data)) {
+        const message = 'message' in data && data.message ? data.message : 'unknown error'
+        toast.error(`PM launch prep failed: ${message}`)
+        return
+      }
+
+      // Reuse an existing "PM Agent" tab if present so repeated clicks don't
+      // pile up empty tabs. The pending launch is keyed by tabId — the
+      // tab:created handler migrates tempId → realId, and terminal:attached
+      // auto-types the command into the first terminal that shell-terminal
+      // creates under that tab.
+      const existingTab = tabs.find((t) => t.name === 'PM Agent')
+      const tabId = existingTab ? existingTab.id : createTab('PM Agent')
+
+      registerPendingPmLaunch(tabId, data.command)
+      toast.success('Launching PM in Fulcrum terminal')
+      void navigate({ to: '/terminals' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      toast.error(`Launch in Fulcrum terminal failed: ${message}`)
+    } finally {
+      setPmTerminalLaunchLoading(false)
     }
   }
 
@@ -434,21 +499,38 @@ export function AgentChannelSection() {
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">PM session quick start</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleGeneratePmLaunch()}
-                disabled={pmLaunchLoading || !pmMailbox}
-                data-testid="pm-agent-mode-generate-launch"
-              >
-                <HugeiconsIcon
-                  icon={pmLaunchLoading ? Loading03Icon : TestTube01Icon}
-                  size={14}
-                  strokeWidth={2}
-                  className={pmLaunchLoading ? 'mr-1.5 animate-spin' : 'mr-1.5'}
-                />
-                Generate command
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleGeneratePmLaunch()}
+                  disabled={pmLaunchLoading || !pmMailbox}
+                  data-testid="pm-agent-mode-generate-launch"
+                >
+                  <HugeiconsIcon
+                    icon={pmLaunchLoading ? Loading03Icon : TestTube01Icon}
+                    size={14}
+                    strokeWidth={2}
+                    className={pmLaunchLoading ? 'mr-1.5 animate-spin' : 'mr-1.5'}
+                  />
+                  Generate command
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => void handleLaunchInFulcrumTerminal()}
+                  disabled={pmTerminalLaunchLoading || !pmMailbox}
+                  data-testid="pm-agent-mode-launch-in-terminal"
+                >
+                  <HugeiconsIcon
+                    icon={pmTerminalLaunchLoading ? Loading03Icon : TestTube01Icon}
+                    size={14}
+                    strokeWidth={2}
+                    className={pmTerminalLaunchLoading ? 'mr-1.5 animate-spin' : 'mr-1.5'}
+                  />
+                  Launch in Fulcrum terminal
+                </Button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
               Run this in your own terminal (not under fulcrum). The MCP child

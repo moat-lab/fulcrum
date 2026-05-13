@@ -139,6 +139,12 @@ export function getSettings(): Settings {
         mailbox: (fv('channels.exchange.mailbox') as string) ?? DEFAULT_SETTINGS.channels.exchange.mailbox,
         mcpGitRef: (fv('channels.exchange.mcpGitRef') as string) ?? DEFAULT_SETTINGS.channels.exchange.mcpGitRef,
       },
+      pm: {
+        enabled: (fv('channels.pm.enabled') as boolean | null) ?? DEFAULT_SETTINGS.channels.pm.enabled,
+        clientForm: (fv('channels.pm.clientForm') as ChannelsSettings['pm']['clientForm']) ?? DEFAULT_SETTINGS.channels.pm.clientForm,
+        mailbox: (fv('channels.pm.mailbox') as string) ?? DEFAULT_SETTINGS.channels.pm.mailbox,
+        systemPromptRef: (fv('channels.pm.systemPromptRef') as string) ?? DEFAULT_SETTINGS.channels.pm.systemPromptRef,
+      },
     },
     caldav: {
       enabled: (fv('caldav.enabled') as boolean | null) ?? DEFAULT_SETTINGS.caldav.enabled,

@@ -73,6 +73,14 @@ export interface ExchangeChannelSettings {
   mcpGitRef: string
 }
 
+// PM Agent Mode settings (issue #181 / parent #153 §Chat 启动 UX hook).
+export interface PmChannelSettings {
+  enabled: boolean
+  clientForm: 'claude-mcp' | 'external-http'
+  mailbox: string
+  systemPromptRef: string
+}
+
 // Mattermost integration settings
 export interface MattermostSettings {
   enabled: boolean
@@ -115,6 +123,7 @@ export interface ChannelsSettings {
   telegram: TelegramSettings
   mattermost: MattermostSettings
   exchange: ExchangeChannelSettings
+  pm: PmChannelSettings
 }
 
 // Nested settings interface
@@ -293,6 +302,12 @@ Then store the action plan as a memory tagged with: ritual, plan, evening-ritual
       token: '',
       mailbox: '',
       mcpGitRef: '',
+    },
+    pm: {
+      enabled: false,
+      clientForm: 'claude-mcp',
+      mailbox: '',
+      systemPromptRef: '',
     },
   },
   caldav: {
