@@ -14,7 +14,7 @@ import { MobileTerminalControls } from './mobile-terminal-controls'
 import { log } from '@/lib/logger'
 import { useTheme } from 'next-themes'
 import { getTerminalTheme } from './terminal-theme'
-import { buildAgentCommand, matchesAgentNotFound } from '@/lib/agent-commands'
+import { buildAgentCommand, matchesAgentNotFound, type ChannelLaunchSpec } from '@/lib/agent-commands'
 import { AGENT_DISPLAY_NAMES, AGENT_INSTALL_COMMANDS, AGENT_DOC_URLS, type AgentType } from '@/types'
 import { useOpencodeDefaultAgent, useOpencodePlanAgent } from '@/hooks/use-config'
 import { waitForShellPrompt } from './shell-readiness'
@@ -462,6 +462,63 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
           }
         }
 
+        // Agent Channel exchange (issue #193 / parent #192): when the user has
+        // enabled `channels.exchange.enabled` and this task is launching a
+        // claude agent with a real taskId, ask the server to prepare an MCP
+        // config JSON file (and stamp `terminals.channel_id`) and forward the
+        // resulting `--mcp-config <path>` so the spawned `claude` fork-execs
+        // `@agent-channel/mcp` for this mailbox.
+        //
+        // Best-effort: if the config read fails or the prepare call returns
+        // non-OK, we fall back to a byte-identical legacy claude command and
+        // surface the failure in Settings → Test Connection rather than
+        // blocking task creation.
+        let channelLaunch: ChannelLaunchSpec | undefined
+        if (currentAgent === 'claude' && currentTaskId) {
+          try {
+            const cfgRes = await fetch('/api/config/channels.exchange.enabled')
+            if (cfgRes.ok) {
+              const cfg = (await cfgRes.json()) as { value: unknown }
+              if (cfg.value === true) {
+                const prepRes = await fetch('/api/channels/prepare-task-launch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    taskId: currentTaskId,
+                    terminalId: actualTerminalId,
+                  }),
+                })
+                if (prepRes.ok) {
+                  const data = (await prepRes.json()) as {
+                    channelId: string
+                    mcpConfigPath: string
+                  }
+                  channelLaunch = {
+                    channelId: data.channelId,
+                    mcpConfigPath: data.mcpConfigPath,
+                  }
+                  log.taskTerminal.info('agent channel prepared for task', {
+                    terminalId: actualTerminalId,
+                    taskId: currentTaskId,
+                    channelId: data.channelId,
+                    mcpConfigPath: data.mcpConfigPath,
+                  })
+                } else {
+                  log.taskTerminal.warn('agent channel prepare returned non-OK; launching claude without --mcp-config', {
+                    terminalId: actualTerminalId,
+                    status: prepRes.status,
+                  })
+                }
+              }
+            }
+          } catch (err) {
+            log.taskTerminal.warn('agent channel pre-launch wiring failed; falling back to legacy claude command', {
+              terminalId: actualTerminalId,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+
         // Use the agent command builder to construct the appropriate CLI command
         const taskCommand = buildAgentCommand(currentAgent as AgentType, {
           prompt: taskInfo,
@@ -471,6 +528,7 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
           opencodeModel: currentOpencodeModel,
           opencodeDefaultAgent: opencodeDefaultAgentRef.current,
           opencodePlanAgent: opencodePlanAgentRef.current,
+          channel: channelLaunch,
         })
 
         writeToTerminalRef.current(actualTerminalId, taskCommand + '\r')

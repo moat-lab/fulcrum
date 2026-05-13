@@ -9,23 +9,25 @@ import type { AgentType } from '@/types'
 import { escapeForShell, escapeForShellIfNeeded } from './shell-escape'
 
 /**
- * Agent channel exchange launcher spec (issue #180 / parent #153).
+ * Agent channel exchange launcher spec (issue #193 / parent #192, supersedes
+ * the wave-1 #180 shape).
  *
- * Frontend passes this only when the exchange-backed Agent Channel is enabled
- * and the fulcrum-client mailbox has been registered for this terminal. The
- * exchange `token` is intentionally absent — MCP child reads it from a fnox
- * key on its own side so it does not appear in dtach stdin.
+ * Frontend passes this only when `channels.exchange.enabled` is true and the
+ * server-side `prepare-task-launch` step has written the MCP config file.
+ *
+ * Wave-1 shipped `claude --channels server:"<cmd>"` injection. That flag does
+ * not exist in `claude --help` (spike under `.coder-loop/runtime/evidence/issue-193/`).
+ * The real flag is `claude --mcp-config <path>`, which loads a JSON file
+ * describing `mcpServers.<name>.{command, args, env}`. The exchange bearer
+ * token lives in that JSON file's env block; the file is written by the
+ * server at 0600 under `${FULCRUM_DIR}/runtime/mcp-configs/` so the token
+ * never appears on the command line that dtach echoes to the terminal.
  */
 export interface ChannelLaunchSpec {
-  /** Exchange-assigned mailbox id for the fulcrum-client mailbox driving this terminal. */
+  /** Exchange-assigned mailbox id; mirrored from `terminals.channel_id`. */
   channelId: string
-  /** Exchange base URL (e.g. `https://agent-channel.example.com`). */
-  exchangeUrl: string
-  /**
-   * Command string passed to `claude --channels server:<mcpInvocation>` to
-   * fork-exec the MCP child. Typically `bun x @agent-channel/mcp`.
-   */
-  mcpInvocation: string
+  /** Absolute path to a JSON file readable by `claude --mcp-config`. */
+  mcpConfigPath: string
 }
 
 export interface AgentCommandOptions {
@@ -44,10 +46,11 @@ export interface AgentCommandOptions {
   /** OpenCode agent name for plan mode (e.g., 'plan', 'Planner-Sisyphus') */
   opencodePlanAgent?: string
   /**
-   * Agent channel exchange launch spec. When present, `claudeBuilder`
-   * prefixes a `--channels server:"<mcpInvocation>"` flag so the spawned
-   * `claude` process fork-execs the `@agent-channel/mcp` child (issue #180).
-   * Absent (or other agent types) leaves the command unchanged.
+   * Agent channel exchange launch spec. When present, `claudeBuilder` adds a
+   * `--mcp-config <path>` flag so the spawned `claude` process fork-execs the
+   * `@agent-channel/mcp` child described by the JSON at `mcpConfigPath`
+   * (issue #193 / parent #192). Absent (or other agent types) leaves the
+   * command byte-identical to the legacy path.
    */
   channel?: ChannelLaunchSpec
 }
@@ -78,12 +81,11 @@ const claudeBuilder: AgentCommandBuilder = {
         .join('')
     }
 
-    // Agent channel exchange (#180): prefix `--channels server:"<cmd>"` so the
-    // spawned `claude` process fork-execs the MCP child for this mailbox.
+    // Agent channel exchange (#193 / #192): add `--mcp-config <path>` so the
+    // spawned `claude` process loads the JSON file written by the server-side
+    // `prepare-task-launch` step and fork-execs `@agent-channel/mcp` from it.
     // Absent `channel` leaves the command byte-identical to the legacy path.
-    const channelFlag = channel
-      ? ` --channels server:${escapeForShell(channel.mcpInvocation)}`
-      : ''
+    const channelFlag = channel ? ` --mcp-config ${escapeForShell(channel.mcpConfigPath)}` : ''
 
     if (mode === 'plan') {
       return `claude ${escapedPrompt} --append-system-prompt ${escapedSystemPrompt} --allow-dangerously-skip-permissions --permission-mode plan${channelFlag}${extraFlags}`

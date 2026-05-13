@@ -54,41 +54,43 @@ describe('Agent Commands', () => {
         expect(cmd).not.toContain("'quotes'")
       })
 
-      test('omits --channels flag when channel spec is absent (zero regression)', () => {
+      test('omits --mcp-config flag when channel spec is absent (zero regression)', () => {
         const cmd = buildAgentCommand('claude', baseOptions)
+        expect(cmd).not.toContain('--mcp-config')
+        // Also verify the wave-1 fictional `--channels` flag is fully gone.
         expect(cmd).not.toContain('--channels')
       })
 
-      test('prefixes --channels server:<mcpInvocation> when channel spec is provided', () => {
+      test('adds --mcp-config <path> when channel spec is provided (default mode)', () => {
         const cmd = buildAgentCommand('claude', {
           ...baseOptions,
           channel: {
             channelId: 'fulcrum-mouriya-laptop/task-42',
-            exchangeUrl: 'https://exchange.example.com',
-            mcpInvocation: 'bun x @agent-channel/mcp',
+            mcpConfigPath: '/Users/m/.fulcrum/runtime/mcp-configs/term-abc.json',
           },
         })
 
-        expect(cmd).toContain('--channels server:')
-        // Both the legacy flags and the new --channels coexist
+        expect(cmd).toContain('--mcp-config')
+        expect(cmd).toContain('term-abc.json')
+        // Legacy flags coexist with the new --mcp-config.
         expect(cmd).toContain('--dangerously-skip-permissions')
-        // mcpInvocation passed through shell escaping
-        expect(cmd).toContain('@agent-channel/mcp')
+        // The fictional wave-1 flag is removed; nothing should reintroduce it.
+        expect(cmd).not.toContain('--channels server:')
       })
 
-      test('--channels flag is also injected in plan mode', () => {
+      test('--mcp-config flag is also injected in plan mode', () => {
         const cmd = buildAgentCommand('claude', {
           ...baseOptions,
           mode: 'plan',
           channel: {
             channelId: 'fulcrum-host/task-9',
-            exchangeUrl: 'https://exchange.example.com',
-            mcpInvocation: 'bun x @agent-channel/mcp',
+            mcpConfigPath: '/Users/m/.fulcrum/runtime/mcp-configs/term-xyz.json',
           },
         })
 
         expect(cmd).toContain('--permission-mode plan')
-        expect(cmd).toContain('--channels server:')
+        expect(cmd).toContain('--mcp-config')
+        expect(cmd).toContain('term-xyz.json')
       })
     })
 
