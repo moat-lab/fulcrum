@@ -30,6 +30,7 @@ import {
   jobsCommand,
   projectsCommand,
 } from './commands/mattermost-verbs'
+import { helpCommand } from './commands/help'
 
 import pkg from '../../package.json'
 
@@ -103,6 +104,10 @@ const main = defineCommand({
     monitor: monitorCommand,
     jobs: jobsCommand,
     projects: projectsCommand,
+
+    // `/f help` plugin entry — lists every verb above. Also part of the
+    // Mattermost-plugin contract; see cli/JSON_SCHEMA.md.
+    help: helpCommand,
   },
 })
 
