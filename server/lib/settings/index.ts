@@ -89,6 +89,7 @@ export {
   setFnoxSecret,
   removeFnoxSecret,
   getFnoxValue,
+  getEnvFnoxValue,
   setFnoxValue,
   initFnoxConfig,
   initFnoxSecrets,

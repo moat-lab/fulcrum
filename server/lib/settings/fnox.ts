@@ -496,6 +496,23 @@ export function getFnoxValue(settingsPath: string): unknown {
 }
 
 /**
+ * Read a config value directly from `process.env` using the FNOX_CONFIG_MAP
+ * entry's `fnoxKey`. Returns `null` when the env var is unset or empty.
+ *
+ * Used by code paths that need env-direct fallback in containers where the
+ * fnox CLI / age.txt are not bootstrapped (e.g. Komodo-deployed Docker images
+ * that only ship plaintext compose env). Caller composes precedence as
+ * `env > fnox > default` via `getEnvFnoxValue(path) ?? getFnoxValue(path) ?? default`.
+ */
+export function getEnvFnoxValue(settingsPath: string): unknown {
+  const entry = FNOX_CONFIG_MAP[settingsPath]
+  if (!entry) return null
+  const raw = process.env[entry.fnoxKey]
+  if (raw === undefined || raw === '') return null
+  return deserializeValue(raw, entry)
+}
+
+/**
  * Set a config value by its settings path.
  * Test mode and explicit in-memory mode update the cache without persisting.
  */

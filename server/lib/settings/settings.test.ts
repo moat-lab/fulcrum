@@ -26,6 +26,13 @@ describe('Settings', () => {
       PORT: process.env.PORT,
       FULCRUM_GIT_REPOS_DIR: process.env.FULCRUM_GIT_REPOS_DIR,
       GITHUB_PAT: process.env.GITHUB_PAT,
+      FULCRUM_MATTERMOST_ENABLED: process.env.FULCRUM_MATTERMOST_ENABLED,
+      FULCRUM_MATTERMOST_SERVER_URL: process.env.FULCRUM_MATTERMOST_SERVER_URL,
+      FULCRUM_MATTERMOST_BOT_TOKEN: process.env.FULCRUM_MATTERMOST_BOT_TOKEN,
+      FULCRUM_MATTERMOST_TEAM_ID: process.env.FULCRUM_MATTERMOST_TEAM_ID,
+      FULCRUM_MATTERMOST_CHANNEL_ID: process.env.FULCRUM_MATTERMOST_CHANNEL_ID,
+      FULCRUM_MATTERMOST_COMMAND_TOKEN: process.env.FULCRUM_MATTERMOST_COMMAND_TOKEN,
+      FULCRUM_MATTERMOST_ALLOWED_USER_IDS: process.env.FULCRUM_MATTERMOST_ALLOWED_USER_IDS,
     }
 
     // Set test environment
@@ -33,6 +40,13 @@ describe('Settings', () => {
     delete process.env.PORT
     delete process.env.FULCRUM_GIT_REPOS_DIR
     delete process.env.GITHUB_PAT
+    delete process.env.FULCRUM_MATTERMOST_ENABLED
+    delete process.env.FULCRUM_MATTERMOST_SERVER_URL
+    delete process.env.FULCRUM_MATTERMOST_BOT_TOKEN
+    delete process.env.FULCRUM_MATTERMOST_TEAM_ID
+    delete process.env.FULCRUM_MATTERMOST_CHANNEL_ID
+    delete process.env.FULCRUM_MATTERMOST_COMMAND_TOKEN
+    delete process.env.FULCRUM_MATTERMOST_ALLOWED_USER_IDS
 
     // Clear fnox cache between tests to prevent pollution
     const { clearFnoxCache } = await import('./')
@@ -157,6 +171,94 @@ describe('Settings', () => {
 
       updateSettingByPath('integrations.githubPat', null)
       expect(getSettings().integrations.githubPat).toBeNull()
+    })
+  })
+
+  describe('channels.mattermost env-direct fallback (issue #216)', () => {
+    test('reads channels.mattermost.* from FULCRUM_MATTERMOST_* env vars when fnox has no value', async () => {
+      const { getSettings, ensureFulcrumDir } = await import('./')
+      ensureFulcrumDir()
+
+      process.env.FULCRUM_MATTERMOST_ENABLED = 'true'
+      process.env.FULCRUM_MATTERMOST_SERVER_URL = 'https://mattermost.example.com'
+      process.env.FULCRUM_MATTERMOST_BOT_TOKEN = 'env-bot-token'
+      process.env.FULCRUM_MATTERMOST_TEAM_ID = 'env-team-id'
+      process.env.FULCRUM_MATTERMOST_CHANNEL_ID = 'env-channel-id'
+      process.env.FULCRUM_MATTERMOST_COMMAND_TOKEN = 'env-command-token'
+      process.env.FULCRUM_MATTERMOST_ALLOWED_USER_IDS = '["u1","u2"]'
+
+      const mm = getSettings().channels.mattermost
+      expect(mm.enabled).toBe(true)
+      expect(mm.serverUrl).toBe('https://mattermost.example.com')
+      expect(mm.botToken).toBe('env-bot-token')
+      expect(mm.teamId).toBe('env-team-id')
+      expect(mm.channelId).toBe('env-channel-id')
+      expect(mm.commandToken).toBe('env-command-token')
+      expect(mm.allowedUserIds).toEqual(['u1', 'u2'])
+    })
+
+    test('env values take precedence over fnox cache for channels.mattermost.*', async () => {
+      const { updateSettingByPath, getSettings, ensureFulcrumDir } = await import('./')
+      ensureFulcrumDir()
+
+      // Seed fnox with one set of values...
+      updateSettingByPath('channels.mattermost.enabled', false)
+      updateSettingByPath('channels.mattermost.serverUrl', 'https://fnox.example.com')
+      updateSettingByPath('channels.mattermost.botToken', 'fnox-bot-token')
+
+      // ...and let env-direct override.
+      process.env.FULCRUM_MATTERMOST_ENABLED = 'true'
+      process.env.FULCRUM_MATTERMOST_SERVER_URL = 'https://env.example.com'
+      process.env.FULCRUM_MATTERMOST_BOT_TOKEN = 'env-bot-token'
+
+      const mm = getSettings().channels.mattermost
+      expect(mm.enabled).toBe(true)
+      expect(mm.serverUrl).toBe('https://env.example.com')
+      expect(mm.botToken).toBe('env-bot-token')
+    })
+
+    test('falls back to fnox value when env var is unset or empty', async () => {
+      const { updateSettingByPath, getSettings, ensureFulcrumDir } = await import('./')
+      ensureFulcrumDir()
+
+      updateSettingByPath('channels.mattermost.enabled', true)
+      updateSettingByPath('channels.mattermost.serverUrl', 'https://fnox.example.com')
+
+      // Empty string env should not override
+      process.env.FULCRUM_MATTERMOST_SERVER_URL = ''
+      // Unset env should not override either
+      delete process.env.FULCRUM_MATTERMOST_ENABLED
+
+      const mm = getSettings().channels.mattermost
+      expect(mm.enabled).toBe(true)
+      expect(mm.serverUrl).toBe('https://fnox.example.com')
+    })
+
+    test('falls back to default when neither env nor fnox is set', async () => {
+      const { getSettings, ensureFulcrumDir } = await import('./')
+      ensureFulcrumDir()
+
+      const mm = getSettings().channels.mattermost
+      expect(mm.enabled).toBe(false)
+      expect(mm.serverUrl).toBe('')
+      expect(mm.allowedUserIds).toEqual([])
+    })
+
+    test('does not affect other channels (slack/discord/telegram still fnox-only)', async () => {
+      const { updateSettingByPath, getSettings, ensureFulcrumDir } = await import('./')
+      ensureFulcrumDir()
+
+      // Setting a non-mattermost env should NOT bleed into Mattermost block.
+      process.env.FULCRUM_MATTERMOST_ENABLED = 'true'
+      updateSettingByPath('channels.slack.enabled', false)
+      updateSettingByPath('channels.discord.enabled', false)
+      updateSettingByPath('channels.telegram.enabled', false)
+
+      const channels = getSettings().channels
+      expect(channels.mattermost.enabled).toBe(true)
+      expect(channels.slack.enabled).toBe(false)
+      expect(channels.discord.enabled).toBe(false)
+      expect(channels.telegram.enabled).toBe(false)
     })
   })
 

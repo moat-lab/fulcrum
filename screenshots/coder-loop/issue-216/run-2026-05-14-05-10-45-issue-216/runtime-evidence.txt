@@ -1,0 +1,74 @@
+=== Runtime evidence for issue #216 ===
+Run ID: run-2026-05-14-05-10-45-issue-216
+Date: 2026-05-14T05:20:30Z
+
+=== Sandbox FULCRUM_DIR (no fnox.toml / no age.txt) ===
+total 4400
+drwxr-xr-x@   11 mouriya  wheel      352 May 14 14:16 .
+drwxrwxrwt  1040 root     wheel    33280 May 14 14:20 ..
+drwxr-xr-x@    2 mouriya  wheel       64 May 14 14:15 assistant
+-rw-r--r--@    1 mouriya  wheel     4096 May 14 14:15 fulcrum.db
+-rw-r--r--@    1 mouriya  wheel    32768 May 14 14:15 fulcrum.db-shm
+-rw-r--r--@    1 mouriya  wheel  1116552 May 14 14:20 fulcrum.db-wal
+-rw-r--r--@    1 mouriya  wheel    17161 May 14 14:20 fulcrum.log
+-rw-r--r--@    1 mouriya  wheel    34917 May 14 14:20 server.log
+drwxr-xr-x@    2 mouriya  wheel       64 May 14 14:15 sockets
+
+=== Env vars exported when starting server ===
+FULCRUM_MATTERMOST_ENABLED=true
+FULCRUM_MATTERMOST_SERVER_URL=https://mattermost.invalid.example.com
+FULCRUM_MATTERMOST_BOT_TOKEN=fake-bot-token-for-issue216
+FULCRUM_MATTERMOST_TEAM_ID=team-issue216
+FULCRUM_MATTERMOST_CHANNEL_ID=channel-issue216
+FULCRUM_MATTERMOST_COMMAND_TOKEN=cmd-issue216
+
+=== GET /api/config/fnox-status (proves fnox is NOT available) ===
+{
+  "available": false,
+  "configCount": 1
+}
+
+=== GET /api/messaging/mattermost (proves env-direct fallback fired) ===
+{
+  "enabled": true,
+  "status": "disconnected",
+  "config": {
+    "enabled": true,
+    "serverUrl": "https://mattermost.invalid.example.com",
+    "botToken": "••••••••",
+    "teamId": "team-issue216",
+    "channelId": "channel-issue216",
+    "commandToken": "••••••••"
+  }
+}
+
+=== Server startup log grep (issue #216 anchor line) ===
+{"ts":"2026-05-14T05:15:42.553Z","lvl":"info","src":"Settings","msg":"Config initialized","ctx":{"schemaVersion":5}}
+{"ts":"2026-05-14T05:15:42.725Z","lvl":"info","src":"Messaging","msg":"Starting Mattermost channel from settings","ctx":{"enabled":true,"source":"env-direct","serverUrl":"https://mattermost.invalid.example.com","teamId":"team-issue216"}}
+{"ts":"2026-05-14T05:15:42.759Z","lvl":"info","src":"Messaging","msg":"Mattermost channel started from settings"}
+=== After-restart probe (proves persistence without API write) ===
+/api/messaging/mattermost:
+{
+  "enabled": true,
+  "status": "disconnected",
+  "config": {
+    "enabled": true,
+    "serverUrl": "https://mattermost.invalid.example.com",
+    "botToken": "••••••••",
+    "teamId": "team-issue216",
+    "channelId": "channel-issue216",
+    "commandToken": "••••••••"
+  }
+}
+
+/api/config/fnox-status:
+{
+  "available": false,
+  "configCount": 0
+}
+
+Server startup log:
+{"ts":"2026-05-14T05:15:42.725Z","lvl":"info","src":"Messaging","msg":"Starting Mattermost channel from settings","ctx":{"enabled":true,"source":"env-direct","serverUrl":"https://mattermost.invalid.example.com","teamId":"team-issue216"}}
+{"ts":"2026-05-14T05:15:42.759Z","lvl":"info","src":"Messaging","msg":"Mattermost channel started from settings"}
+{"ts":"2026-05-14T05:20:48.688Z","lvl":"info","src":"Messaging","msg":"Starting Mattermost channel from settings","ctx":{"enabled":true,"source":"env-direct","serverUrl":"https://mattermost.invalid.example.com","teamId":"team-issue216"}}
+{"ts":"2026-05-14T05:20:48.711Z","lvl":"info","src":"Messaging","msg":"Mattermost channel started from settings"}
