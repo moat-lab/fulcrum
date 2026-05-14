@@ -1,0 +1,14 @@
+=== in-container: fulcrum --version ===
+5.10.1
+=== in-container: command -v fulcrum ===
+/usr/local/bin/fulcrum
+=== in-container: fulcrum status (hits localhost:7777 default) ===
+Fulcrum is running (healthy)
+  URL:  http://localhost:7777
+  Uptime:  36s
+=== in-container: fulcrum tasks --json (plugin-contract verb, hits HTTP API) ===
+{"success":true,"data":{"schema_version":1,"verb":"tasks.list","filter":{"status":"active","priority":null,"project_id":null,"tag":null,"page":1,"page_size":20,"total_pages":1},"total":0,"tasks":[]}}
+=== in-container: FULCRUM_URL env honored ===
+Fulcrum is running (healthy)
+  URL:  http://localhost:7777
+  Uptime:  36s

@@ -22,6 +22,7 @@ COPY . .
 RUN bun run build
 RUN mkdir -p cli/server cli/drizzle cli/dist \
   && bun build server/index.ts --target=bun --outfile=cli/server/index.js \
+  && bun build cli/src/index.ts --target=bun --outfile=cli/cli.js \
   && cp -r drizzle/* cli/drizzle/ \
   && cp -r dist/* cli/dist/ \
   && cp package.json cli/package.json
@@ -39,13 +40,17 @@ RUN apt-get update \
 
 COPY --from=build /app/cli/package.json ./package.json
 COPY --from=build /app/cli/server ./server
+COPY --from=build /app/cli/cli.js ./cli.js
 COPY --from=build /app/cli/dist ./dist
 COPY --from=build /app/cli/drizzle ./drizzle
 COPY --from=build /app/entrypoint.sh ./entrypoint.sh
 
 COPY --from=rexecd-builder /out/rexecd /usr/local/bin/rexecd
 
-RUN chmod +x /app/entrypoint.sh /usr/local/bin/rexecd
+# fulcrum CLI shell wrapper — keeps the bundled JS at /app/cli.js and exposes
+# `fulcrum` on PATH so rexecd's fork+exec("fulcrum", ...) lands.
+RUN printf '#!/bin/sh\nexec bun /app/cli.js "$@"\n' > /usr/local/bin/fulcrum \
+  && chmod +x /app/entrypoint.sh /usr/local/bin/rexecd /usr/local/bin/fulcrum
 
 ENV FULCRUM_REMOTE_ONLY=true
 ENV FULCRUM_DIR=/data/.fulcrum

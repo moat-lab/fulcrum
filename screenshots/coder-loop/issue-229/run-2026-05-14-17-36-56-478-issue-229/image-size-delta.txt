@@ -1,0 +1,26 @@
+=== baseline image size (main @ c165de21) ===
+388MB
+=== issue-229 image size ===
+391MB
+=== exact byte size + delta ===
+baseline_bytes=90900683
+new_bytes=91246242
+delta_bytes=345559  delta_mb=0.33
+=== docker history baseline (cli-related, top) ===
+0B	CMD ["bun" "server/index.js"]
+0B	ENTRYPOINT ["/app/entrypoint.sh"]
+0B	EXPOSE [50051/tcp]
+0B	EXPOSE [7777/tcp]
+0B	ENV REXECD_LISTEN=0.0.0.0:50051
+0B	ENV PORT=7777
+0B	ENV HOST=0.0.0.0
+0B	ENV NODE_ENV=production
+=== docker history issue-229 (cli-related, top) ===
+0B	CMD ["bun" "server/index.js"]
+0B	ENTRYPOINT ["/app/entrypoint.sh"]
+0B	EXPOSE [50051/tcp]
+0B	EXPOSE [7777/tcp]
+0B	ENV REXECD_LISTEN=0.0.0.0:50051
+0B	ENV PORT=7777
+0B	ENV HOST=0.0.0.0
+0B	ENV NODE_ENV=production
