@@ -1,5 +1,6 @@
 import {
   getNotificationSettings,
+  getSettings,
   type NotificationSettings,
   type SlackNotificationConfig,
   type DiscordNotificationConfig,
@@ -288,15 +289,34 @@ function getChannelDispatchers(
   return dispatchers
 }
 
-// Send Mattermost notification via bot API (rich card with actions)
+// Send Mattermost notification via bot API (plain text post to default channel).
+// Interactive cards / action buttons now belong to mattermost-plugin-fulcrum (#221);
+// fulcrum-side notifications are intentionally plain so they don't depend on the
+// removed outgoing-webhook callback route.
 async function sendMattermostNotification(
   payload: NotificationPayload
 ): Promise<NotificationResult> {
   try {
-    const { postNotification } = await import('./mattermost/client')
-    const { buildNotificationCard } = await import('./mattermost/cards')
+    const config = getSettings().channels.mattermost
+    if (!config.serverUrl || !config.botToken) {
+      throw new Error('Mattermost not configured')
+    }
+    if (!config.channelId) {
+      throw new Error('Mattermost default channel not configured')
+    }
 
-    await postNotification(buildNotificationCard(payload))
+    const message = `**${payload.title}**\n${payload.message}${payload.url ? `\n${payload.url}` : ''}`
+    const res = await fetch(`${config.serverUrl}/api/v4/posts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.botToken}`,
+      },
+      body: JSON.stringify({ channel_id: config.channelId, message }),
+    })
+    if (!res.ok) {
+      throw new Error(`Mattermost API error: ${res.status} ${await res.text()}`)
+    }
 
     return { channel: 'mattermost', success: true }
   } catch (err) {

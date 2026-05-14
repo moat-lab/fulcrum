@@ -135,8 +135,6 @@ export function getSettings(): Settings {
         botToken: (ef('channels.mattermost.botToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.botToken,
         teamId: (ef('channels.mattermost.teamId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.teamId,
         channelId: (ef('channels.mattermost.channelId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.channelId,
-        commandToken: (ef('channels.mattermost.commandToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.commandToken,
-        allowedUserIds: (ef('channels.mattermost.allowedUserIds') as string[] | null) ?? DEFAULT_SETTINGS.channels.mattermost.allowedUserIds,
       },
       exchange: {
         enabled: (fv('channels.exchange.enabled') as boolean | null) ?? DEFAULT_SETTINGS.channels.exchange.enabled,

@@ -10,7 +10,7 @@ import type { ConnectionStatus } from '../types'
 
 export { MATTERMOST_CONNECTION_ID } from '../channel-manager'
 
-export async function configureMattermost(serverUrl: string, botToken: string, teamId: string, channelId: string, commandToken: string): Promise<{
+export async function configureMattermost(serverUrl: string, botToken: string, teamId: string, channelId: string): Promise<{
   enabled: boolean
   status: ConnectionStatus
 }> {
@@ -31,7 +31,6 @@ export async function configureMattermost(serverUrl: string, botToken: string, t
   updateSettingByPath('channels.mattermost.botToken', botToken)
   updateSettingByPath('channels.mattermost.teamId', teamId)
   updateSettingByPath('channels.mattermost.channelId', channelId)
-  updateSettingByPath('channels.mattermost.commandToken', commandToken)
 
   await startMattermostChannel()
   const channel = activeChannels.get(MATTERMOST_CONNECTION_ID)
@@ -76,7 +75,6 @@ export async function disconnectMattermost(): Promise<{
   updateSettingByPath('channels.mattermost.botToken', '')
   updateSettingByPath('channels.mattermost.teamId', '')
   updateSettingByPath('channels.mattermost.channelId', '')
-  updateSettingByPath('channels.mattermost.commandToken', '')
   return { enabled: false, status: 'disconnected' }
 }
 
@@ -98,7 +96,6 @@ export function getMattermostConfig(): {
   botToken: string
   teamId: string
   channelId: string
-  commandToken: string
 } | null {
   const config = getSettings().channels.mattermost
   if (!config.serverUrl && !config.botToken) return null
@@ -109,6 +106,5 @@ export function getMattermostConfig(): {
     botToken: config.botToken ? '••••••••' : '',
     teamId: config.teamId,
     channelId: config.channelId,
-    commandToken: config.commandToken ? '••••••••' : '',
   }
 }

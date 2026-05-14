@@ -21,8 +21,50 @@ import {
 import { spawn } from 'child_process'
 import { testNotificationChannel, sendNotification, type NotificationPayload } from '../services/notification-service'
 import { getRuntimeConfig } from '../lib/runtime-config'
-import { validateConnection as validateMattermostConnection } from '../services/mattermost/client'
 import { detectTailscaleIp } from './server-expose'
+
+interface MattermostConnectionInfo {
+  bot: { id: string; username: string; displayName: string }
+  team: { id: string; name: string; displayName: string } | null
+}
+
+async function validateMattermostConnection(): Promise<MattermostConnectionInfo> {
+  const config = getSettings().channels.mattermost
+  if (!config.serverUrl || !config.botToken) {
+    throw new Error('Mattermost not configured')
+  }
+
+  const headers = { 'Authorization': `Bearer ${config.botToken}` }
+  const userRes = await fetch(`${config.serverUrl}/api/v4/users/me`, { headers })
+  if (!userRes.ok) {
+    throw new Error(`Mattermost API error: ${userRes.status} ${await userRes.text()}`)
+  }
+  const user = await userRes.json() as { id: string; username?: string; nickname?: string; first_name?: string; last_name?: string }
+
+  let team: MattermostConnectionInfo['team'] = null
+  if (config.teamId) {
+    const teamRes = await fetch(`${config.serverUrl}/api/v4/teams/${config.teamId}`, { headers })
+    if (!teamRes.ok) {
+      throw new Error(`Mattermost API error: ${teamRes.status} ${await teamRes.text()}`)
+    }
+    const teamBody = await teamRes.json() as { id: string; name: string; display_name?: string }
+    team = {
+      id: teamBody.id,
+      name: teamBody.name,
+      displayName: teamBody.display_name || teamBody.name,
+    }
+  }
+
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ')
+  return {
+    bot: {
+      id: user.id,
+      username: user.username || user.id,
+      displayName: user.nickname || fullName || user.username || user.id,
+    },
+    team,
+  }
+}
 
 export { CONFIG_KEYS } from '../../shared/config-keys'
 import { CONFIG_KEYS } from '../../shared/config-keys'

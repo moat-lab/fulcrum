@@ -42,7 +42,6 @@ import memoryFileRoutes from './routes/memory-file'
 import searchRoutes from './routes/search'
 import draftItemsRoutes from './routes/draft-items'
 import scratchDirsRoutes from './routes/scratch-dirs'
-import mattermostRoutes from './routes/mattermost'
 import serverExposeRoutes from './routes/server-expose'
 import claudeChannelRoutes from './routes/claude-channels'
 import channelRoutes from './routes/channels'
@@ -145,9 +144,6 @@ export function createApp() {
 
   // Unified search across all entities
   app.route('/api/search', searchRoutes)
-
-  // Mattermost integration (slash commands, actions, dialogs)
-  app.route('/api/mattermost', mattermostRoutes)
 
   // Claude Code channel bridge
   app.route('/api/claude-channels', claudeChannelRoutes)
