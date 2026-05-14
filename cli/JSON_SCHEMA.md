@@ -293,6 +293,34 @@ writes the agent's launch command. Also transitions the task to
 }
 ```
 
+### `fulcrum help`
+
+Plugin entry for `/f help` — returns every top-level fulcrum CLI verb so the
+plugin can render a bot post (not an ephemeral) listing the command surface.
+
+```json
+{
+  "schema_version": 1,
+  "verb": "help",
+  "verbs": [
+    { "name": "tasks", "description": "Task verbs for Mattermost plugin contract" },
+    { "name": "apps", "description": "App verbs for Mattermost plugin contract" },
+    { "name": "projects", "description": "List projects" },
+    { "name": "status", "description": "Show server status" },
+    { "name": "doctor", "description": "Check dependencies and system status" }
+  ]
+}
+```
+
+`verbs` lists every entry registered in `cli/src/index.ts`'s top-level
+`subCommands`, including non-plugin operator verbs (`up`, `down`, `expose`,
+`doctor`, ...) so `/f help` doubles as a CLI surface inventory. The list is
+defined in `cli/src/commands/help.ts:HELP_VERBS`; see the unit test for the
+required-presence contract.
+
+`fulcrum help --json=false` prints the same list in padded plain text for
+operator debugging.
+
 ## Shared shapes
 
 ### `TaskSummary`

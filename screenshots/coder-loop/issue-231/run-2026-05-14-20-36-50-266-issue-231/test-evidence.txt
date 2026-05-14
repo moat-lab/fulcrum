@@ -1,0 +1,19 @@
+=== mise run test:file cli/src/__tests__/commands/help.test.ts ===
+[test:file] $ #!/usr/bin/env bash
+[test:file] Isolated environment: HOME=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-home-XXXXXX.yVrP6yrdsx FULCRUM_DIR=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-dir-XXXXXX.N3nOpu0D2z
+bun test v1.3.13 (bf2e2cec)
+
+ 4 pass
+ 0 fail
+ 111 expect() calls
+Ran 4 tests across 1 file. [55.00ms]
+
+=== mise run test (full suite tail) ===
+
+[test] Isolated environment: HOME=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-home-XXXXXX.GYnFzjscp5 FULCRUM_DIR=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-dir-XXXXXX.DuYUbdJq9g
+Running tests...
+bun test v1.3.13 (bf2e2cec)
+ 1498 pass
+ 9 skip
+ 0 fail
+Ran 1507 tests across 85 files. [39.88s]
