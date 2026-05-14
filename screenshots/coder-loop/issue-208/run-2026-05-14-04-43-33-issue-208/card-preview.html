@@ -1,0 +1,66 @@
+<!doctype html>
+<!--
+  Rendered preview of the ephemeral card payload returned by
+  POST https://mattermost.237575.xyz/api/v4/commands/execute
+  with body { command: "/f help" } and the prod fulcrum bot token.
+  Source: ./response.json (committed alongside this file).
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Fulcrum mgmt-bot card preview (issue #208 smoke)</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #ffffff; color: #1d1d1f; margin: 0; padding: 24px; }
+  .banner { font-size: 12px; color: #666; margin-bottom: 12px; }
+  .channel-header { font-weight: 600; font-size: 16px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e6e6e6; }
+  .post { display: flex; gap: 12px; padding: 12px 0; }
+  .avatar { width: 36px; height: 36px; border-radius: 4px; background: #7C3AED; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+  .body { flex: 1; min-width: 0; }
+  .meta { font-size: 13px; }
+  .meta .user { font-weight: 600; }
+  .meta .ts { color: #999; margin-left: 6px; }
+  .meta .ephemeral { color: #999; margin-left: 6px; font-style: italic; }
+  .attachment { margin-top: 8px; border-left: 4px solid #7C3AED; background: #fafafa; padding: 8px 12px; max-width: 720px; }
+  .attachment .pretext { font-weight: 600; margin-bottom: 6px; }
+  .attachment .text { white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+  code { background: #ececec; padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="banner">renderer = local HTML preview built from <code>response.json</code> (committed) — substitutes the vctcn MM web UI screenshot which requires Alice login credentials (per credentials-belong-in-iac rule).</div>
+  <div class="channel-header"># vctcn Mattermost channel  ·  <code>ogb3tqnbftdwmn1pd8weq8bxor</code></div>
+
+  <!-- alice's slash command (shown locally only — ephemeral commands are not posted to the channel feed) -->
+  <div class="post">
+    <div class="avatar" style="background:#0073e6;">A</div>
+    <div class="body">
+      <div class="meta"><span class="user">alice</span><span class="ts">just now</span></div>
+      <div class="attachment" style="border-left-color:#0073e6;">
+        <div class="text"><code>/f help</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- fulcrum bot ephemeral response (only alice can see this in the actual MM channel) -->
+  <div class="post">
+    <div class="avatar">F</div>
+    <div class="body">
+      <div class="meta"><span class="user">fulcrum</span><span class="ts">just now</span><span class="ephemeral">(Only visible to you)</span></div>
+      <div class="attachment">
+        <div class="pretext">#### Fulcrum Commands</div>
+        <div class="text"><code>/f</code> — Dashboard overview
+<code>/f tasks [doing|review|todo|done|high|#tag|@project]</code> — Task list
+<code>/f task &lt;id&gt;</code> — Task detail with actions
+<code>/f new &lt;title&gt;</code> — Create new task
+<code>/f deploy &lt;app&gt;</code> — App deployment
+<code>/f apps</code> — All applications
+<code>/f search &lt;keywords&gt;</code> — Search tasks &amp; projects
+<code>/f monitor</code> — System resources and agents
+<code>/f settings</code> — Configure Mattermost integration
+<code>/f jobs</code> — Scheduled jobs
+<code>/f projects</code> — Project list</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
