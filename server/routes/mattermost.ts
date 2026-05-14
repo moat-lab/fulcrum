@@ -174,7 +174,7 @@ app.post('/commands', async (c) => {
       response_type: inChannel ? 'in_channel' : 'ephemeral',
       username: MATTERMOST_RESPONSE_USERNAME,
       icon_url: fulcrumUrl(MATTERMOST_RESPONSE_ICON_PATH),
-      props: { attachments: [attachment] },
+      attachments: [attachment],
     })
   } catch (err) {
     log.messaging.error('Mattermost command error', { text, error: String(err) })
