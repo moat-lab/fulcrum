@@ -31,7 +31,10 @@ jobs:
 
       - name: Resolve image tag
         id: meta
-        run: echo "tag=ghcr.io/${{ github.repository_owner }}/fulcrum:${{ github.sha }}" | tee -a "$GITHUB_OUTPUT"
+        run: |
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "owner_lc=${owner_lc}" | tee -a "$GITHUB_OUTPUT"
+          echo "tag=ghcr.io/${owner_lc}/fulcrum:${{ github.sha }}" | tee -a "$GITHUB_OUTPUT"
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -40,7 +43,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/fulcrum:latest
+            ghcr.io/${{ steps.meta.outputs.owner_lc }}/fulcrum:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
