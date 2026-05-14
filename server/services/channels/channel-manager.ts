@@ -604,6 +604,15 @@ export async function startMessagingChannels(): Promise<void> {
 
   // Start Mattermost if enabled in settings
   if (settings.channels.mattermost.enabled) {
+    // Grep anchor for issue #216: lets operators see when the config came from
+    // FULCRUM_MATTERMOST_* env-direct fallback vs the fnox cache.
+    const envEnabled = process.env.FULCRUM_MATTERMOST_ENABLED === 'true'
+    log.messaging.info('Starting Mattermost channel from settings', {
+      enabled: settings.channels.mattermost.enabled,
+      source: envEnabled ? 'env-direct' : 'fnox',
+      serverUrl: settings.channels.mattermost.serverUrl,
+      teamId: settings.channels.mattermost.teamId,
+    })
     try {
       await startMattermostChannel()
     } catch (err) {

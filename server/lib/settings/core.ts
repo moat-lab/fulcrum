@@ -21,6 +21,7 @@ import {
 import { migrateSettingsJsonToFnox } from './migrate-to-fnox'
 import {
   getFnoxValue,
+  getEnvFnoxValue,
   isFnoxAvailable,
   isSecretPath,
   setFnoxValue,
@@ -33,6 +34,11 @@ export function getSettings(): Settings {
   ensureFulcrumDir()
 
   const fv = (path: string): unknown => getFnoxValue(path)
+
+  // env-direct fallback (env > fnox > default). Used for sections where the
+  // runtime container ships `FULCRUM_*` env vars directly via compose but
+  // has no fnox CLI / age.txt to populate the fnox cache (issue #216).
+  const ef = (path: string): unknown => getEnvFnoxValue(path) ?? getFnoxValue(path)
 
   const settings: Settings = {
     _schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -124,13 +130,13 @@ export function getSettings(): Settings {
         botToken: (fv('channels.telegram.botToken') as string) ?? DEFAULT_SETTINGS.channels.telegram.botToken,
       },
       mattermost: {
-        enabled: (fv('channels.mattermost.enabled') as boolean | null) ?? DEFAULT_SETTINGS.channels.mattermost.enabled,
-        serverUrl: (fv('channels.mattermost.serverUrl') as string) ?? DEFAULT_SETTINGS.channels.mattermost.serverUrl,
-        botToken: (fv('channels.mattermost.botToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.botToken,
-        teamId: (fv('channels.mattermost.teamId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.teamId,
-        channelId: (fv('channels.mattermost.channelId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.channelId,
-        commandToken: (fv('channels.mattermost.commandToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.commandToken,
-        allowedUserIds: (fv('channels.mattermost.allowedUserIds') as string[] | null) ?? DEFAULT_SETTINGS.channels.mattermost.allowedUserIds,
+        enabled: (ef('channels.mattermost.enabled') as boolean | null) ?? DEFAULT_SETTINGS.channels.mattermost.enabled,
+        serverUrl: (ef('channels.mattermost.serverUrl') as string) ?? DEFAULT_SETTINGS.channels.mattermost.serverUrl,
+        botToken: (ef('channels.mattermost.botToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.botToken,
+        teamId: (ef('channels.mattermost.teamId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.teamId,
+        channelId: (ef('channels.mattermost.channelId') as string) ?? DEFAULT_SETTINGS.channels.mattermost.channelId,
+        commandToken: (ef('channels.mattermost.commandToken') as string) ?? DEFAULT_SETTINGS.channels.mattermost.commandToken,
+        allowedUserIds: (ef('channels.mattermost.allowedUserIds') as string[] | null) ?? DEFAULT_SETTINGS.channels.mattermost.allowedUserIds,
       },
       exchange: {
         enabled: (fv('channels.exchange.enabled') as boolean | null) ?? DEFAULT_SETTINGS.channels.exchange.enabled,
