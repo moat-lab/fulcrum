@@ -49,6 +49,25 @@ export function output<T>(data: T): void {
   console.log(JSON.stringify(response))
 }
 
+/**
+ * Stable JSON contract version for the Mattermost-plugin verb surface.
+ * Bump on any breaking schema change to the `mattermost-plugin-fulcrum`
+ * render layer. See `cli/JSON_SCHEMA.md` for the per-verb shapes.
+ */
+export const CLI_JSON_SCHEMA_VERSION = 1
+
+/**
+ * Emit a verb payload as a structured JSON envelope tagged with
+ * `schema_version`. Always prints the JSON form (these verbs only have a
+ * machine-consumable mode — the plugin is the human renderer).
+ */
+export function outputVerbPayload<T extends Record<string, unknown>>(
+  verb: string,
+  payload: T
+): void {
+  output({ schema_version: CLI_JSON_SCHEMA_VERSION, verb, ...payload })
+}
+
 export function outputError(error: CliError): never {
   if (jsonOutput) {
     const response: ErrorResponse = {

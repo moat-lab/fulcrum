@@ -21,6 +21,15 @@ import { mcpCommand } from './commands/mcp'
 import { hostsCommand } from './commands/hosts'
 import { migrateFromViboraCommand } from './commands/migrate-from-vibora'
 import { updateCommand } from './commands/update'
+import {
+  dashboardCommand,
+  tasksCommand,
+  appsCommand,
+  searchCommand,
+  monitorCommand,
+  jobsCommand,
+  projectsCommand,
+} from './commands/mattermost-verbs'
 
 import pkg from '../../package.json'
 
@@ -84,6 +93,16 @@ const main = defineCommand({
 
     // Migration
     'migrate-from-vibora': migrateFromViboraCommand,
+
+    // Mattermost-plugin contract verbs (JSON output for plugin consumption;
+    // see cli/JSON_SCHEMA.md).
+    dashboard: dashboardCommand,
+    tasks: tasksCommand,
+    apps: appsCommand,
+    search: searchCommand,
+    monitor: monitorCommand,
+    jobs: jobsCommand,
+    projects: projectsCommand,
   },
 })
 

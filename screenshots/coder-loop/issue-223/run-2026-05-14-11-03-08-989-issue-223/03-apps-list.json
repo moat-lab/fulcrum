@@ -1,0 +1,25 @@
+App verbs for Mattermost plugin contract (fulcrum apps v5.10.1)
+
+USAGE fulcrum apps [OPTIONS] list|get|deploy|stop|rollback|logs
+
+OPTIONS
+
+     --port    Server port (default: 7777)                                          
+      --url    Override full server URL                                             
+  --no-json    Emit JSON envelope (default and only output mode for plugin contract)
+    --debug    Show detailed error stack traces                                     
+
+COMMANDS
+
+      list    List apps                        
+       get    Get a single app                 
+    deploy    Trigger a deployment             
+      stop    Stop an app                      
+  rollback    Rollback to a previous deployment
+      logs    Fetch service logs               
+
+Use fulcrum apps <command> --help for more information about a command.
+
+
+ ERROR  Unknown command 8888
+

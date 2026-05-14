@@ -531,6 +531,37 @@ export class FulcrumClient {
     })
   }
 
+  async startTaskAgent(id: string): Promise<{
+    success: boolean
+    terminalId: string
+    agent: string
+  }> {
+    return this.fetch(`/api/tasks/${id}/start-agent`, { method: 'POST' })
+  }
+
+  async killTaskAgent(id: string): Promise<{ success: boolean; terminalsAffected: number }> {
+    return this.fetch(`/api/tasks/${id}/kill-claude`, { method: 'POST' })
+  }
+
+  async rollbackApp(
+    id: string,
+    deploymentId: string
+  ): Promise<{ success: boolean; deployment?: Deployment; error?: string }> {
+    return this.fetch(`/api/apps/${id}/rollback/${deploymentId}`, { method: 'POST' })
+  }
+
+  async getSystemMetrics(window: string = '1h'): Promise<{
+    window: string
+    hostId: string
+    current?: {
+      cpuPercent?: number | null
+      memoryPercent?: number | null
+      diskPercent?: number | null
+    } | null
+  }> {
+    return this.fetch(`/api/monitoring/system-metrics?window=${encodeURIComponent(window)}`)
+  }
+
   // Repositories
   async listRepositories(options?: { orphans?: boolean; projectId?: string }): Promise<Repository[]> {
     const params = new URLSearchParams()
