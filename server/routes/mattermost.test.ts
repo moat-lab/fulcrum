@@ -210,9 +210,9 @@ describe.serial('Mattermost Routes', () => {
         user_id: 'owner',
       })
       const data = await res.json() as {
-        props?: { attachments?: Array<{ pretext?: string }> }
+        attachments?: Array<{ pretext?: string }>
       }
-      const pretext = data.props?.attachments?.[0]?.pretext ?? ''
+      const pretext = data.attachments?.[0]?.pretext ?? ''
       expect(pretext).toContain('Fulcrum Commands')
     })
   })
@@ -227,9 +227,9 @@ describe.serial('Mattermost Routes', () => {
       const client = createTestApp()
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: '' })
       const data = await res.json() as {
-        props?: { attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }> }
+        attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }>
       }
-      const attachment = data.props?.attachments?.[0]
+      const attachment = data.attachments?.[0]
       expect(attachment?.text).toContain('[Open in Fulcrum ↗](')
       expect(attachment?.actions?.some(action => action.id === 'open' || action.name === 'Open ↗')).toBe(false)
     })
@@ -249,9 +249,9 @@ describe.serial('Mattermost Routes', () => {
       const client = createTestApp()
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task mattermost-link-task' })
       const data = await res.json() as {
-        props?: { attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }> }
+        attachments?: Array<{ text?: string; actions?: Array<{ id?: string; name?: string }> }>
       }
-      const attachment = data.props?.attachments?.[0]
+      const attachment = data.attachments?.[0]
       expect(attachment?.text).toContain('Task description')
       expect(attachment?.text).toContain('[Open in Fulcrum ↗](')
       expect(attachment?.actions?.some(action => action.id === 'open' || action.name === 'Open ↗')).toBe(false)
@@ -292,9 +292,9 @@ describe.serial('Mattermost Routes', () => {
       const client = createTestApp()
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task mattermost-agent-running-task' })
       const data = await res.json() as {
-        props?: { attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }> }
+        attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }>
       }
-      const agentField = data.props?.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
+      const agentField = data.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
       expect(agentField?.value).toBe('claude running')
     })
 
@@ -326,9 +326,9 @@ describe.serial('Mattermost Routes', () => {
       const client = createTestApp()
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task mattermost-agent-crashed-task' })
       const data = await res.json() as {
-        props?: { attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }> }
+        attachments?: Array<{ fields?: Array<{ title?: string; value?: string }> }>
       }
-      const agentField = data.props?.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
+      const agentField = data.attachments?.[0]?.fields?.find((field) => field.title === 'Agent')
       expect(agentField?.value).toBe('opencode crashed')
     })
   })
@@ -343,9 +343,9 @@ describe.serial('Mattermost Routes', () => {
       const client = createTestApp()
 
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task task-prefix' })
-      const data = await res.json() as { props?: { attachments?: Array<{ pretext?: string }> } }
+      const data = await res.json() as { attachments?: Array<{ pretext?: string }> }
 
-      expect(data.props?.attachments?.[0]?.pretext).toContain('Prefix task')
+      expect(data.attachments?.[0]?.pretext).toContain('Prefix task')
     })
 
     test('tasks subcommand routes filters through priority and project parsing', async () => {
@@ -355,10 +355,10 @@ describe.serial('Mattermost Routes', () => {
       const client = createTestApp()
 
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'tasks high @Mattermost' })
-      const data = await res.json() as { props?: { attachments?: Array<{ text?: string }> } }
+      const data = await res.json() as { attachments?: Array<{ text?: string }> }
 
-      expect(data.props?.attachments?.[0]?.text).toContain('Matched task')
-      expect(data.props?.attachments?.[0]?.text).not.toContain('Wrong priority')
+      expect(data.attachments?.[0]?.text).toContain('Matched task')
+      expect(data.attachments?.[0]?.text).not.toContain('Wrong priority')
     })
 
     test('deploy subcommand returns app detail by app name and not-found card for missing app', async () => {
@@ -367,11 +367,11 @@ describe.serial('Mattermost Routes', () => {
 
       const found = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'deploy Fulcrum' })
       const missing = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'deploy Missing' })
-      const foundData = await found.json() as { props?: { attachments?: Array<{ pretext?: string }> } }
-      const missingData = await missing.json() as { props?: { attachments?: Array<{ text?: string }> } }
+      const foundData = await found.json() as { attachments?: Array<{ pretext?: string }> }
+      const missingData = await missing.json() as { attachments?: Array<{ text?: string }> }
 
-      expect(foundData.props?.attachments?.[0]?.pretext).toBe('#### 🚀 Fulcrum')
-      expect(missingData.props?.attachments?.[0]?.text).toContain('App "Missing" not found')
+      expect(foundData.attachments?.[0]?.pretext).toBe('#### 🚀 Fulcrum')
+      expect(missingData.attachments?.[0]?.text).toContain('App "Missing" not found')
     })
 
     test('new subcommand opens create task dialog with title prefill', async () => {
@@ -384,9 +384,9 @@ describe.serial('Mattermost Routes', () => {
         text: 'new Ship Mattermost tests',
         trigger_id: 'trigger-1',
       })
-      const data = await res.json() as { props?: { attachments?: Array<{ text?: string }> } }
+      const data = await res.json() as { attachments?: Array<{ text?: string }> }
 
-      expect(data.props?.attachments?.[0]?.text).toContain('Opening create task dialog')
+      expect(data.attachments?.[0]?.text).toContain('Opening create task dialog')
       expect(fetchCalls[0].url).toContain('/api/v4/actions/dialogs/open')
       expect(fetchCalls[0].body).toMatchObject({
         trigger_id: 'trigger-1',
@@ -552,8 +552,8 @@ describe.serial('Mattermost Routes', () => {
     test('jobs subcommand returns the scheduled jobs card', async () => {
       const client = createTestApp()
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'jobs' })
-      const data = await res.json() as { props?: { attachments?: Array<{ pretext?: string }> } }
-      expect(data.props?.attachments?.[0]?.pretext).toContain('Scheduled Jobs')
+      const data = await res.json() as { attachments?: Array<{ pretext?: string }> }
+      expect(data.attachments?.[0]?.pretext).toContain('Scheduled Jobs')
     })
 
     test('tasks list paginates results beyond the first 10 tasks', async () => {
@@ -574,9 +574,9 @@ describe.serial('Mattermost Routes', () => {
 
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'tasks' })
       const data = await res.json() as {
-        props?: { attachments?: Array<{ pretext?: string; actions?: Array<{ name: string }> }> }
+        attachments?: Array<{ pretext?: string; actions?: Array<{ name: string }> }>
       }
-      const attachment = data.props?.attachments?.[0]
+      const attachment = data.attachments?.[0]
       expect(attachment?.pretext).toContain('Page 1/2')
       expect(attachment?.actions?.some(action => action.name === 'Next →')).toBe(true)
     })
@@ -626,9 +626,9 @@ describe.serial('Mattermost Routes', () => {
 
       const res = await postForm(client, '/api/mattermost/commands', { token: TOKEN, text: 'task main-task' })
       const data = await res.json() as {
-        props?: { attachments?: Array<{ fields?: Array<{ title: string; value: string }> }> }
+        attachments?: Array<{ fields?: Array<{ title: string; value: string }> }>
       }
-      const fields = data.props?.attachments?.[0]?.fields ?? []
+      const fields = data.attachments?.[0]?.fields ?? []
       expect(fields.some(field => field.title === 'PR' && field.value.includes('/pull/123'))).toBe(true)
       expect(fields.some(field => field.title === 'Links' && field.value.includes('Spec'))).toBe(true)
       expect(fields.some(field => field.title === 'Depends On' && field.value.includes('Dependency task'))).toBe(true)
