@@ -1101,6 +1101,47 @@ app.post('/:id/kill-claude', (c) => {
   }
 })
 
+// POST /api/tasks/:id/start-agent - Start the configured agent in a fresh terminal
+// for the task's worktree/scratch directory. Used by the Mattermost plugin's "Start
+// Agent" action and the `fulcrum tasks start-agent` CLI verb.
+app.post('/:id/start-agent', async (c) => {
+  const id = c.req.param('id')
+  const task = db.select().from(tasks).where(eq(tasks.id, id)).get()
+
+  if (!task) {
+    return c.json({ error: 'Task not found' }, 404)
+  }
+
+  if (!task.worktreePath) {
+    return c.json({ error: 'Task has no worktree or scratch directory' }, 400)
+  }
+
+  try {
+    const ptyManager = getPTYManager()
+    const terminal = await ptyManager.create({
+      name: `${task.agent || 'agent'}: ${task.title.slice(0, 32)}`,
+      cwd: task.worktreePath,
+      cols: 120,
+      rows: 30,
+      taskId: task.id,
+      hostId: task.hostId ?? undefined,
+    })
+    const command = task.agent === 'opencode' ? 'opencode\n' : 'claude\n'
+    ptyManager.write(terminal.id, command)
+    await updateTaskStatus(task.id, 'IN_PROGRESS')
+    return c.json({
+      success: true,
+      terminalId: terminal.id,
+      agent: task.agent || 'claude',
+    })
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      500
+    )
+  }
+})
+
 // GET /api/tasks/:id/links - List links for a task
 app.get('/:id/links', (c) => {
   const taskId = c.req.param('id')

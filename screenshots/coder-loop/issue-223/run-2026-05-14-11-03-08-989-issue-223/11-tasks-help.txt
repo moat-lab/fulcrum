@@ -1,0 +1,24 @@
+Task verbs for Mattermost plugin contract (fulcrum tasks v5.10.1)
+
+USAGE fulcrum tasks [OPTIONS] list|get|create|set-status|set-priority|diff|start-agent|kill-agent
+
+OPTIONS
+
+     --port    Server port (default: 7777)                                          
+      --url    Override full server URL                                             
+  --no-json    Emit JSON envelope (default and only output mode for plugin contract)
+    --debug    Show detailed error stack traces                                     
+
+COMMANDS
+
+          list    List tasks with optional filters       
+           get    Get a single task by ID                
+        create    Create a new task                      
+    set-status    Change task status                     
+  set-priority    Change task priority                   
+          diff    Get worktree diff for a task           
+   start-agent    Start the configured agent for a task  
+    kill-agent    Kill running agent processes for a task
+
+Use fulcrum tasks <command> --help for more information about a command.
+
