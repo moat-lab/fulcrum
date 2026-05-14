@@ -72,6 +72,11 @@ export class MattermostChannel implements MessagingChannel {
       this.ws = new WebSocket(wsUrl)
       this.ws.addEventListener('open', () => {
         this.ws?.send(JSON.stringify({ seq: 1, action: 'authentication_challenge', data: { token: config.botToken } }))
+        log.messaging.info(`Connected to Mattermost as ${me.username}`, {
+          connectionId: this.connectionId,
+          botUserId: me.id,
+          serverUrl: config.serverUrl,
+        })
         this.updateStatus('connected')
       })
       this.ws.addEventListener('message', (event) => void this.handleSocketMessage(event.data))
