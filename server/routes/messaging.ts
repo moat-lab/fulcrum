@@ -391,7 +391,7 @@ app.get('/mattermost', (c) => {
 app.post('/mattermost/configure', async (c) => {
   try {
     const body = await c.req.json()
-    const { serverUrl, botToken, teamId, channelId, commandToken } = body
+    const { serverUrl, botToken, teamId, channelId } = body
 
     if (!serverUrl || typeof serverUrl !== 'string') return c.json({ error: 'serverUrl is required' }, 400)
     if (!botToken || typeof botToken !== 'string') return c.json({ error: 'botToken is required' }, 400)
@@ -401,7 +401,6 @@ app.post('/mattermost/configure', async (c) => {
       botToken,
       typeof teamId === 'string' ? teamId : '',
       typeof channelId === 'string' ? channelId : '',
-      typeof commandToken === 'string' ? commandToken : '',
     )
     log.messaging.info('Mattermost configured via API')
     return c.json(result)

@@ -82,14 +82,17 @@ export interface PmChannelSettings {
 }
 
 // Mattermost integration settings
+//
+// Slash commands and interactive cards now live in mattermost-plugin-fulcrum (#221).
+// Fulcrum only retains the bot DM listener (see services/channels/mattermost-channel.ts)
+// plus a default-channel notification path, so we no longer carry the outgoing-webhook
+// `commandToken` or its `allowedUserIds` ACL list.
 export interface MattermostSettings {
   enabled: boolean
   serverUrl: string
   botToken: string
   teamId: string
   channelId: string // Default channel for notifications
-  commandToken: string // Slash command verification token
-  allowedUserIds: string[]
 }
 
 // CalDAV OAuth tokens (for Google Calendar)
@@ -293,8 +296,6 @@ Then store the action plan as a memory tagged with: ritual, plan, evening-ritual
       botToken: '',
       teamId: '',
       channelId: '',
-      commandToken: '',
-      allowedUserIds: [],
     },
     exchange: {
       enabled: false,
@@ -386,8 +387,6 @@ export const VALID_SETTING_PATHS = new Set([
   'channels.mattermost.botToken',
   'channels.mattermost.teamId',
   'channels.mattermost.channelId',
-  'channels.mattermost.commandToken',
-  'channels.mattermost.allowedUserIds',
   'channels.exchange.enabled',
   'channels.exchange.url',
   'channels.exchange.token',

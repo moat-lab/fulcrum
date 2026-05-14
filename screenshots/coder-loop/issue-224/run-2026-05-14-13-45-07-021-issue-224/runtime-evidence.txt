@@ -1,0 +1,34 @@
+# Issue #224 — runtime evidence
+
+Run ID: run-2026-05-14-13-45-07-021-issue-224
+Branch: issue-224-run-2026-05-14-13-45-07-021-issue-224
+Commit base: 466dcf723f4c867b0a16b7872da34a132b3cc926
+Server: bun --watch server/index.ts (PID 56093, port 9091, hot-reloaded after deletes)
+
+## Negative path — outgoing-webhook routes are now gone (must 404)
+
+$ curl -sS -X POST http://localhost:9091/api/mattermost/commands -d 'token=foo&text=help'
+HTTP 404 — body "404 Not Found"
+
+$ curl -sS -X POST http://localhost:9091/api/mattermost/actions -H 'Content-Type: application/json' -d '{}'
+HTTP 404 — body "404 Not Found"
+
+$ curl -sS -X POST http://localhost:9091/api/mattermost/dialogs -H 'Content-Type: application/json' -d '{}'
+HTTP 404 — body "404 Not Found"
+
+These three were the entire outgoing-webhook surface registered by the deleted
+server/routes/mattermost.ts. Their disappearance proves the route registration
+in server/app.ts was actually pulled, not just commented.
+
+## Positive path — kept routes still work
+
+# DM listener / channel API (services/channels/api/mattermost.ts) — must remain mounted
+$ curl -sS http://localhost:9091/api/messaging/mattermost
+HTTP 200 — body {"enabled":false,"status":"disconnected","config":null}
+
+# Test Connection endpoint (config.ts; validateConnection inlined after client.ts deletion)
+$ curl -sS -X POST http://localhost:9091/api/config/mattermost/test
+HTTP 400 — body {"success":false,"error":"Mattermost not configured"}
+(400 + "Mattermost not configured" is the correct response when serverUrl/botToken
+are empty — proves the inlined validator runs and short-circuits identically to the
+removed services/mattermost/client.ts:validateConnection.)

@@ -156,7 +156,6 @@ function SettingsPage() {
   const mattermostBotTokenConfig = useConfig(CONFIG_KEYS.MATTERMOST_BOT_TOKEN)
   const mattermostTeamIdConfig = useConfig(CONFIG_KEYS.MATTERMOST_TEAM_ID)
   const mattermostChannelIdConfig = useConfig(CONFIG_KEYS.MATTERMOST_CHANNEL_ID)
-  const mattermostCommandTokenConfig = useConfig(CONFIG_KEYS.MATTERMOST_COMMAND_TOKEN)
   const { data: zAiSettings, isLoading: zAiLoading } = useZAiSettings()
   const { data: deploymentSettings, isLoading: deploymentLoading } = useDeploymentSettings()
   const updateDeploymentSettings = useUpdateDeploymentSettings()
@@ -235,7 +234,6 @@ function SettingsPage() {
   const [mattermostBotToken, setMattermostBotToken] = useState('')
   const [mattermostTeamId, setMattermostTeamId] = useState('')
   const [mattermostChannelId, setMattermostChannelId] = useState('')
-  const [mattermostCommandToken, setMattermostCommandToken] = useState('')
   const [mattermostConnection, setMattermostConnection] = useState<string | null>(null)
 
   // z.ai settings local state
@@ -330,8 +328,7 @@ function SettingsPage() {
     if (mattermostBotTokenConfig.data) setMattermostBotToken((mattermostBotTokenConfig.data.value as string) ?? '')
     if (mattermostTeamIdConfig.data) setMattermostTeamId((mattermostTeamIdConfig.data.value as string) ?? '')
     if (mattermostChannelIdConfig.data) setMattermostChannelId((mattermostChannelIdConfig.data.value as string) ?? '')
-    if (mattermostCommandTokenConfig.data) setMattermostCommandToken((mattermostCommandTokenConfig.data.value as string) ?? '')
-  }, [mattermostEnabledConfig.data, mattermostServerUrlConfig.data, mattermostBotTokenConfig.data, mattermostTeamIdConfig.data, mattermostChannelIdConfig.data, mattermostCommandTokenConfig.data])
+  }, [mattermostEnabledConfig.data, mattermostServerUrlConfig.data, mattermostBotTokenConfig.data, mattermostTeamIdConfig.data, mattermostChannelIdConfig.data])
 
   // Sync z.ai settings
   useEffect(() => {
@@ -394,7 +391,7 @@ function SettingsPage() {
   ])
 
   const isLoading =
-    portLoading || reposDirLoading || editorAppLoading || editorHostLoading || editorSshPortLoading || githubPatLoading || defaultAgentLoading || opcodeModelLoading || opcodeDefaultAgentLoading || opencodePlanAgentLoading || autoScrollLoading || notificationsLoading || mattermostEnabledConfig.isLoading || mattermostServerUrlConfig.isLoading || mattermostBotTokenConfig.isLoading || mattermostTeamIdConfig.isLoading || mattermostChannelIdConfig.isLoading || mattermostCommandTokenConfig.isLoading || zAiLoading || deploymentLoading || taskTypeLoading || startImmediatelyLoading || scratchStartupScriptLoading || timezoneLoading || assistantProviderLoading || assistantModelLoading || assistantObserverModelLoading || assistantDocumentsDirLoading ||
+    portLoading || reposDirLoading || editorAppLoading || editorHostLoading || editorSshPortLoading || githubPatLoading || defaultAgentLoading || opcodeModelLoading || opcodeDefaultAgentLoading || opencodePlanAgentLoading || autoScrollLoading || notificationsLoading || mattermostEnabledConfig.isLoading || mattermostServerUrlConfig.isLoading || mattermostBotTokenConfig.isLoading || mattermostTeamIdConfig.isLoading || mattermostChannelIdConfig.isLoading || zAiLoading || deploymentLoading || taskTypeLoading || startImmediatelyLoading || scratchStartupScriptLoading || timezoneLoading || assistantProviderLoading || assistantModelLoading || assistantObserverModelLoading || assistantDocumentsDirLoading ||
     ritualsEnabledLoading || morningTimeLoading || morningPromptLoading || eveningTimeLoading || eveningPromptLoading
 
   const hasZAiChanges = zAiSettings && (
@@ -466,8 +463,7 @@ function SettingsPage() {
     mattermostServerUrl !== ((mattermostServerUrlConfig.data?.value as string | undefined) ?? '') ||
     mattermostBotToken !== ((mattermostBotTokenConfig.data?.value as string | undefined) ?? '') ||
     mattermostTeamId !== ((mattermostTeamIdConfig.data?.value as string | undefined) ?? '') ||
-    mattermostChannelId !== ((mattermostChannelIdConfig.data?.value as string | undefined) ?? '') ||
-    mattermostCommandToken !== ((mattermostCommandTokenConfig.data?.value as string | undefined) ?? '')
+    mattermostChannelId !== ((mattermostChannelIdConfig.data?.value as string | undefined) ?? '')
 
   const hasEditorChanges =
     localEditorApp !== editorApp ||
@@ -717,7 +713,6 @@ function SettingsPage() {
         { key: CONFIG_KEYS.MATTERMOST_BOT_TOKEN, value: mattermostBotToken },
         { key: CONFIG_KEYS.MATTERMOST_TEAM_ID, value: mattermostTeamId },
         { key: CONFIG_KEYS.MATTERMOST_CHANNEL_ID, value: mattermostChannelId },
-        { key: CONFIG_KEYS.MATTERMOST_COMMAND_TOKEN, value: mattermostCommandToken },
       ]
       promises.push(...mattermostUpdates.map((update) => new Promise((resolve) => {
         updateConfig.mutate(update, { onSettled: resolve })
@@ -2813,7 +2808,7 @@ function SettingsPage() {
                     <div className="mb-4 flex items-center justify-between">
                       <div>
                         <h3 className="text-sm font-medium">Mattermost</h3>
-                        <p className="text-xs text-muted-foreground">Slash commands, interactive cards, and notifications.</p>
+                        <p className="text-xs text-muted-foreground">Bot DM listener and default-channel notifications. Slash commands and interactive cards are owned by the mattermost-plugin-fulcrum plugin.</p>
                       </div>
                       <Switch checked={mattermostEnabled} onCheckedChange={setMattermostEnabled} disabled={isLoading} />
                     </div>
@@ -2822,7 +2817,6 @@ function SettingsPage() {
                       <Input type="password" value={mattermostBotToken} onChange={(e) => setMattermostBotToken(e.target.value)} placeholder="Bot token" disabled={isLoading} className="font-mono text-sm" />
                       <Input value={mattermostTeamId} onChange={(e) => setMattermostTeamId(e.target.value)} placeholder="Team ID" disabled={isLoading} className="font-mono text-sm" />
                       <Input value={mattermostChannelId} onChange={(e) => setMattermostChannelId(e.target.value)} placeholder="Default channel ID" disabled={isLoading} className="font-mono text-sm" />
-                      <Input type="password" value={mattermostCommandToken} onChange={(e) => setMattermostCommandToken(e.target.value)} placeholder="Slash command token" disabled={isLoading} className="font-mono text-sm md:col-span-2" />
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-3">
                       <Button
@@ -2853,9 +2847,8 @@ function SettingsPage() {
                       <p className="font-medium text-foreground">First-run setup</p>
                       <ol className="mt-2 list-decimal space-y-1 pl-4">
                         <li>Create a Mattermost bot account and generate a personal access token.</li>
-                        <li>Create or choose a dedicated channel, then copy the team and channel IDs here.</li>
-                        <li>Register the <code className="rounded bg-muted px-1">/f</code> slash command against your Fulcrum URL and paste its token.</li>
-                        <li>Allow the Mattermost server to reach Fulcrum via firewall and AllowedUntrustedInternalConnections.</li>
+                        <li>Create or choose a default notification channel, then copy the team and channel IDs here.</li>
+                        <li>Install the <code className="rounded bg-muted px-1">mattermost-plugin-fulcrum</code> plugin on the Mattermost server to expose the <code className="rounded bg-muted px-1">/f</code> slash command and interactive cards.</li>
                       </ol>
                     </div>
                   </div>

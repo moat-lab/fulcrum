@@ -31,8 +31,6 @@ describe('Settings', () => {
       FULCRUM_MATTERMOST_BOT_TOKEN: process.env.FULCRUM_MATTERMOST_BOT_TOKEN,
       FULCRUM_MATTERMOST_TEAM_ID: process.env.FULCRUM_MATTERMOST_TEAM_ID,
       FULCRUM_MATTERMOST_CHANNEL_ID: process.env.FULCRUM_MATTERMOST_CHANNEL_ID,
-      FULCRUM_MATTERMOST_COMMAND_TOKEN: process.env.FULCRUM_MATTERMOST_COMMAND_TOKEN,
-      FULCRUM_MATTERMOST_ALLOWED_USER_IDS: process.env.FULCRUM_MATTERMOST_ALLOWED_USER_IDS,
     }
 
     // Set test environment
@@ -45,8 +43,6 @@ describe('Settings', () => {
     delete process.env.FULCRUM_MATTERMOST_BOT_TOKEN
     delete process.env.FULCRUM_MATTERMOST_TEAM_ID
     delete process.env.FULCRUM_MATTERMOST_CHANNEL_ID
-    delete process.env.FULCRUM_MATTERMOST_COMMAND_TOKEN
-    delete process.env.FULCRUM_MATTERMOST_ALLOWED_USER_IDS
 
     // Clear fnox cache between tests to prevent pollution
     const { clearFnoxCache } = await import('./')
@@ -184,8 +180,6 @@ describe('Settings', () => {
       process.env.FULCRUM_MATTERMOST_BOT_TOKEN = 'env-bot-token'
       process.env.FULCRUM_MATTERMOST_TEAM_ID = 'env-team-id'
       process.env.FULCRUM_MATTERMOST_CHANNEL_ID = 'env-channel-id'
-      process.env.FULCRUM_MATTERMOST_COMMAND_TOKEN = 'env-command-token'
-      process.env.FULCRUM_MATTERMOST_ALLOWED_USER_IDS = '["u1","u2"]'
 
       const mm = getSettings().channels.mattermost
       expect(mm.enabled).toBe(true)
@@ -193,8 +187,6 @@ describe('Settings', () => {
       expect(mm.botToken).toBe('env-bot-token')
       expect(mm.teamId).toBe('env-team-id')
       expect(mm.channelId).toBe('env-channel-id')
-      expect(mm.commandToken).toBe('env-command-token')
-      expect(mm.allowedUserIds).toEqual(['u1', 'u2'])
     })
 
     test('env values take precedence over fnox cache for channels.mattermost.*', async () => {
@@ -241,7 +233,6 @@ describe('Settings', () => {
       const mm = getSettings().channels.mattermost
       expect(mm.enabled).toBe(false)
       expect(mm.serverUrl).toBe('')
-      expect(mm.allowedUserIds).toEqual([])
     })
 
     test('does not affect other channels (slack/discord/telegram still fnox-only)', async () => {

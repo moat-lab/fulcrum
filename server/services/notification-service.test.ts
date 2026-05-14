@@ -11,21 +11,11 @@ mock.module('../websocket/terminal-ws', () => ({
 // Track calls to sendNotificationViaMessaging for messaging-based notification tests
 let messagingSendCalls: Array<{ channel: string; body: string }> = []
 let messagingSendResult: { success: boolean; error?: string } = { success: true }
-let mattermostNotifications: unknown[] = []
 
 mock.module('./notification-messaging', () => ({
   sendNotificationViaMessaging: async (channel: string, body: string) => {
     messagingSendCalls.push({ channel, body })
     return messagingSendResult
-  },
-}))
-
-mock.module('./mattermost/client', () => ({
-  getActionsUrl: () => 'http://localhost:7777/api/mattermost/actions',
-  fulcrumUrl: (path: string) => `http://localhost:7777${path}`,
-  postNotification: async (attachment: unknown) => {
-    mattermostNotifications.push(attachment)
-    return { id: 'post-1' }
   },
 }))
 
@@ -38,7 +28,6 @@ describe('Notification Service', () => {
     await updateNotificationSettings({ enabled: true })
     messagingSendCalls = []
     messagingSendResult = { success: true }
-    mattermostNotifications = []
   })
 
   afterEach(() => {
@@ -462,7 +451,13 @@ describe('Notification Service', () => {
       expect(results.some(r => r.channel === 'gmail' && !r.success)).toBe(true)
     })
 
-    test('sends Mattermost task notification card with action buttons when enabled', async () => {
+    test('sends Mattermost plain-text notification to default channel via bot token', async () => {
+      // Configure Mattermost channel credentials so sendMattermostNotification can post.
+      const { updateSettingByPath } = await import('../lib/settings')
+      updateSettingByPath('channels.mattermost.serverUrl', 'https://mattermost.example.com')
+      updateSettingByPath('channels.mattermost.botToken', 'bot-token-xyz')
+      updateSettingByPath('channels.mattermost.channelId', 'channel-default')
+
       await updateNotificationSettings({
         enabled: true,
         sound: { enabled: false },
@@ -475,24 +470,54 @@ describe('Notification Service', () => {
         mattermost: { enabled: true },
       })
 
-      const payload: NotificationPayload = {
-        title: 'Task status changed',
-        message: 'Task moved from TO_DO to IN_PROGRESS by user',
-        type: 'task_status_change',
-        taskId: 'task-123',
-        taskTitle: 'Mattermost task',
+      let captured: { url: string; body: string; auth: string } | null = null
+      const originalFetch = global.fetch
+      global.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+        const urlStr = typeof url === 'string' ? url : url.toString()
+        if (urlStr.endsWith('/api/v4/posts')) {
+          const headers = (init?.headers ?? {}) as Record<string, string>
+          captured = {
+            url: urlStr,
+            body: init?.body as string,
+            auth: headers['Authorization'] || '',
+          }
+          return new Response('{"id":"post-1"}', { status: 201 })
+        }
+        return originalFetch(url, init)
       }
 
-      const results = await sendNotification(payload)
-      const attachment = mattermostNotifications[0] as { fields?: Array<{ title: string; value: string }>; actions?: Array<{ id: string; integration: { context: Record<string, unknown> } }> }
+      try {
+        const payload: NotificationPayload = {
+          title: 'Task status changed',
+          message: 'Task moved from TO_DO to IN_PROGRESS by user',
+          type: 'task_status_change',
+          taskId: 'task-123',
+          taskTitle: 'Mattermost task',
+          url: 'https://fulcrum.example.com/tasks/task-123',
+        }
 
-      expect(results.some(r => r.channel === 'mattermost' && r.success)).toBe(true)
-      expect(attachment.fields?.some(f => f.title === 'Task' && f.value === 'Mattermost task')).toBe(true)
-      expect(attachment.actions?.some(a => a.id === 'viewTask' && a.integration.context.task_id === 'task-123')).toBe(true)
-      expect(attachment.actions?.some(a => a.id === 'nextStatus' && a.integration.context.status === 'IN_REVIEW')).toBe(true)
+        const results = await sendNotification(payload)
+        expect(results.some(r => r.channel === 'mattermost' && r.success)).toBe(true)
+        expect(captured).not.toBeNull()
+        expect(captured!.url).toBe('https://mattermost.example.com/api/v4/posts')
+        expect(captured!.auth).toBe('Bearer bot-token-xyz')
+        const body = JSON.parse(captured!.body) as { channel_id: string; message: string; props?: unknown }
+        expect(body.channel_id).toBe('channel-default')
+        expect(body.message).toContain('Task status changed')
+        expect(body.message).toContain('Task moved from TO_DO')
+        expect(body.message).toContain('https://fulcrum.example.com/tasks/task-123')
+        expect(body.props).toBeUndefined()
+      } finally {
+        global.fetch = originalFetch
+      }
     })
 
-    test('sends Mattermost failed deployment card with logs retry and rollback actions', async () => {
+    test('Mattermost notification fails when default channel is missing', async () => {
+      const { updateSettingByPath } = await import('../lib/settings')
+      updateSettingByPath('channels.mattermost.serverUrl', 'https://mattermost.example.com')
+      updateSettingByPath('channels.mattermost.botToken', 'bot-token-xyz')
+      updateSettingByPath('channels.mattermost.channelId', '')
+
       await updateNotificationSettings({
         enabled: true,
         sound: { enabled: false },
@@ -500,19 +525,16 @@ describe('Notification Service', () => {
       })
 
       const payload: NotificationPayload = {
-        title: 'Deployment failed',
-        message: 'Build failed after 2m',
-        type: 'deployment_failed',
-        appId: 'app-123',
-        appName: 'fulcrum-web',
+        title: 'Test',
+        message: 'Test',
+        type: 'task_status_change',
       }
 
-      await sendNotification(payload)
-      const attachment = mattermostNotifications[0] as { color?: string; fields?: Array<{ title: string; value: string }>; actions?: Array<{ id: string }> }
-
-      expect(attachment.color).toBe('#EF4444')
-      expect(attachment.fields?.some(f => f.title === 'App' && f.value === 'fulcrum-web')).toBe(true)
-      expect(attachment.actions?.map(a => a.id)).toEqual(['logs', 'retry', 'rollback'])
+      const results = await sendNotification(payload)
+      const mm = results.find(r => r.channel === 'mattermost')
+      expect(mm).toBeDefined()
+      expect(mm!.success).toBe(false)
+      expect(mm!.error).toContain('default channel not configured')
     })
 
     test('sends slack via messaging when useMessagingChannel is true', async () => {

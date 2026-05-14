@@ -56,8 +56,6 @@ export const CONFIG_KEYS = {
   MATTERMOST_BOT_TOKEN: 'channels.mattermost.botToken',
   MATTERMOST_TEAM_ID: 'channels.mattermost.teamId',
   MATTERMOST_CHANNEL_ID: 'channels.mattermost.channelId',
-  MATTERMOST_COMMAND_TOKEN: 'channels.mattermost.commandToken',
-  MATTERMOST_ALLOWED_USER_IDS: 'channels.mattermost.allowedUserIds',
   // Agent channel exchange (issue #180 / parent #153)
   CHANNELS_EXCHANGE_ENABLED: 'channels.exchange.enabled',
   CHANNELS_EXCHANGE_URL: 'channels.exchange.url',

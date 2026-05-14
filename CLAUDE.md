@@ -279,7 +279,7 @@ Multi-channel notification system:
 - **Slack/Discord**: Can send via webhook URL or via connected messaging channel (`useMessagingChannel`)
 - **WhatsApp/Telegram**: Require connected messaging channel
 - **Gmail**: Sends notification emails to user's own Gmail address via Gmail API
-- **Mattermost**: Sends bot-token notifications to the configured default channel
+- **Mattermost**: Sends plain-text bot-token notifications to the configured default channel. Slash-command-style interactive cards now live in `mattermost-plugin-fulcrum` (#221) and are not driven by Fulcrum.
 - **Events**: Task completion, PR merge, deployment success/failure
 
 ## Messaging
@@ -290,7 +290,7 @@ Chat with the AI assistant via external messaging platforms:
 - **Discord**: Bot token auth, slash commands (`/reset`, `/help`, `/status`)
 - **Telegram**: Bot token from @BotFather, handles private chats
 - **Slack**: Socket Mode with bot + app tokens, Block Kit formatting, slash commands
-- **Mattermost**: Bot-token integration with `/f` slash command, interactive cards, dialogs, and default-channel notifications. Settings → Email & Messaging stores Server URL, Bot Token, Team ID, Channel ID, Command Token, enable toggle, notification toggle, and a Test Connection check against `GET /api/v4/users/me`.
+- **Mattermost**: Bot-token DM listener (chat with the AI assistant via Mattermost direct messages) plus a default-channel notification path. Slash commands (`/f`), AutocompleteData, interactive cards, and dialogs are owned by the [`mattermost-plugin-fulcrum`](https://github.com/Mouriya-Emma/mattermost-plugin-fulcrum) plugin (parent #221) — Fulcrum exposes the data surface as `fulcrum --json` CLI verbs and the plugin renders/posts as the real bot. Settings → Email & Messaging stores Server URL, Bot Token, Team ID, Channel ID, enable toggle, notification toggle, and a Test Connection check against `GET /api/v4/users/me`.
 - **Email**: Gmail API or IMAP/SMTP backends, collects all non-automated emails (observe-only, no auto-responses)
 - **Gmail**: Send emails via Gmail API (OAuth2), always sends to user's own address
 - **Session persistence**: Conversations map to `chatSessions` table, one session per user
@@ -298,24 +298,13 @@ Chat with the AI assistant via external messaging platforms:
 - **Auto-resolve recipients**: `to` parameter is optional; auto-resolves from channel state
 
 **Configuration storage:**
-- **Credentials**: fnox config under `channels.*` for Slack, Discord, Telegram, Email, and Mattermost bot/slash-command tokens
+- **Credentials**: fnox config under `channels.*` for Slack, Discord, Telegram, Email, and Mattermost bot tokens
 - **WhatsApp**: Database (QR auth generates credentials dynamically)
 - **Runtime state**: Database (connection status, bot display names)
 
 **Mattermost deployment:**
-- Bind Fulcrum to `0.0.0.0` with `HOST=0.0.0.0` when Mattermost reaches it from another host or container.
-- Ensure the firewall permits Mattermost to reach the Fulcrum port and set `FULCRUM_HOST` to the hostname/IP Mattermost should use in card callback URLs.
-- Add Fulcrum's host or subnet to Mattermost `AllowedUntrustedInternalConnections`; Docker deployments also need bridge/NAT routing from the Mattermost container to Fulcrum.
-
-**Mattermost slash command onboarding:**
-```bash
-mmctl command create <team> \
-  --title "Fulcrum" --description "Fulcrum slash commands" --trigger-word f \
-  --url "http://<fulcrum-host>:<port>/api/mattermost/commands" \
-  --creator <mattermost-user> --autocomplete --post \
-  --response-username fulcrum --icon "http://<fulcrum-host>:<port>/icon-192.png"
-```
-Use the actual Fulcrum bot username if it differs from `fulcrum`. If the deployed Mattermost version supports a separate response icon flag, set it to the same Fulcrum icon URL so `/f` in-channel cards render as the Fulcrum bot instead of the triggering user.
+- Fulcrum reaches the Mattermost server outbound (REST API + WebSocket) using the configured Server URL + Bot Token; Mattermost no longer needs inbound reachability to Fulcrum because the slash/action callback path is gone.
+- The plugin (`mattermost-plugin-fulcrum`, parent #221) runs in-process on the Mattermost server and reaches Fulcrum's CLI through the `rexecd` gRPC sidecar over the netbird mesh. See `mattermost-plugin-fulcrum` README for plugin install / `mmctl plugin add` / `RexecdAddr` configuration.
 
 Enable in Settings → Email & Messaging and follow the setup instructions for each platform.
 

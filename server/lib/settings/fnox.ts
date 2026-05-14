@@ -110,8 +110,6 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'channels.mattermost.botToken': { fnoxKey: 'FULCRUM_MATTERMOST_BOT_TOKEN', provider: 'age', type: 'string' },
   'channels.mattermost.teamId': { fnoxKey: 'FULCRUM_MATTERMOST_TEAM_ID', provider: 'plain', type: 'string' },
   'channels.mattermost.channelId': { fnoxKey: 'FULCRUM_MATTERMOST_CHANNEL_ID', provider: 'plain', type: 'string' },
-  'channels.mattermost.commandToken': { fnoxKey: 'FULCRUM_MATTERMOST_COMMAND_TOKEN', provider: 'age', type: 'string' },
-  'channels.mattermost.allowedUserIds': { fnoxKey: 'FULCRUM_MATTERMOST_ALLOWED_USER_IDS', provider: 'plain', type: 'json' },
 
   // CalDAV
   'caldav.enabled': { fnoxKey: 'FULCRUM_CALDAV_ENABLED', provider: 'plain', type: 'boolean' },

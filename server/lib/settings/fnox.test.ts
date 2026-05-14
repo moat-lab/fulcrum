@@ -125,9 +125,11 @@ describe('fnox', () => {
       }
     })
 
-    test('has expected number of secret mappings (18)', () => {
-      // 17 base secrets + channels.exchange.token (age-encrypted bearer per #180).
-      expect(Object.keys(FNOX_SECRET_MAP).length).toBe(18)
+    test('has expected number of secret mappings (17)', () => {
+      // 16 base secrets + channels.exchange.token (age-encrypted bearer per #180).
+      // channels.mattermost.commandToken removed by #224 alongside the outgoing-webhook
+      // route — slash-command auth is now owned by mattermost-plugin-fulcrum.
+      expect(Object.keys(FNOX_SECRET_MAP).length).toBe(17)
     })
   })
 
