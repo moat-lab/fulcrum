@@ -1,0 +1,73 @@
+=== docker run command -v fulcrum ===
+/usr/local/bin/fulcrum
+=== docker run fulcrum --version ===
+5.10.1
+=== docker run fulcrum --help (head 25) ===
+Fulcrum - Terminal-first AI agent orchestration (fulcrum v5.10.1)
+
+USAGE fulcrum current-task|config|opencode|claude|notifications|notify|hosts|up|down|expose|status|doctor|dev|mcp|update|migrate-from-vibora|dashboard|tasks|apps|search|monitor|jobs|projects
+
+COMMANDS
+
+         current-task    Manage the current worktree task                           
+               config    Manage configuration                                       
+             opencode    OpenCode integration                                       
+               claude    Claude Code integration                                    
+        notifications    Manage notification settings                               
+               notify    Send a notification                                        
+                hosts    Manage remote SSH hosts                                    
+                   up    Start the Fulcrum server                                   
+                 down    Stop the Fulcrum server                                    
+               expose    Expose this Fulcrum server publicly via a Cloudflare Tunnel
+               status    Show server status                                         
+               doctor    Check dependencies and system status                       
+                  dev    Developer mode commands                                    
+                  mcp    Start MCP server (stdio)                                   
+               update    Check for updates and update Fulcrum to the latest version 
+  migrate-from-vibora    Migrate data from legacy ~/.vibora directory               
+            dashboard    Fulcrum dashboard summary (Mattermost plugin contract)     
+                tasks    Task verbs for Mattermost plugin contract                  
+                 apps    App verbs for Mattermost plugin contract                   
+=== cat /usr/local/bin/fulcrum ===
+#!/bin/sh
+exec bun /app/cli.js "$@"
+=== ls /app ===
+total 1.9M
+-rwxr-xr-x 1 root root 1.9M May 14 17:52 cli.js
+drwxr-xr-x 1 root root  226 May 14 17:52 dist
+drwxr-xr-x 1 root root 4.7K May 14 17:52 drizzle
+-rwxr-xr-x 1 root root 1.1K May 14 13:46 entrypoint.sh
+-rw-r--r-- 1 root root 3.7K May 14 11:47 package.json
+drwxr-xr-x 1 root root   16 May 14 17:52 server
+=== ls /usr/local/bin/ ===
+bun
+bunx
+docker-entrypoint.sh
+fulcrum
+rexecd
+=== local image size ===
+fulcrum-issue229:test  ID=367eec4f2b87  Size=391MB
+
+=== baseline image (pre-#229) — pull current main image for delta ===
+Building reference baseline at git c165de21 (main HEAD before this branch)...
+Ignoring path .claude/worktrees/issue-19-run-2026-05-08-06-35-39-issue-19/
+Ignoring path .claude/worktrees/issue-31-run-2026-05-07-09-24-29-issue-31/
+=== docker history fulcrum-issue229:test (top 10 layers by size) ===
+0B	CMD ["bun" "server/index.js"]
+0B	ENTRYPOINT ["/app/entrypoint.sh"]
+0B	EXPOSE [50051/tcp]
+0B	EXPOSE [7777/tcp]
+0B	ENV REXECD_LISTEN=0.0.0.0:50051
+0B	ENV PORT=7777
+0B	ENV HOST=0.0.0.0
+0B	ENV NODE_ENV=production
+0B	ENV FULCRUM_PACKAGE_ROOT=/app
+0B	ENV FULCRUM_DIR=/data/.fulcrum
+0B	ENV FULCRUM_REMOTE_ONLY=true
+8.19kB	RUN /bin/sh -c printf '#!/bin/sh\nexec bun /app/cli.js "$@"\n' > /usr/local/bin/fulcrum   && chmod +x /app/entrypoint.sh /usr/local/bin/rexecd /usr/local/bin/fulcrum # buildkit
+9.83MB	COPY /out/rexecd /usr/local/bin/rexecd # buildkit
+4.1kB	COPY /app/entrypoint.sh ./entrypoint.sh # buildkit
+999kB	COPY /app/cli/drizzle ./drizzle # buildkit
+
+=== fork+exec smoke (simulate rexecd fork+exec of fulcrum) ===
+5.10.1
