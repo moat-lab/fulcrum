@@ -43,6 +43,7 @@ export function useCreateTask() {
       startupScript?: string
       agentOptions?: Record<string, string> | null
       opencodeModel?: string | null
+      codexModel?: string | null
       // Repository reference for deferred worktree creation
       repositoryId?: string | null
       // New generalized task fields

@@ -22,10 +22,12 @@ function toRepoDetails(repo: typeof repositories.$inferSelect, isPrimary: boolea
     displayName: repo.displayName,
     startupScript: repo.startupScript,
     copyFiles: repo.copyFiles,
-    defaultAgent: repo.defaultAgent as 'claude' | 'opencode' | null,
+    defaultAgent: repo.defaultAgent as 'claude' | 'opencode' | 'codex' | null,
     claudeOptions: repo.claudeOptions ? JSON.parse(repo.claudeOptions) : null,
     opencodeOptions: repo.opencodeOptions ? JSON.parse(repo.opencodeOptions) : null,
     opencodeModel: repo.opencodeModel,
+    codexOptions: repo.codexOptions ? JSON.parse(repo.codexOptions) : null,
+    codexModel: repo.codexModel,
     remoteUrl: repo.remoteUrl,
     isCopierTemplate: repo.isCopierTemplate ?? false,
     isPrimary,
@@ -228,10 +230,12 @@ function buildProjectWithDetails(
     terminalTabId: project.terminalTabId,
     status: project.status as 'active' | 'archived',
     // Agent configuration
-    defaultAgent: project.defaultAgent as 'claude' | 'opencode' | null,
+    defaultAgent: project.defaultAgent as 'claude' | 'opencode' | 'codex' | null,
     claudeOptions: project.claudeOptions ? JSON.parse(project.claudeOptions) : null,
     opencodeOptions: project.opencodeOptions ? JSON.parse(project.opencodeOptions) : null,
     opencodeModel: project.opencodeModel ?? null,
+    codexOptions: project.codexOptions ? JSON.parse(project.codexOptions) : null,
+    codexModel: project.codexModel ?? null,
     startupScript: project.startupScript ?? null,
     lastAccessedAt: project.lastAccessedAt,
     createdAt: project.createdAt,
@@ -244,10 +248,12 @@ function buildProjectWithDetails(
           displayName: repo.displayName,
           startupScript: repo.startupScript,
           copyFiles: repo.copyFiles,
-          defaultAgent: repo.defaultAgent as 'claude' | 'opencode' | null,
+          defaultAgent: repo.defaultAgent as 'claude' | 'opencode' | 'codex' | null,
           claudeOptions: repo.claudeOptions ? JSON.parse(repo.claudeOptions) : null,
           opencodeOptions: repo.opencodeOptions ? JSON.parse(repo.opencodeOptions) : null,
           opencodeModel: repo.opencodeModel,
+          codexOptions: repo.codexOptions ? JSON.parse(repo.codexOptions) : null,
+          codexModel: repo.codexModel,
           remoteUrl: repo.remoteUrl,
           isCopierTemplate: repo.isCopierTemplate ?? false,
         }
@@ -656,6 +662,8 @@ const PATCH_FIELDS: Record<string, (v: unknown) => unknown> = {
   claudeOptions: (v) => v ? JSON.stringify(v) : null,
   opencodeOptions: (v) => v ? JSON.stringify(v) : null,
   opencodeModel: (v) => v,
+  codexOptions: (v) => v ? JSON.stringify(v) : null,
+  codexModel: (v) => v,
   startupScript: (v) => v,
 }
 
@@ -705,10 +713,12 @@ app.patch('/:id', async (c) => {
       description?: string | null
       notes?: string | null
       status?: 'active' | 'archived'
-      defaultAgent?: 'claude' | 'opencode' | null
+      defaultAgent?: 'claude' | 'opencode' | 'codex' | null
       claudeOptions?: Record<string, string> | null
       opencodeOptions?: Record<string, string> | null
       opencodeModel?: string | null
+      codexOptions?: Record<string, string> | null
+      codexModel?: string | null
     }>()
 
     const now = new Date().toISOString()

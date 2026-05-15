@@ -53,10 +53,10 @@ function getDescendantPids(pid: number): number[] {
   return descendants
 }
 
-// Combined pattern for all supported AI agents (Claude Code, OpenCode)
+// Combined pattern for all supported AI agents (Claude Code, OpenCode, Codex)
 // Must be preceded by / or start, and followed by whitespace/null/end
 // This avoids matching directory paths like /fulcrum/opencode/sockets/ or /worktrees/claude-test/
-const AGENT_PATTERN = /(^|\/)(claude|opencode)(\s|\0|$)/i
+const AGENT_PATTERN = /(^|\/)(claude|opencode|codex)(\s|\0|$)/i
 
 // Check if a process is an AI agent process by examining its command line
 function isAgentProcess(pid: number): boolean {

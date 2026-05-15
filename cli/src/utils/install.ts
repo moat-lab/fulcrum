@@ -74,6 +74,13 @@ export function isOpencodeInstalled(): boolean {
 }
 
 /**
+ * Check if Codex CLI is installed.
+ */
+export function isCodexInstalled(): boolean {
+  return isCommandInstalled('codex')
+}
+
+/**
  * Install Claude Code CLI.
  * Returns true if installation succeeded.
  */
@@ -89,6 +96,16 @@ export function installClaude(): boolean {
  */
 export function installOpencode(): boolean {
   const dep = getDependency('opencode')
+  if (!dep) return false
+  return installDep(dep)
+}
+
+/**
+ * Install Codex CLI.
+ * Returns true if installation succeeded.
+ */
+export function installCodex(): boolean {
+  const dep = getDependency('codex')
   if (!dep) return false
   return installDep(dep)
 }

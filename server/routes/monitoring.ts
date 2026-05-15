@@ -22,6 +22,7 @@ const isMacOS = process.platform === 'darwin'
 const AGENT_PATTERNS: Record<AgentType, RegExp> = {
   claude: /(^|\/)claude(\s|\0|$)/i,
   opencode: /(^|\/)opencode(\s|\0|$)/i,
+  codex: /(^|\/)codex(\s|\0|$)/i,
 }
 
 interface AgentInstance {
@@ -91,7 +92,7 @@ function findAllAgentProcesses(agentFilter?: AgentType[]): Array<{ pid: number; 
   } catch {
     // /proc not available (non-Linux), fallback to pgrep
     // Try each agent pattern separately
-    const agentsToCheck = agentFilter ?? (['claude', 'opencode'] as AgentType[])
+    const agentsToCheck = agentFilter ?? (['claude', 'opencode', 'codex'] as AgentType[])
     for (const agentType of agentsToCheck) {
       try {
         const result = execSync(`pgrep -f ${agentType}`, { encoding: 'utf-8' })

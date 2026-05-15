@@ -75,6 +75,16 @@ export const DEPENDENCIES: Dependency[] = [
     },
   },
   {
+    name: 'codex',
+    command: 'codex',
+    description: 'OpenAI Codex CLI for AI agents',
+    required: false,
+    install: {
+      npm: 'npm install -g @openai/codex',
+      brew: 'brew install codex',
+    },
+  },
+  {
     name: 'uv',
     command: 'uv',
     description: 'Fast Python package manager',

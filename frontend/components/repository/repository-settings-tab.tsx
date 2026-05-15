@@ -64,6 +64,8 @@ export function RepositorySettingsTab({ repository }: RepositorySettingsTabProps
   const [claudeOptions, setClaudeOptions] = useState<Record<string, string>>({})
   const [opencodeOptions, setOpencodeOptions] = useState<Record<string, string>>({})
   const [opencodeModel, setOpencodeModel] = useState<string | null>(null)
+  const [codexOptions, setCodexOptions] = useState<Record<string, string>>({})
+  const [codexModel, setCodexModel] = useState<string | null>(null)
   const [defaultAgent, setDefaultAgent] = useState<AgentType | null>(null)
   const [isCopierTemplate, setIsCopierTemplate] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
@@ -77,6 +79,8 @@ export function RepositorySettingsTab({ repository }: RepositorySettingsTabProps
       setClaudeOptions(repository.claudeOptions || {})
       setOpencodeOptions(repository.opencodeOptions || {})
       setOpencodeModel(repository.opencodeModel ?? null)
+      setCodexOptions(repository.codexOptions || {})
+      setCodexModel(repository.codexModel ?? null)
       setDefaultAgent(repository.defaultAgent ?? null)
       setIsCopierTemplate(repository.isCopierTemplate ?? false)
       setHasChanges(false)
@@ -93,11 +97,13 @@ export function RepositorySettingsTab({ repository }: RepositorySettingsTabProps
         JSON.stringify(claudeOptions) !== JSON.stringify(repository.claudeOptions || {}) ||
         JSON.stringify(opencodeOptions) !== JSON.stringify(repository.opencodeOptions || {}) ||
         opencodeModel !== (repository.opencodeModel ?? null) ||
+        JSON.stringify(codexOptions) !== JSON.stringify(repository.codexOptions || {}) ||
+        codexModel !== (repository.codexModel ?? null) ||
         defaultAgent !== (repository.defaultAgent ?? null) ||
         isCopierTemplate !== (repository.isCopierTemplate ?? false)
       setHasChanges(changed)
     }
-  }, [displayName, startupScript, copyFiles, claudeOptions, opencodeOptions, opencodeModel, defaultAgent, isCopierTemplate, repository])
+  }, [displayName, startupScript, copyFiles, claudeOptions, opencodeOptions, opencodeModel, codexOptions, codexModel, defaultAgent, isCopierTemplate, repository])
 
   const handleSave = () => {
     if (!repository) return
@@ -112,6 +118,8 @@ export function RepositorySettingsTab({ repository }: RepositorySettingsTabProps
           claudeOptions: Object.keys(claudeOptions).length > 0 ? claudeOptions : null,
           opencodeOptions: Object.keys(opencodeOptions).length > 0 ? opencodeOptions : null,
           opencodeModel,
+          codexOptions: Object.keys(codexOptions).length > 0 ? codexOptions : null,
+          codexModel,
           defaultAgent,
           isCopierTemplate,
         },
@@ -272,6 +280,29 @@ export function RepositorySettingsTab({ repository }: RepositorySettingsTabProps
                 />
                 <FieldDescription>
                   {t('detailView.settings.opencodeModelDescription')}
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel>Codex options</FieldLabel>
+                <FieldDescription className="mb-2">
+                  Extra CLI flags passed to <code>codex</code>.
+                </FieldDescription>
+                <AgentOptionsEditor
+                  value={codexOptions}
+                  onChange={setCodexOptions}
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel>Codex model</FieldLabel>
+                <Input
+                  value={codexModel ?? ''}
+                  onChange={(e) => setCodexModel(e.target.value || null)}
+                  placeholder="e.g. gpt-5-codex"
+                />
+                <FieldDescription>
+                  Leave blank to use Codex&apos;s default from <code>~/.codex/config.toml</code>.
                 </FieldDescription>
               </Field>
             </FieldGroup>

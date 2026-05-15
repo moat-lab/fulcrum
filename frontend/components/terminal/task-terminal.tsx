@@ -30,12 +30,13 @@ interface TaskTerminalProps {
   startupScript?: string | null
   agentOptions?: Record<string, string> | null
   opencodeModel?: string | null
+  codexModel?: string | null
   serverPort?: number
   autoFocus?: boolean
   isScratch?: boolean
 }
 
-export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude', aiMode, description, startupScript, agentOptions, opencodeModel, serverPort = 7777, autoFocus = false, isScratch = false }: TaskTerminalProps) {
+export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude', aiMode, description, startupScript, agentOptions, opencodeModel, codexModel, serverPort = 7777, autoFocus = false, isScratch = false }: TaskTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<AnyTerminal | null>(null)
   const hasFocusedRef = useRef(false)
@@ -293,6 +294,7 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
           agent,
           agentOptions,
           opencodeModel,
+          codexModel,
           aiMode,
           description,
           taskName,
@@ -404,6 +406,7 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
         agent: currentAgent = 'claude',
         agentOptions: currentAgentOptions,
         opencodeModel: currentOpencodeModel,
+        codexModel: currentCodexModel,
         aiMode: currentAiMode,
         description: currentDescription,
         taskName: currentTaskName,
@@ -447,6 +450,7 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
         opencodeModel: currentOpencodeModel,
         opencodeDefaultAgent: opencodeDefaultAgentRef.current,
         opencodePlanAgent: opencodePlanAgentRef.current,
+        codexModel: currentCodexModel,
       })
 
       // Wait longer for startup script to complete before sending agent command

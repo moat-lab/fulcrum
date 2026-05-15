@@ -13,21 +13,24 @@ export const MEMORY_SOURCES = [
 export type MemorySource = (typeof MEMORY_SOURCES)[number]
 
 // Supported AI coding agents
-export type AgentType = 'claude' | 'opencode'
+export type AgentType = 'claude' | 'opencode' | 'codex'
 
 export const AGENT_DISPLAY_NAMES: Record<AgentType, string> = {
   claude: 'Claude Code',
   opencode: 'OpenCode',
+  codex: 'Codex',
 }
 
 export const AGENT_INSTALL_COMMANDS: Record<AgentType, string> = {
   claude: 'npm install -g @anthropic-ai/claude-code',
   opencode: 'npm install -g opencode-ai@latest',
+  codex: 'npm install -g @openai/codex',
 }
 
 export const AGENT_DOC_URLS: Record<AgentType, string> = {
   claude: 'https://docs.anthropic.com/en/docs/claude-code/overview',
   opencode: 'https://opencode.ai/docs/',
+  codex: 'https://github.com/openai/codex',
 }
 
 export type TaskStatus =
@@ -120,6 +123,7 @@ export interface Task {
   aiMode: 'default' | 'plan' | null
   agentOptions: Record<string, string> | null
   opencodeModel: string | null
+  codexModel: string | null
   type: string | null // 'worktree' | 'scratch' | null (null = manual/legacy)
   pinned: boolean
   // Generalized task management fields
@@ -330,6 +334,8 @@ export interface Repository {
   claudeOptions: Record<string, string> | null
   opencodeOptions: Record<string, string> | null
   opencodeModel: string | null
+  codexOptions: Record<string, string> | null
+  codexModel: string | null
   defaultAgent: AgentType | null
   remoteUrl: string | null
   isCopierTemplate: boolean
@@ -672,6 +678,8 @@ export interface Project {
   claudeOptions: Record<string, string> | null
   opencodeOptions: Record<string, string> | null
   opencodeModel: string | null
+  codexOptions: Record<string, string> | null
+  codexModel: string | null
   startupScript: string | null
   lastAccessedAt: string | null
   createdAt: string
@@ -689,6 +697,8 @@ export interface ProjectRepositoryDetails {
   claudeOptions: Record<string, string> | null
   opencodeOptions: Record<string, string> | null
   opencodeModel: string | null
+  codexOptions: Record<string, string> | null
+  codexModel: string | null
   remoteUrl: string | null
   isCopierTemplate: boolean
   isPrimary: boolean // From project_repositories join
@@ -707,6 +717,8 @@ export interface ProjectWithDetails extends Project {
     claudeOptions: Record<string, string> | null
     opencodeOptions: Record<string, string> | null
     opencodeModel: string | null
+    codexOptions: Record<string, string> | null
+    codexModel: string | null
     remoteUrl: string | null
     isCopierTemplate: boolean
   } | null

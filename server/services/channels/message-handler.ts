@@ -10,6 +10,7 @@ import { getMessagingSystemPrompt, getObserveOnlySystemPrompt, type MessagingCon
 import * as assistantService from '../assistant-service'
 import { getRecentOutgoingMessages, getRecentChannelMessages } from './message-storage'
 import { streamOpencodeObserverMessage } from '../opencode-channel-service'
+import { streamCodexObserverMessage } from '../codex-channel-service'
 import { getSettings } from '../../lib/settings/core'
 import {
   createInvocation,
@@ -31,6 +32,8 @@ export const _deps = {
     assistantService.streamMessage(...args),
   streamOpencodeObserverMessage: (...args: Parameters<typeof streamOpencodeObserverMessage>) =>
     streamOpencodeObserverMessage(...args),
+  streamCodexObserverMessage: (...args: Parameters<typeof streamCodexObserverMessage>) =>
+    streamCodexObserverMessage(...args),
 }
 
 // Circuit breaker for observer processing — prevents log flooding and wasted
@@ -535,7 +538,7 @@ function splitMessage(content: string, maxLength: number): string[] {
  */
 async function processObserveOnlyMessage(msg: IncomingMessage): Promise<void> {
   const settings = getSettings()
-  const observerProvider = (settings.assistant.observerProvider ?? settings.assistant.provider) as 'claude' | 'opencode'
+  const observerProvider = (settings.assistant.observerProvider ?? settings.assistant.provider) as 'claude' | 'opencode' | 'codex'
 
   // Circuit breaker: skip processing if too many recent failures
   if (isObserverCircuitOpen()) {
@@ -646,6 +649,50 @@ async function processObserveOnlyMessage(msg: IncomingMessage): Promise<void> {
       }
     } catch (err) {
       log.messaging.error('Error processing observe-only message via OpenCode', {
+        connectionId: msg.connectionId,
+        error: String(err),
+      })
+      failInvocation(invocationId, String(err))
+      recordObserverFailure()
+    }
+    return
+  }
+
+  if (observerProvider === 'codex') {
+    // Route to Codex text-only observer (spawns `codex exec`, no direct tool access)
+    try {
+      let hadError = false
+      let errorMsg = ''
+      const stream = _deps.streamCodexObserverMessage(session.id, msg.content, {
+        channelType: msg.channelType,
+        senderId: msg.senderId,
+        senderName: msg.senderName,
+        channelHistory,
+        recentTasks,
+      })
+
+      for await (const event of stream) {
+        if (event.type === 'error') {
+          hadError = true
+          errorMsg = (event.data as { message: string }).message
+          log.messaging.error('Error in Codex observe-only processing', { error: errorMsg })
+        } else if (event.type === 'timeout') {
+          timeoutInvocation(invocationId)
+          recordObserverFailure()
+          return
+        } else if (event.type === 'done') {
+          const actions = ((event.data as { actions?: unknown[] })?.actions ?? []) as ObserverActionRecord[]
+          completeInvocation(invocationId, actions)
+        }
+      }
+      if (hadError) {
+        failInvocation(invocationId, errorMsg)
+        recordObserverFailure()
+      } else {
+        recordObserverSuccess()
+      }
+    } catch (err) {
+      log.messaging.error('Error processing observe-only message via Codex', {
         connectionId: msg.connectionId,
         error: String(err),
       })

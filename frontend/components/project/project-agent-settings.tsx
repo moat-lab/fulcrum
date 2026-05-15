@@ -40,6 +40,8 @@ export function ProjectAgentSettings({ project }: ProjectAgentSettingsProps) {
   const [claudeOptions, setClaudeOptions] = useState<Record<string, string>>({})
   const [opencodeOptions, setOpencodeOptions] = useState<Record<string, string>>({})
   const [opencodeModel, setOpencodeModel] = useState<string | null>(null)
+  const [codexOptions, setCodexOptions] = useState<Record<string, string>>({})
+  const [codexModel, setCodexModel] = useState<string | null>(null)
   const [startupScript, setStartupScript] = useState<string>('')
   const [hasChanges, setHasChanges] = useState(false)
 
@@ -50,6 +52,8 @@ export function ProjectAgentSettings({ project }: ProjectAgentSettingsProps) {
       setClaudeOptions(project.claudeOptions ?? {})
       setOpencodeOptions(project.opencodeOptions ?? {})
       setOpencodeModel(project.opencodeModel ?? null)
+      setCodexOptions(project.codexOptions ?? {})
+      setCodexModel(project.codexModel ?? null)
       setStartupScript(project.startupScript ?? '')
       setHasChanges(false)
     }
@@ -63,10 +67,12 @@ export function ProjectAgentSettings({ project }: ProjectAgentSettingsProps) {
         JSON.stringify(claudeOptions) !== JSON.stringify(project.claudeOptions ?? {}) ||
         JSON.stringify(opencodeOptions) !== JSON.stringify(project.opencodeOptions ?? {}) ||
         opencodeModel !== (project.opencodeModel ?? null) ||
+        JSON.stringify(codexOptions) !== JSON.stringify(project.codexOptions ?? {}) ||
+        codexModel !== (project.codexModel ?? null) ||
         startupScript !== (project.startupScript ?? '')
       setHasChanges(changed)
     }
-  }, [defaultAgent, claudeOptions, opencodeOptions, opencodeModel, startupScript, project])
+  }, [defaultAgent, claudeOptions, opencodeOptions, opencodeModel, codexOptions, codexModel, startupScript, project])
 
   const handleSave = () => {
     if (!project) return
@@ -79,6 +85,8 @@ export function ProjectAgentSettings({ project }: ProjectAgentSettingsProps) {
           claudeOptions: Object.keys(claudeOptions).length > 0 ? claudeOptions : null,
           opencodeOptions: Object.keys(opencodeOptions).length > 0 ? opencodeOptions : null,
           opencodeModel,
+          codexOptions: Object.keys(codexOptions).length > 0 ? codexOptions : null,
+          codexModel,
           startupScript: startupScript.trim() || null,
         },
       },
@@ -237,6 +245,31 @@ export function ProjectAgentSettings({ project }: ProjectAgentSettingsProps) {
                 <AgentOptionsEditor
                   value={opencodeOptions}
                   onChange={setOpencodeOptions}
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel>Codex model</FieldLabel>
+                <input
+                  type="text"
+                  value={codexModel ?? ''}
+                  onChange={(e) => setCodexModel(e.target.value || null)}
+                  placeholder="e.g. gpt-5-codex"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <FieldDescription>
+                  Leave blank to use Codex&apos;s default from <code>~/.codex/config.toml</code>.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel>Codex options</FieldLabel>
+                <FieldDescription className="mb-2">
+                  Extra CLI flags passed to <code>codex</code>.
+                </FieldDescription>
+                <AgentOptionsEditor
+                  value={codexOptions}
+                  onChange={setCodexOptions}
                 />
               </Field>
             </FieldGroup>

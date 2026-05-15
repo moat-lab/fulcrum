@@ -3,7 +3,7 @@
 export interface ChatSession {
   id: string
   title: string
-  provider: 'claude' | 'opencode'
+  provider: 'claude' | 'opencode' | 'codex'
   model: string | null
   projectId: string | null
   context: string | null

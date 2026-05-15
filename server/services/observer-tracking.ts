@@ -16,7 +16,7 @@ export function createInvocation(params: {
   senderId: string
   senderName?: string
   messageContent: string
-  provider: 'claude' | 'opencode'
+  provider: 'claude' | 'opencode' | 'codex'
 }): string {
   const id = nanoid()
   const now = new Date().toISOString()
@@ -77,7 +77,7 @@ export function skipInvocation(params: {
   senderId: string
   senderName?: string
   messageContent: string
-  provider: 'claude' | 'opencode'
+  provider: 'claude' | 'opencode' | 'codex'
 }): void {
   const id = nanoid()
   const now = new Date().toISOString()

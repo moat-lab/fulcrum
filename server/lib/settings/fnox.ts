@@ -42,6 +42,7 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'agent.opencodePlanAgent': { fnoxKey: 'FULCRUM_AGENT_OPENCODE_PLAN', provider: 'plain', type: 'string' },
   'agent.autoScrollToBottom': { fnoxKey: 'FULCRUM_AGENT_AUTO_SCROLL', provider: 'plain', type: 'boolean' },
   'agent.claudeCodePath': { fnoxKey: 'FULCRUM_AGENT_CLAUDE_CODE_PATH', provider: 'plain', type: 'string' },
+  'agent.codexModel': { fnoxKey: 'FULCRUM_AGENT_CODEX_MODEL', provider: 'plain', type: 'string' },
 
   // Tasks
   'tasks.defaultTaskType': { fnoxKey: 'FULCRUM_TASKS_DEFAULT_TYPE', provider: 'plain', type: 'string' },
@@ -59,6 +60,7 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'assistant.observerModel': { fnoxKey: 'FULCRUM_ASSISTANT_OBSERVER_MODEL', provider: 'plain', type: 'string' },
   'assistant.observerProvider': { fnoxKey: 'FULCRUM_ASSISTANT_OBSERVER_PROVIDER', provider: 'plain', type: 'string' },
   'assistant.observerOpencodeModel': { fnoxKey: 'FULCRUM_ASSISTANT_OBSERVER_OPENCODE_MODEL', provider: 'plain', type: 'string' },
+  'assistant.observerCodexModel': { fnoxKey: 'FULCRUM_ASSISTANT_OBSERVER_CODEX_MODEL', provider: 'plain', type: 'string' },
   'assistant.customInstructions': { fnoxKey: 'FULCRUM_ASSISTANT_CUSTOM_INSTRUCTIONS', provider: 'plain', type: 'string' },
   'assistant.documentsDir': { fnoxKey: 'FULCRUM_ASSISTANT_DOCUMENTS_DIR', provider: 'plain', type: 'string' },
   'assistant.ritualsEnabled': { fnoxKey: 'FULCRUM_ASSISTANT_RITUALS_ENABLED', provider: 'plain', type: 'boolean' },

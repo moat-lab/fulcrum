@@ -33,6 +33,7 @@ import {
   useGoogleClientSecret,
   useDefaultAgent,
   useOpencodeModel,
+  useCodexModel,
   useOpencodeDefaultAgent,
   useOpencodePlanAgent,
   useAutoScrollToBottom,
@@ -94,6 +95,7 @@ import {
 import { useLanguageSync } from '@/hooks/use-language-sync'
 import { useThemeSync } from '@/hooks/use-theme-sync'
 import { useOpencodeModels } from '@/hooks/use-opencode-models'
+import { useSystemDependencies } from '@/hooks/use-system-dependencies'
 
 type SettingsTab = 'general' | 'ai' | 'messaging' | 'calendar'
 
@@ -146,6 +148,7 @@ function SettingsPage() {
   const { data: globalOpencodePlanAgent, isLoading: opencodePlanAgentLoading } = useOpencodePlanAgent()
   const { data: autoScrollToBottom, isLoading: autoScrollLoading } = useAutoScrollToBottom()
   const { data: claudeCodePath } = useClaudeCodePath()
+  const { data: codexModel } = useCodexModel()
   const { data: notificationSettings, isLoading: notificationsLoading } = useNotificationSettings()
   const { data: zAiSettings, isLoading: zAiLoading } = useZAiSettings()
   const { data: deploymentSettings, isLoading: deploymentLoading } = useDeploymentSettings()
@@ -170,6 +173,8 @@ function SettingsPage() {
   const { data: eveningRitualTime, isLoading: eveningTimeLoading } = useAssistantEveningRitualTime()
   const { data: eveningRitualPrompt, isLoading: eveningPromptLoading } = useAssistantEveningRitualPrompt()
   const { installed: opencodeInstalled } = useOpencodeModels()
+  const { data: systemDeps } = useSystemDependencies()
+  const codexInstalled = systemDeps?.codex?.installed ?? false
   const { version } = useFulcrumVersion()
   const { data: versionCheck, isLoading: versionCheckLoading } = useVersionCheck()
   const refreshVersionCheck = useRefreshVersionCheck()
@@ -197,6 +202,7 @@ function SettingsPage() {
   const [localOpencodePlanAgent, setLocalOpencodePlanAgent] = useState<string>('plan')
   const [localAutoScrollToBottom, setLocalAutoScrollToBottom] = useState(true)
   const [localClaudeCodePath, setLocalClaudeCodePath] = useState<string>('')
+  const [localCodexModel, setLocalCodexModel] = useState<string>('')
   const [reposDirBrowserOpen, setReposDirBrowserOpen] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -277,7 +283,8 @@ function SettingsPage() {
     if (globalOpencodePlanAgent !== undefined) setLocalOpencodePlanAgent(globalOpencodePlanAgent)
     if (autoScrollToBottom !== undefined) setLocalAutoScrollToBottom(autoScrollToBottom)
     if (claudeCodePath !== undefined) setLocalClaudeCodePath(claudeCodePath ?? '')
-  }, [port, defaultGitReposDir, editorApp, editorHost, editorSshPort, githubPat, googleClientId, googleClientSecret, defaultAgent, globalOpencodeModel, globalOpencodeDefaultAgent, globalOpencodePlanAgent, autoScrollToBottom, claudeCodePath])
+    if (codexModel !== undefined) setLocalCodexModel(codexModel ?? '')
+  }, [port, defaultGitReposDir, editorApp, editorHost, editorSshPort, githubPat, googleClientId, googleClientSecret, defaultAgent, globalOpencodeModel, globalOpencodeDefaultAgent, globalOpencodePlanAgent, autoScrollToBottom, claudeCodePath, codexModel])
 
   // Sync notification settings
   useEffect(() => {
@@ -440,7 +447,8 @@ function SettingsPage() {
     localOpencodeDefaultAgent !== globalOpencodeDefaultAgent ||
     localOpencodePlanAgent !== globalOpencodePlanAgent ||
     localAutoScrollToBottom !== autoScrollToBottom ||
-    localClaudeCodePath !== (claudeCodePath ?? '')
+    localClaudeCodePath !== (claudeCodePath ?? '') ||
+    localCodexModel !== (codexModel ?? '')
 
   const hasChanges =
     localPort !== String(port) ||
@@ -629,6 +637,17 @@ function SettingsPage() {
         new Promise((resolve) => {
           updateConfig.mutate(
             { key: CONFIG_KEYS.CLAUDE_CODE_PATH, value: localClaudeCodePath || null },
+            { onSettled: resolve }
+          )
+        })
+      )
+    }
+
+    if (localCodexModel !== (codexModel ?? '')) {
+      promises.push(
+        new Promise((resolve) => {
+          updateConfig.mutate(
+            { key: CONFIG_KEYS.CODEX_MODEL, value: localCodexModel || null },
             { onSettled: resolve }
           )
         })
@@ -1870,6 +1889,25 @@ function SettingsPage() {
                     {t('fields.agent.claudeCodePath.description')}
                   </p>
                 </div>
+
+                {/* Codex model */}
+                <div className="mt-4 space-y-1 border-t border-border pt-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <label className="text-sm text-muted-foreground sm:w-32 sm:shrink-0">
+                      Codex model
+                    </label>
+                    <Input
+                      value={localCodexModel}
+                      onChange={(e) => setLocalCodexModel(e.target.value)}
+                      placeholder="e.g. gpt-5-codex"
+                      className="flex-1"
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground sm:ml-32 sm:pl-2">
+                    Default Codex model. Leave blank to use the value from <code>~/.codex/config.toml</code>.
+                  </p>
+                </div>
               </SettingsSection>
 
               {/* AI Assistant */}
@@ -1896,6 +1934,9 @@ function SettingsPage() {
                               <SelectItem value="claude">Claude</SelectItem>
                               {opencodeInstalled && (
                                 <SelectItem value="opencode">OpenCode</SelectItem>
+                              )}
+                              {codexInstalled && (
+                                <SelectItem value="codex">Codex</SelectItem>
                               )}
                             </SelectContent>
                           </Select>
@@ -1979,6 +2020,9 @@ function SettingsPage() {
                               <SelectItem value="claude">Claude</SelectItem>
                               {opencodeInstalled && (
                                 <SelectItem value="opencode">OpenCode</SelectItem>
+                              )}
+                              {codexInstalled && (
+                                <SelectItem value="codex">Codex</SelectItem>
                               )}
                             </SelectContent>
                           </Select>

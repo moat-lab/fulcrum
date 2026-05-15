@@ -65,6 +65,7 @@ export function getSettings(): Settings {
       opencodePlanAgent: (fv('agent.opencodePlanAgent') as string) ?? DEFAULT_SETTINGS.agent.opencodePlanAgent,
       autoScrollToBottom: (fv('agent.autoScrollToBottom') as boolean | null) ?? DEFAULT_SETTINGS.agent.autoScrollToBottom,
       claudeCodePath: (fv('agent.claudeCodePath') as string | null) ?? DEFAULT_SETTINGS.agent.claudeCodePath,
+      codexModel: (fv('agent.codexModel') as string | null) ?? DEFAULT_SETTINGS.agent.codexModel,
     },
     tasks: {
       defaultTaskType: migrateTaskType(fv('tasks.defaultTaskType') as string | undefined) ?? DEFAULT_SETTINGS.tasks.defaultTaskType,
@@ -82,6 +83,7 @@ export function getSettings(): Settings {
       observerModel: (fv('assistant.observerModel') as AssistantModel) ?? DEFAULT_SETTINGS.assistant.observerModel,
       observerProvider: (fv('assistant.observerProvider') as AssistantProvider | null) ?? DEFAULT_SETTINGS.assistant.observerProvider,
       observerOpencodeModel: (fv('assistant.observerOpencodeModel') as string | null) ?? DEFAULT_SETTINGS.assistant.observerOpencodeModel,
+      observerCodexModel: (fv('assistant.observerCodexModel') as string | null) ?? DEFAULT_SETTINGS.assistant.observerCodexModel,
       customInstructions: (fv('assistant.customInstructions') as string | null) ?? null,
       documentsDir: expandPath(
         (fv('assistant.documentsDir') as string) ?? DEFAULT_SETTINGS.assistant.documentsDir

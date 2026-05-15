@@ -15,6 +15,7 @@ import {
   installBun,
   isClaudeInstalled,
   isOpencodeInstalled,
+  isCodexInstalled,
   isUvInstalled,
   installUv,
   isFnoxInstalled,
@@ -228,6 +229,7 @@ async function handleUpCommand(flags: Record<string, string>) {
       // Pass CLI's alias-aware detection to the server (which can't detect aliases)
       ...(isClaudeInstalled() && { FULCRUM_CLAUDE_INSTALLED: '1' }),
       ...(isOpencodeInstalled() && { FULCRUM_OPENCODE_INSTALLED: '1' }),
+      ...(isCodexInstalled() && { FULCRUM_CODEX_INSTALLED: '1' }),
       ...(debug && { LOG_LEVEL: 'debug', DEBUG: '1' }),
     },
   })
@@ -258,7 +260,7 @@ async function handleUpCommand(flags: Record<string, string>) {
     })
   } else {
     // Show getting started tips for human-readable output
-    const hasAgent = isClaudeInstalled() || isOpencodeInstalled()
+    const hasAgent = isClaudeInstalled() || isOpencodeInstalled() || isCodexInstalled()
     showGettingStartedTips(port, hasAgent)
   }
 }

@@ -90,6 +90,7 @@ export function TaskActionsDropdown({
     aiMode: null,
     agentOptions: null,
     opencodeModel: null,
+    codexModel: null,
     type: null,
     projectId: null,
     repositoryId: null,

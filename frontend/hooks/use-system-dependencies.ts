@@ -9,6 +9,7 @@ interface DependencyStatus {
 interface SystemDependencies {
   claudeCode: DependencyStatus
   openCode: DependencyStatus
+  codex: DependencyStatus
   dtach: DependencyStatus
 }
 
