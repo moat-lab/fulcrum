@@ -550,16 +550,21 @@ export class FulcrumClient {
     return this.fetch(`/api/apps/${id}/rollback/${deploymentId}`, { method: 'POST' })
   }
 
-  async getSystemMetrics(window: string = '1h'): Promise<{
+  async getSystemMetrics(window: string = '1h', hostId?: string): Promise<{
     window: string
     hostId: string
+    monitorStatus?: 'reporting' | 'no_data_in_window' | 'unconfigured'
+    lastSampleAt?: string | null
+    since?: string
     current?: {
-      cpuPercent?: number | null
-      memoryPercent?: number | null
-      diskPercent?: number | null
+      cpu?: number | null
+      memory?: { usedPercent?: number | null } | null
+      disk?: { usedPercent?: number | null } | null
     } | null
   }> {
-    return this.fetch(`/api/monitoring/system-metrics?window=${encodeURIComponent(window)}`)
+    const params = new URLSearchParams({ window })
+    if (hostId) params.set('hostId', hostId)
+    return this.fetch(`/api/monitoring/system-metrics?${params.toString()}`)
   }
 
   // Repositories

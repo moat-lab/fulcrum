@@ -310,14 +310,112 @@ describe('buildDashboardPayload', () => {
 })
 
 describe('buildMonitorPayload', () => {
-  test('flattens server response and tolerates missing current snapshot', () => {
-    expect(
-      buildMonitorPayload({ window: '1h', hostId: 'local', current: { cpuPercent: 12.5, memoryPercent: 40, diskPercent: null } })
-    ).toEqual({ host_id: 'local', window: '1h', cpu_percent: 12.5, memory_percent: 40, disk_percent: null })
+  const FIXED_NOW = new Date('2026-05-16T08:14:22.000Z')
 
-    expect(
-      buildMonitorPayload({ window: '5m', hostId: 'remote-1', current: null })
-    ).toEqual({ host_id: 'remote-1', window: '5m', cpu_percent: null, memory_percent: null, disk_percent: null })
+  test('reporting: emits in-window sample values and full envelope', () => {
+    const payload = buildMonitorPayload(
+      {
+        window: '1h',
+        hostId: 'vctcn-app1',
+        monitorStatus: 'reporting',
+        lastSampleAt: '2026-05-16T08:14:22.000Z',
+        since: '2026-05-16T07:14:22.000Z',
+        current: {
+          cpu: 12.5,
+          memory: { usedPercent: 40.2 },
+          disk: { usedPercent: 55.0 },
+        },
+      },
+      FIXED_NOW
+    )
+    expect(payload).toEqual({
+      host_id: 'vctcn-app1',
+      window: '1h',
+      monitor_status: 'reporting',
+      last_sample_at: '2026-05-16T08:14:22.000Z',
+      since: '2026-05-16T07:14:22.000Z',
+      cpu_percent: 12.5,
+      memory_percent: 40.2,
+      disk_percent: 55.0,
+    })
+  })
+
+  test('no_data_in_window: keeps last_sample_at, nulls metric fields', () => {
+    const payload = buildMonitorPayload(
+      {
+        window: '1h',
+        hostId: 'vctcn-app2',
+        monitorStatus: 'no_data_in_window',
+        lastSampleAt: '2026-05-16T03:00:00.000Z',
+        since: '2026-05-16T07:14:22.000Z',
+        current: {
+          cpu: 0,
+          memory: { usedPercent: 0 },
+          disk: { usedPercent: 0 },
+        },
+      },
+      FIXED_NOW
+    )
+    expect(payload).toEqual({
+      host_id: 'vctcn-app2',
+      window: '1h',
+      monitor_status: 'no_data_in_window',
+      last_sample_at: '2026-05-16T03:00:00.000Z',
+      since: '2026-05-16T07:14:22.000Z',
+      cpu_percent: null,
+      memory_percent: null,
+      disk_percent: null,
+    })
+  })
+
+  test('unconfigured: last_sample_at null, metric fields null', () => {
+    const payload = buildMonitorPayload(
+      {
+        window: '1h',
+        hostId: 'never-registered',
+        monitorStatus: 'unconfigured',
+        lastSampleAt: null,
+        since: '2026-05-16T07:14:22.000Z',
+        current: null,
+      },
+      FIXED_NOW
+    )
+    expect(payload).toEqual({
+      host_id: 'never-registered',
+      window: '1h',
+      monitor_status: 'unconfigured',
+      last_sample_at: null,
+      since: '2026-05-16T07:14:22.000Z',
+      cpu_percent: null,
+      memory_percent: null,
+      disk_percent: null,
+    })
+  })
+
+  test('back-compat: older server response (no status fields) coerces to unconfigured + null metrics, derives since from window', () => {
+    const payload = buildMonitorPayload(
+      {
+        window: '1h',
+        hostId: 'legacy-host',
+        current: {
+          cpu: 33.3,
+          memory: { usedPercent: 50.0 },
+          disk: { usedPercent: 60.0 },
+        },
+      },
+      FIXED_NOW
+    )
+    // Legacy fields still present so old plugin keys (host_id, window, cpu/memory/disk_percent)
+    // resolve without runtime errors; non-reporting status nulls the metric values to keep
+    // the em-dash fallback intact downstream.
+    expect(payload.host_id).toBe('legacy-host')
+    expect(payload.window).toBe('1h')
+    expect(payload.monitor_status).toBe('unconfigured')
+    expect(payload.last_sample_at).toBeNull()
+    expect(payload.since).toBe('2026-05-16T07:14:22.000Z')
+    expect(payload.cpu_percent).toBeNull()
+    expect(payload.memory_percent).toBeNull()
+    expect(payload.disk_percent).toBeNull()
   })
 })
 
