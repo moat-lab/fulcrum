@@ -1,0 +1,10 @@
+[lint]   195 |     getScrollElement: () => scrollRef.current,
+[lint]   196 |     estimateSize: (index) =>  react-hooks/incompatible-library
+[lint] 
+[lint] /Users/mouriya/Ext/code/fulcrum/frontend/components/viewer/scratch-editor.tsx
+[lint]   45:9  warning  The 'expandTilde' function makes the dependencies of useCallback Hook (at line 154) change on every render. Move it inside the useCallback callback. Alternatively, wrap the definition of 'expandTilde' in its own useCallback() Hook  react-hooks/exhaustive-deps
+[lint] 
+[lint] ✖ 2 problems (0 errors, 2 warnings)
+[lint] 
+[lint] Finished in 10.90s
+Finished in 10.91s

@@ -830,6 +830,11 @@ app.post('/:id/stop', async (c) => {
 })
 
 // GET /api/apps/:id/logs - Get service logs
+//
+// Docker-host deployments use docker swarm. Docker-less Fulcrum deployments
+// (e.g. homelab prod `vctcn-app1`, renderer-only, no host docker socket) fall
+// back to the latest `deployments.buildLogs` row so the endpoint still returns
+// meaningful content. See issue #239.
 app.get('/:id/logs', async (c) => {
   const id = c.req.param('id')
   const service = c.req.query('service')
@@ -849,26 +854,42 @@ app.get('/:id/logs', async (c) => {
 
   const projectName = getProjectName(id, repo?.displayName)
 
-  // Get logs for specific service or all services
+  // Try swarm path first; preserves docker-host behavior unchanged.
+  let swarmLogs = ''
   if (service) {
-    // Swarm service names are: stackName_serviceName
     const fullServiceName = `${projectName}_${service}`
-    const logs = await serviceLogs(fullServiceName, tail)
-    return c.json({ logs })
-  }
-
-  // Get logs from all services in the stack
-  const services = await stackServices(projectName)
-  const allLogs: string[] = []
-
-  for (const svc of services) {
-    const svcLogs = await serviceLogs(svc.name, tail)
-    if (svcLogs) {
-      allLogs.push(`=== ${svc.serviceName} ===\n${svcLogs}`)
+    swarmLogs = await serviceLogs(fullServiceName, tail)
+  } else {
+    const services = await stackServices(projectName)
+    const allLogs: string[] = []
+    for (const svc of services) {
+      const svcLogs = await serviceLogs(svc.name, tail)
+      if (svcLogs) {
+        allLogs.push(`=== ${svc.serviceName} ===\n${svcLogs}`)
+      }
     }
+    swarmLogs = allLogs.join('\n\n')
   }
 
-  return c.json({ logs: allLogs.join('\n\n') })
+  if (swarmLogs) {
+    return c.json({ logs: swarmLogs })
+  }
+
+  // Swarm yielded nothing (no docker, no stack, or all services empty).
+  // Fall back to the latest deployment's buildLogs.
+  const latest = await db.query.deployments.findFirst({
+    where: eq(deployments.appId, id),
+    orderBy: [desc(deployments.createdAt)],
+  })
+
+  const buildLogs = latest?.buildLogs ?? ''
+  if (!buildLogs) {
+    return c.json({ logs: '' })
+  }
+
+  const lines = buildLogs.split('\n')
+  const trimmed = lines.length > tail ? lines.slice(-tail).join('\n') : buildLogs
+  return c.json({ logs: trimmed })
 })
 
 // GET /api/apps/:id/status - Get service status

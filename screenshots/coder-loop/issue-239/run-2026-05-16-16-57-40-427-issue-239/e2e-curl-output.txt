@@ -1,0 +1,21 @@
+=== Seed state ===
+dep1778951233|app1778951233|279
+
+=== E2E #1: curl /api/apps/app1778951233/logs (no params, swarm empty + deployment present) ===
+compose: deploy success
+compose: starting service web
+compose: pulling image nginx:latest
+compose: image pulled (sha256:abc123)
+compose: creating container fulcrum_web.1
+compose: container fulcrum_web.1 started
+compose: service web converged (1/1)
+compose: stack deployed in 8.4s
+
+=== E2E #2: curl /api/apps/app1778951233/logs?tail=3 (fallback honors tail) ===
+compose: container fulcrum_web.1 started
+compose: service web converged (1/1)
+compose: stack deployed in 8.4s
+
+=== E2E #3: CLI fulcrum apps logs --url http://localhost:8889 --json (plugin contract surface) ===
+{"success":true,"data":{"schema_version":1,"verb":"apps.logs","app_id":"app1778951233","service":null,"logs":"compose: deploy success\ncompose: starting service web\ncompose: pulling image nginx:latest\ncompose: image pulled (sha256:abc123)\ncompose: creating container fulcrum_web.1\ncompose: container fulcrum_web.1 started\ncompose: service web converged (1/1)\ncompose: stack deployed in 8.4s"}}
+
