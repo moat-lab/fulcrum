@@ -1,0 +1,18 @@
+=== Scenario A: NO --host (expect 'remote-only mode requires hostId') ===
+{"success":true,"data":{"schema_version":1,"verb":"tasks.create","error":{"code":"CREATE_FAILED","message":"remote-only mode requires hostId"}}}
+exit=0
+
+=== Scenario B: --host vctcn-app1 (host not in DB → expect 'Host not found') ===
+{"success":true,"data":{"schema_version":1,"verb":"tasks.create","task":{"id":"7bd55933-6301-469b-9c8f-ad5b966f6f89","title":"smoke-with-host","status":"IN_PROGRESS","priority":"medium","type":null,"projectId":null,"tags":[],"dueDate":null,"agent":"claude","worktreePath":null,"prUrl":null,"startedAt":"2026-05-16T10:18:41.299Z","createdAt":"2026-05-16T10:18:41.299Z","updatedAt":"2026-05-16T10:18:41.299Z"}}}
+exit=0
+=== Scenario C: verify created task row has hostId persisted ===
+{
+  "id": "7bd55933-6301-469b-9c8f-ad5b966f6f89",
+  "title": "smoke-with-host",
+  "hostId": "vctcn-app1",
+  "status": "IN_PROGRESS"
+}
+
+=== Scenario D: raw POST without hostId (curl confirms server-side reject path is the failure #38 hit) ===
+{"error":"remote-only mode requires hostId"}
+http_code=400
