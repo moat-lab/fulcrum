@@ -499,6 +499,43 @@ export function getCurrentMetrics(hostId = LOCAL_HOST_ID): CurrentMetrics {
   return toCurrentMetrics(latest[0], hostId === LOCAL_HOST_ID)
 }
 
+export type MonitorStatus = 'reporting' | 'no_data_in_window' | 'unconfigured'
+
+export interface MonitorStatusInfo {
+  monitorStatus: MonitorStatus
+  lastSampleAt: string | null
+  since: string
+}
+
+// Derive monitor reporting status by checking systemMetrics for the latest
+// row for hostId (no window) and comparing its timestamp to now - windowSeconds.
+// `unconfigured` ⇔ no rows ever, `no_data_in_window` ⇔ latest row < since,
+// `reporting` ⇔ latest row >= since. See cli/JSON_SCHEMA.md `fulcrum monitor`.
+export function getMonitorStatus(hostId: string, windowSeconds: number): MonitorStatusInfo {
+  const nowMs = Date.now()
+  const sinceMs = nowMs - windowSeconds * 1000
+  const sinceSeconds = Math.floor(sinceMs / 1000)
+
+  const latest = db
+    .select()
+    .from(systemMetrics)
+    .where(eq(systemMetrics.hostId, hostId))
+    .orderBy(desc(systemMetrics.timestamp))
+    .limit(1)
+    .all()[0]
+
+  const since = new Date(sinceMs).toISOString()
+  if (!latest) {
+    return { monitorStatus: 'unconfigured', lastSampleAt: null, since }
+  }
+
+  const lastSampleAt = new Date(latest.timestamp * 1000).toISOString()
+  if (latest.timestamp >= sinceSeconds) {
+    return { monitorStatus: 'reporting', lastSampleAt, since }
+  }
+  return { monitorStatus: 'no_data_in_window', lastSampleAt, since }
+}
+
 export function getHostMetricSummaries(): HostMetricSummary[] {
   const allHosts = db.select().from(hosts).all()
   const cutoff = Math.floor(Date.now() / 1000) - REMOTE_COLLECT_INTERVAL / 1000 * 2

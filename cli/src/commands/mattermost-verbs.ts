@@ -778,39 +778,86 @@ export const searchCommand = defineCommand({
 // monitor
 // ============================================================================
 
+export type MonitorStatus = 'reporting' | 'no_data_in_window' | 'unconfigured'
+
+const MONITOR_STATUS_VALUES: ReadonlySet<MonitorStatus> = new Set<MonitorStatus>([
+  'reporting',
+  'no_data_in_window',
+  'unconfigured',
+])
+
 interface SystemMetricsResponse {
   window: string
   hostId: string
+  monitorStatus?: string
+  lastSampleAt?: string | null
+  since?: string
   current?: {
-    cpuPercent?: number | null
-    memoryPercent?: number | null
-    diskPercent?: number | null
+    cpu?: number | null
+    memory?: { usedPercent?: number | null } | null
+    disk?: { usedPercent?: number | null } | null
   } | null
 }
 
-export function buildMonitorPayload(metrics: SystemMetricsResponse): {
+export interface MonitorPayload {
   host_id: string
   window: string
+  monitor_status: MonitorStatus
+  last_sample_at: string | null
+  since: string
   cpu_percent: number | null
   memory_percent: number | null
   disk_percent: number | null
-} {
+}
+
+// Window suffix grammar matches server `parseWindow` ("1h", "30m", ...).
+// Returns null for unparseable strings so callers can fall back deliberately.
+function windowToMs(window: string): number | null {
+  const match = window.match(/^(\d+)(m|h)$/)
+  if (!match) return null
+  const value = parseInt(match[1], 10)
+  return match[2] === 'h' ? value * 3600_000 : value * 60_000
+}
+
+export function buildMonitorPayload(
+  metrics: SystemMetricsResponse,
+  now: Date = new Date()
+): MonitorPayload {
+  const rawStatus = metrics.monitorStatus
+  const monitorStatus: MonitorStatus =
+    rawStatus && MONITOR_STATUS_VALUES.has(rawStatus as MonitorStatus)
+      ? (rawStatus as MonitorStatus)
+      : 'unconfigured'
+  const lastSampleAt = metrics.lastSampleAt ?? null
+  const windowMs = windowToMs(metrics.window) ?? 3600_000
+  const since = metrics.since ?? new Date(now.getTime() - windowMs).toISOString()
+  const current = metrics.current ?? null
+  const isReporting = monitorStatus === 'reporting' && current !== null
   return {
     host_id: metrics.hostId,
     window: metrics.window,
-    cpu_percent: metrics.current?.cpuPercent ?? null,
-    memory_percent: metrics.current?.memoryPercent ?? null,
-    disk_percent: metrics.current?.diskPercent ?? null,
+    monitor_status: monitorStatus,
+    last_sample_at: lastSampleAt,
+    since,
+    cpu_percent: isReporting ? (current?.cpu ?? null) : null,
+    memory_percent: isReporting ? (current?.memory?.usedPercent ?? null) : null,
+    disk_percent: isReporting ? (current?.disk?.usedPercent ?? null) : null,
   }
 }
 
 export const monitorCommand = defineCommand({
   meta: { name: 'monitor', description: 'System metrics snapshot' },
-  args: verbArgs,
+  args: {
+    ...verbArgs,
+    host: { type: 'string' as const, description: 'Host ID to query (default: local)' },
+    window: { type: 'string' as const, description: 'Window (e.g. 1h, 30m; default 1h)' },
+  },
   async run({ args }) {
     const c = client(args)
+    const window = args.window ? String(args.window) : '1h'
+    const host = args.host ? String(args.host) : undefined
     try {
-      const metrics = await c.getSystemMetrics()
+      const metrics = await c.getSystemMetrics(window, host)
       emit('monitor', buildMonitorPayload(metrics))
     } catch (err) {
       emitError('monitor', 'FETCH_FAILED', err instanceof Error ? err.message : String(err))

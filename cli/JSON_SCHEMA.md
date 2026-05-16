@@ -247,19 +247,42 @@ writes the agent's launch command. Also transitions the task to
 }
 ```
 
-### `fulcrum monitor`
+### `fulcrum monitor [--host=<id>] [--window=<1h|30m|...>]`
 
 ```json
 {
   "schema_version": 1,
   "verb": "monitor",
-  "host_id": "local",
+  "host_id": "vctcn-app1",
   "window": "1h",
+  "monitor_status": "reporting",
+  "last_sample_at": "2026-05-16T08:14:22.000Z",
+  "since": "2026-05-16T07:14:22.000Z",
   "cpu_percent": 12.5,
   "memory_percent": 40.2,
-  "disk_percent": null
+  "disk_percent": 55.0
 }
 ```
+
+`monitor_status` discriminates the three "no data" root causes the plugin
+needs to render visually distinct cards (downstream
+[`mattermost-plugin-fulcrum#40`](https://github.com/Mouriya-Emma/mattermost-plugin-fulcrum/issues/40)):
+
+| `monitor_status`     | Meaning                                                                                     | `last_sample_at`                      | `cpu_percent` / `memory_percent` / `disk_percent` |
+|----------------------|---------------------------------------------------------------------------------------------|---------------------------------------|---------------------------------------------------|
+| `reporting`          | Host has a sample with `timestamp >= since`. Metrics are the latest in-window values.       | ISO-8601 of the latest in-window row  | float                                             |
+| `no_data_in_window`  | Host has historical rows but none with `timestamp >= since`.                                | ISO-8601 of the latest historical row | `null`                                            |
+| `unconfigured`       | Host has no rows at all in `systemMetrics` (host never registered / collector never wrote). | `null`                                | `null`                                            |
+
+`since` is the lower bound of the window (`now - window`) so the plugin can
+render `No samples in last 1h window (since=<ts>)`.
+
+Backwards compatibility: `monitor_status`, `last_sample_at`, and `since` are
+**new optional fields under `schema_version = 1`**. Plugin builds that do not
+yet read them keep the existing `host_id` / `window` / `cpu_percent` /
+`memory_percent` / `disk_percent` contract intact, and the CLI tolerates
+older server responses by coercing the status to `unconfigured` and emitting
+null metrics (no regression versus the prior em-dash card).
 
 ### `fulcrum jobs [--scope=all|user|system]`
 
