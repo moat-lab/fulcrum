@@ -1,0 +1,24 @@
+[test:file] $ # Create isolated test directories before bun starts
+[test:file] Isolated environment: HOME=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-home-XXXXXX.QIMye62puJ FULCRUM_DIR=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-dir-XXXXXX.KyiiOpz2C1
+bun test v1.3.13 (bf2e2cec)
+
+server/routes/apps.logs.test.ts:
+<-- GET /api/apps/zrkDxg1NdnPcI91mdz_Gj/logs
+--> GET /api/apps/zrkDxg1NdnPcI91mdz_Gj/logs [32m200[0m 2ms
+<-- GET /api/apps/aNbqaiSjKTz7qWdOFC2Ag/logs
+--> GET /api/apps/aNbqaiSjKTz7qWdOFC2Ag/logs [32m200[0m 0ms
+<-- GET /api/apps/5OqhWInpBRDJE_F9S5azj/logs
+--> GET /api/apps/5OqhWInpBRDJE_F9S5azj/logs [32m200[0m 0ms
+<-- GET /api/apps/T2zvRlKpw70FC5kW-PYhf/logs?tail=2
+--> GET /api/apps/T2zvRlKpw70FC5kW-PYhf/logs?tail=2 [32m200[0m 1ms
+<-- GET /api/apps/2JGQ3m_X-O-y3yl6f6_87/logs?service=web
+--> GET /api/apps/2JGQ3m_X-O-y3yl6f6_87/logs?service=web [32m200[0m 1ms
+<-- GET /api/apps/Q1GG9ksXd1H1u2fMR2gNg/logs
+--> GET /api/apps/Q1GG9ksXd1H1u2fMR2gNg/logs [32m200[0m 1ms
+<-- GET /api/apps/nonexistent/logs
+--> GET /api/apps/nonexistent/logs [33m404[0m 0ms
+
+ 7 pass
+ 0 fail
+ 14 expect() calls
+Ran 7 tests across 1 file. [2.07s]
