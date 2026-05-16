@@ -92,6 +92,7 @@ export interface CreateTaskInput {
   worktreePath?: string | null
   projectId?: string | null
   repositoryId?: string | null
+  hostId?: string | null
   tags?: string[]
   dueDate?: string | null
   timeEstimate?: number | null

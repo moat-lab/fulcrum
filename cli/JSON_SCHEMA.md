@@ -105,7 +105,10 @@ populate Mattermost interactive buttons.
 ### `fulcrum tasks create --title=... [...]`
 
 Mirrors `POST /api/tasks` with optional `--description`, `--priority`,
-`--type`, `--project`, `--repo`, `--due`, `--tags` (comma-separated).
+`--type`, `--project`, `--repo`, `--host`, `--due`, `--tags`
+(comma-separated). `--host <hostId>` forwards as `hostId` in the POST body
+and is required in remote-only deployments (server returns `400
+remote-only mode requires hostId` otherwise).
 
 ```json
 { "schema_version": 1, "verb": "tasks.create", "task": TaskSummary }

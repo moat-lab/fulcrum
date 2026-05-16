@@ -1,0 +1,21 @@
+Create a new task (tasks create)
+
+USAGE tasks create [OPTIONS] --title
+
+OPTIONS
+
+              --port    Server port (default: 7777)                                          
+               --url    Override full server URL                                             
+           --no-json    Emit JSON envelope (default and only output mode for plugin contract)
+             --debug    Show detailed error stack traces                                     
+  --title (required)    Task title                                                           
+       --description    Task description                                                     
+          --priority    high|medium|low                                                      
+              --type    worktree|scratch|manual                                              
+           --project    Project ID                                                           
+              --repo    Repository ID                                                        
+              --host    Host ID (required in remote-only deployments)                        
+               --due    Due date YYYY-MM-DD                                                  
+              --tags    Comma-separated tags                                                 
+
+

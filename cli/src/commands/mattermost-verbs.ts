@@ -11,7 +11,7 @@
 
 import { defineCommand } from 'citty'
 import type { Task, TaskStatus, TaskPriority, App, Project, ProjectWithDetails, SystemdTimer } from '@shared/types'
-import { FulcrumClient } from '../client'
+import { FulcrumClient, type CreateTaskInput } from '../client'
 import { outputVerbPayload, CLI_JSON_SCHEMA_VERSION } from '../utils/output'
 import { CliError, ExitCodes } from '../utils/errors'
 import { globalArgs, toFlags, setupJsonOutput } from './shared'
@@ -404,6 +404,33 @@ const tasksGetCommand = defineCommand({
   },
 })
 
+/**
+ * Map citty args from `fulcrum tasks create` into a `CreateTaskInput`.
+ *
+ * Extracted as a pure helper so unit tests can assert the argv → POST-body
+ * shape without spinning up the FulcrumClient. The `host` flag is the seam
+ * the Mattermost plugin (`/f tasks create --host <id>`) needs in remote-only
+ * deployments — server rejects with `remote-only mode requires hostId` if
+ * `hostId` is missing from the body.
+ */
+export function buildCreateTaskInput(args: Record<string, unknown>): CreateTaskInput {
+  const tags = args.tags
+    ? String(args.tags).split(',').map((t) => t.trim()).filter(Boolean)
+    : undefined
+  const type = args.type ? String(args.type) : undefined
+  return {
+    title: String(args.title),
+    description: args.description ? String(args.description) : undefined,
+    priority: args.priority ? parseTaskPriority(String(args.priority)) : undefined,
+    type: type ?? null,
+    projectId: args.project ? String(args.project) : null,
+    repositoryId: args.repo ? String(args.repo) : null,
+    hostId: args.host ? String(args.host) : undefined,
+    dueDate: args.due ? String(args.due) : null,
+    tags,
+  }
+}
+
 const tasksCreateCommand = defineCommand({
   meta: { name: 'create', description: 'Create a new task' },
   args: {
@@ -414,25 +441,15 @@ const tasksCreateCommand = defineCommand({
     type: { type: 'string' as const, description: 'worktree|scratch|manual' },
     project: { type: 'string' as const, description: 'Project ID' },
     repo: { type: 'string' as const, description: 'Repository ID' },
+    host: { type: 'string' as const, description: 'Host ID (required in remote-only deployments)' },
     due: { type: 'string' as const, description: 'Due date YYYY-MM-DD' },
     tags: { type: 'string' as const, description: 'Comma-separated tags' },
   },
   async run({ args }) {
     if (!args.title) emitError('tasks.create', 'MISSING_TITLE', 'title is required', ExitCodes.INVALID_ARGS)
     const c = client(args)
-    const tags = args.tags ? String(args.tags).split(',').map((t) => t.trim()).filter(Boolean) : undefined
-    const type = args.type ? String(args.type) : undefined
     try {
-      const t = await c.createTask({
-        title: String(args.title),
-        description: args.description ? String(args.description) : undefined,
-        priority: args.priority ? parseTaskPriority(String(args.priority)) : undefined,
-        type: type ?? null,
-        projectId: args.project ? String(args.project) : null,
-        repositoryId: args.repo ? String(args.repo) : null,
-        dueDate: args.due ? String(args.due) : null,
-        tags,
-      })
+      const t = await c.createTask(buildCreateTaskInput(args))
       emit('tasks.create', { task: toTaskSummary(t) })
     } catch (err) {
       emitError('tasks.create', 'CREATE_FAILED', err instanceof Error ? err.message : String(err))

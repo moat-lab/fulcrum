@@ -10,6 +10,7 @@ import {
   filterTasks,
   buildDashboardPayload,
   buildMonitorPayload,
+  buildCreateTaskInput,
   summarizeDiff,
   CLI_JSON_SCHEMA_VERSION,
 } from '../../commands/mattermost-verbs'
@@ -416,6 +417,44 @@ describe('buildMonitorPayload', () => {
     expect(payload.cpu_percent).toBeNull()
     expect(payload.memory_percent).toBeNull()
     expect(payload.disk_percent).toBeNull()
+  })
+})
+
+describe('buildCreateTaskInput', () => {
+  test('forwards --host as hostId so remote-only deployments accept the POST', () => {
+    const input = buildCreateTaskInput({ title: 'smoke', host: 'vctcn-app1' })
+    expect(input.hostId).toBe('vctcn-app1')
+    expect(input.title).toBe('smoke')
+  })
+
+  test('omits hostId when --host is absent (back-compat with local-only deployments)', () => {
+    const input = buildCreateTaskInput({ title: 'smoke' })
+    expect(input.hostId).toBeUndefined()
+  })
+
+  test('keeps the existing argv → POST body mapping for description/priority/type/project/repo/due/tags alongside hostId', () => {
+    const input = buildCreateTaskInput({
+      title: 'demo',
+      description: 'hi',
+      priority: 'High',
+      type: 'worktree',
+      project: 'p1',
+      repo: 'r1',
+      host: 'vctcn-app1',
+      due: '2026-05-20',
+      tags: 'a, b ,c',
+    })
+    expect(input).toEqual({
+      title: 'demo',
+      description: 'hi',
+      priority: 'high',
+      type: 'worktree',
+      projectId: 'p1',
+      repositoryId: 'r1',
+      hostId: 'vctcn-app1',
+      dueDate: '2026-05-20',
+      tags: ['a', 'b', 'c'],
+    })
   })
 })
 
