@@ -849,12 +849,26 @@ app.get('/:id/logs', async (c) => {
 
   const projectName = getProjectName(id, repo?.displayName)
 
+  // Fallback when no docker swarm output is available (e.g. docker-less prod
+  // renderer-only Fulcrum deployments): serve the latest deployment's
+  // buildLogs from the DB. Keeps `apps logs` useful for audit / dashboard
+  // surfaces that don't have a real docker host attached.
+  const tailLines = (s: string): string =>
+    s.split('\n').slice(-tail).join('\n')
+  const deploymentFallback = async (): Promise<string> => {
+    const latest = await db.query.deployments.findFirst({
+      where: eq(deployments.appId, id),
+      orderBy: [desc(deployments.createdAt)],
+    })
+    return latest?.buildLogs ? tailLines(latest.buildLogs) : ''
+  }
+
   // Get logs for specific service or all services
   if (service) {
     // Swarm service names are: stackName_serviceName
     const fullServiceName = `${projectName}_${service}`
     const logs = await serviceLogs(fullServiceName, tail)
-    return c.json({ logs })
+    return c.json({ logs: logs || (await deploymentFallback()) })
   }
 
   // Get logs from all services in the stack
@@ -868,7 +882,10 @@ app.get('/:id/logs', async (c) => {
     }
   }
 
-  return c.json({ logs: allLogs.join('\n\n') })
+  if (allLogs.length > 0) {
+    return c.json({ logs: allLogs.join('\n\n') })
+  }
+  return c.json({ logs: await deploymentFallback() })
 })
 
 // GET /api/apps/:id/status - Get service status

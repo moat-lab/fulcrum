@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { createTestGitRepo, type TestGitRepo } from '../__tests__/fixtures/git'
 import { createTestApp } from '../__tests__/fixtures/app'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
-import { db, apps, appServices, repositories } from '../db'
+import { db, apps, appServices, deployments, repositories } from '../db'
 import { eq } from 'drizzle-orm'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -13,6 +13,18 @@ mock.module('../services/docker-compose', () => ({
   checkDockerInstalled: () => Promise.resolve(true),
   checkDockerRunning: () => Promise.resolve(true),
   composeBuild: () => Promise.resolve({ success: true, output: '' }),
+}))
+
+// Mutable docker-swarm mock state so individual tests can simulate the
+// "docker present + non-empty logs" and "docker absent" paths.
+type SwarmService = { name: string; serviceName: string }
+let mockStackServices: () => Promise<SwarmService[]> = () => Promise.resolve([])
+let mockServiceLogs: (name: string, tail?: number) => Promise<string> =
+  () => Promise.resolve('')
+mock.module('../services/docker-swarm', () => ({
+  stackServices: (name: string) => mockStackServices(),
+  serviceLogs: (name: string, tail?: number) => mockServiceLogs(name, tail),
+  stackRemove: () => Promise.resolve({ success: true }),
 }))
 
 describe('Apps Routes', () => {
@@ -506,6 +518,156 @@ services:
       const res = await post('/api/apps/nonexistent/sync-services')
 
       expect(res.status).toBe(404)
+    })
+  })
+
+  describe('GET /api/apps/:id/logs', () => {
+    const seedAppOnly = (appId: string) => {
+      const now = new Date().toISOString()
+      db.insert(apps).values({
+        id: appId,
+        name: 'Logs App',
+        repositoryId: repoId,
+        branch: 'main',
+        composeFile: 'compose.yml',
+        status: 'running',
+        autoDeployEnabled: false,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+    }
+
+    const seedDeployment = (appId: string, buildLogs: string) => {
+      const now = new Date().toISOString()
+      db.insert(deployments).values({
+        id: nanoid(),
+        appId,
+        status: 'running',
+        gitCommit: 'test-commit',
+        gitMessage: 'test',
+        deployedBy: 'manual',
+        buildLogs,
+        startedAt: now,
+        completedAt: now,
+        createdAt: now,
+      }).run()
+    }
+
+    beforeEach(() => {
+      // Reset swarm mocks to "docker absent" baseline between tests
+      mockStackServices = () => Promise.resolve([])
+      mockServiceLogs = () => Promise.resolve('')
+    })
+
+    test('returns deployment buildLogs when docker swarm yields nothing', async () => {
+      const appId = nanoid()
+      seedAppOnly(appId)
+      seedDeployment(appId, 'line-a\nline-b\nline-c')
+
+      const { get } = createTestApp()
+      const res = await get(`/api/apps/${appId}/logs`)
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.logs).toBe('line-a\nline-b\nline-c')
+    })
+
+    test('prefers docker swarm logs over deployment fallback when both exist', async () => {
+      const appId = nanoid()
+      seedAppOnly(appId)
+      seedDeployment(appId, 'fallback-line')
+      mockStackServices = () => Promise.resolve([
+        { name: 'app_web', serviceName: 'web' },
+      ])
+      mockServiceLogs = () => Promise.resolve('swarm-line-1\nswarm-line-2')
+
+      const { get } = createTestApp()
+      const res = await get(`/api/apps/${appId}/logs`)
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.logs).toBe('=== web ===\nswarm-line-1\nswarm-line-2')
+      expect(body.logs).not.toContain('fallback-line')
+    })
+
+    test('returns empty string when neither swarm nor deployments have logs', async () => {
+      const appId = nanoid()
+      seedAppOnly(appId)
+      // No deployment row inserted
+
+      const { get } = createTestApp()
+      const res = await get(`/api/apps/${appId}/logs`)
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.logs).toBe('')
+    })
+
+    test('honors ?tail=N on the deployment fallback', async () => {
+      const appId = nanoid()
+      seedAppOnly(appId)
+      seedDeployment(appId, ['l1', 'l2', 'l3', 'l4', 'l5'].join('\n'))
+
+      const { get } = createTestApp()
+      const res = await get(`/api/apps/${appId}/logs?tail=2`)
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.logs).toBe('l4\nl5')
+    })
+
+    test('?service=<name> falls back to deployment when swarm returns empty', async () => {
+      const appId = nanoid()
+      seedAppOnly(appId)
+      seedDeployment(appId, 'service-fallback-line')
+
+      const { get } = createTestApp()
+      const res = await get(`/api/apps/${appId}/logs?service=web`)
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.logs).toBe('service-fallback-line')
+    })
+
+    test('reads the latest deployment when multiple exist', async () => {
+      const appId = nanoid()
+      seedAppOnly(appId)
+      // Insert older + newer; newer should win
+      const t0 = new Date(Date.now() - 60_000).toISOString()
+      const t1 = new Date().toISOString()
+      db.insert(deployments).values([
+        {
+          id: nanoid(),
+          appId,
+          status: 'running',
+          gitCommit: 'old',
+          gitMessage: 'old',
+          deployedBy: 'manual',
+          buildLogs: 'OLD',
+          startedAt: t0,
+          completedAt: t0,
+          createdAt: t0,
+        },
+        {
+          id: nanoid(),
+          appId,
+          status: 'running',
+          gitCommit: 'new',
+          gitMessage: 'new',
+          deployedBy: 'manual',
+          buildLogs: 'NEW',
+          startedAt: t1,
+          completedAt: t1,
+          createdAt: t1,
+        },
+      ]).run()
+
+      const { get } = createTestApp()
+      const res = await get(`/api/apps/${appId}/logs`)
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.logs).toBe('NEW')
     })
   })
 })
