@@ -198,8 +198,9 @@ describe('DtachService', () => {
       expect(service1).toBe(service2)
     })
 
-    test('throws for tmux kind (not yet implemented)', () => {
-      expect(() => getMultiplexerService('tmux')).toThrow('tmux multiplexer not yet implemented')
+    test('returns TmuxService for tmux kind', () => {
+      const service = getMultiplexerService('tmux')
+      expect(service.kind).toBe('tmux')
     })
   })
 

@@ -1,0 +1,10 @@
+dist/assets/cpp-CofmeUqb.js                                          626.08 kB │ gzip:    44.90 kB
+dist/assets/emacs-lisp-C9XAeP06.js                                   779.85 kB │ gzip:   196.53 kB
+dist/assets/index-BOaX6ajt.js                                      4,751.58 kB │ gzip: 1,379.24 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 7.51s
+Finished in 13.52s

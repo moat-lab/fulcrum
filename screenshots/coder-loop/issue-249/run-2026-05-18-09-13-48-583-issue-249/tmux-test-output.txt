@@ -1,0 +1,8 @@
+[test:file] $ # Create isolated test directories before bun starts
+[test:file] Isolated environment: HOME=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-home-XXXXXX.3tk0TnriVJ FULCRUM_DIR=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-dir-XXXXXX.5USmygSEzS
+bun test v1.3.13 (bf2e2cec)
+
+ 19 pass
+ 0 fail
+ 36 expect() calls
+Ran 19 tests across 1 file. [629.00ms]
