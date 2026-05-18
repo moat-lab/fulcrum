@@ -80,7 +80,7 @@ export class SSHTerminalSession implements ITerminalSession {
     this.fulcrumUrl = options.fulcrumUrl
     this.buffer = new BufferManager(this.cols, this.rows)
     this.buffer.setTerminalId(this.id)
-    this.remoteSocketsDir = `/home/${options.sshConfig.username}/.fulcrum/sockets`
+    this.remoteSocketsDir = '$HOME/.fulcrum/sockets'
     this.onData = options.onData
     this.onExit = options.onExit
     this.onShouldDestroy = options.onShouldDestroy
@@ -276,7 +276,7 @@ export class SSHTerminalSession implements ITerminalSession {
       const manager = getSSHConnectionManager()
       const cmd = this._multiplexerKind === 'tmux'
         ? `tmux has-session -t ${shellEscape(`fulcrum-${this.id}`)} 2>/dev/null`
-        : `test -S ${shellEscape(`${this.remoteSocketsDir}/terminal-${this.id}.sock`)}`
+        : `test -S "$HOME/.fulcrum/sockets/terminal-${this.id}.sock"`
       await manager.execCommand(this.sshConfig, cmd)
       return true
     } catch {
@@ -366,10 +366,10 @@ export class SSHTerminalSession implements ITerminalSession {
     const killCmd = this._multiplexerKind === 'tmux'
       ? `tmux kill-session -t ${shellEscape(`fulcrum-${this.id}`)} 2>/dev/null || true`
       : (() => {
-          const remoteSocketPath = `${this.remoteSocketsDir}/terminal-${this.id}.sock`
+          const remoteSocketPath = `$HOME/.fulcrum/sockets/terminal-${this.id}.sock`
           return [
-            `pkill -f ${shellEscape('dtach.*' + remoteSocketPath)} 2>/dev/null || true`,
-            `rm -f ${shellEscape(remoteSocketPath)}`,
+            `pkill -f "dtach.*$HOME/.fulcrum/sockets/terminal-${this.id}.sock" 2>/dev/null || true`,
+            `rm -f "${remoteSocketPath}"`,
           ].join(' && ')
         })()
     manager.execCommand(this.sshConfig, killCmd).catch((err) => {
@@ -402,9 +402,8 @@ export class SSHTerminalSession implements ITerminalSession {
             `done`,
           ].join('\n')
         : (() => {
-            const remoteSocketPath = `${this.remoteSocketsDir}/terminal-${this.id}.sock`
             return [
-              `DTACH_PID=$(pgrep -f ${shellEscape('dtach.*' + remoteSocketPath)} 2>/dev/null | head -1)`,
+              `DTACH_PID=$(pgrep -f "dtach.*$HOME/.fulcrum/sockets/terminal-${this.id}.sock" 2>/dev/null | head -1)`,
               `if [ -n "$DTACH_PID" ]; then`,
               `  for PID in $(pgrep -P $DTACH_PID 2>/dev/null); do`,
               `    CMDLINE=$(cat /proc/$PID/cmdline 2>/dev/null || ps -p $PID -o args= 2>/dev/null)`,

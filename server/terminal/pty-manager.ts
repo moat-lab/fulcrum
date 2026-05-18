@@ -109,7 +109,7 @@ export class PTYManager {
           try {
             const healthCmd = remoteMuxKind === 'tmux'
               ? `tmux has-session -t 'fulcrum-${record.id}' 2>/dev/null`
-              : `test -S '/home/${sshConfig.username}/.fulcrum/sockets/terminal-${record.id}.sock'`
+              : `test -S "$HOME/.fulcrum/sockets/terminal-${record.id}.sock"`
             await manager.execCommand(sshConfig, healthCmd, 10000)
           } catch {
             log.pty.warn('Remote session not found, marking exited', { terminalId: record.id, multiplexerKind: remoteMuxKind })
