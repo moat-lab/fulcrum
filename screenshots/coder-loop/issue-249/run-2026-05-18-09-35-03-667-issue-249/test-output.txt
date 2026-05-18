@@ -1,0 +1,10 @@
+
+✖ 2 problems (0 errors, 2 warnings)
+
+[test] Isolated environment: HOME=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-home-XXXXXX.37X7KQgfov FULCRUM_DIR=/var/folders/j1/5g4c8n255j3f95292lsctb6w0000gn/T/fulcrum-test-dir-XXXXXX.fsomd7QZ3c
+Running tests...
+bun test v1.3.13 (bf2e2cec)
+ 1539 pass
+ 9 skip
+ 0 fail
+Ran 1548 tests across 87 files. [31.46s]

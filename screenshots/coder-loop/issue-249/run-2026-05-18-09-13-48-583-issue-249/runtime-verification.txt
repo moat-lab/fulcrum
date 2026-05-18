@@ -1,0 +1,10 @@
+=== getMultiplexerService("tmux") factory test ===
+kind: tmux
+isAvailable: true
+create cmd: tmux new-session -d -s fulcrum-factory-test-249 /bin/zsh -li
+hasSession: true
+listManagedSessions count: 1
+found factory test: true
+killed, hasSession: false
+
+=== FACTORY INTEGRATION PASSED ===

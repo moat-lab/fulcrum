@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'fs'
+import { existsSync, mkdirSync, statSync } from 'fs'
 import * as path from 'path'
 import { execSync } from 'child_process'
 import { getFulcrumDir } from '../lib/settings'
@@ -9,105 +9,10 @@ import type {
   MultiplexerService,
   RemoteSessionOptions,
 } from './multiplexer-service'
+import { findProcessesByArg, getDescendantPids, isAgentProcess, killProcessTree } from './process-utils'
+import { getTmuxService, resetTmuxService } from './tmux-service'
 
-// Find process IDs by matching command line arguments
-function findProcessesByArg(searchArg: string): number[] {
-  const pids: number[] = []
-  try {
-    const procDirs = readdirSync('/proc').filter((d) => /^\d+$/.test(d))
-    for (const pid of procDirs) {
-      try {
-        const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8')
-        if (cmdline.includes(searchArg)) {
-          pids.push(parseInt(pid, 10))
-        }
-      } catch {
-        // Process may have exited, skip
-      }
-    }
-  } catch {
-    // /proc not available (non-Linux), fallback to pgrep
-    try {
-      const result = execSync(`pgrep -f "${searchArg}"`, { encoding: 'utf-8' })
-      for (const line of result.trim().split('\n')) {
-        const pid = parseInt(line, 10)
-        if (!isNaN(pid)) pids.push(pid)
-      }
-    } catch {
-      // No matches
-    }
-  }
-  return pids
-}
-
-// Get direct child PIDs of a process. Uses `pgrep -P` which exists on both
-// macOS (BSD) and Linux; macOS BSD `ps` has no `--ppid` flag.
-function getChildPids(pid: number): number[] {
-  try {
-    const result = execSync(`pgrep -P ${pid} || true`, { encoding: 'utf-8' })
-    const out: number[] = []
-    for (const line of result.split('\n')) {
-      const childPid = parseInt(line.trim(), 10)
-      if (!isNaN(childPid)) out.push(childPid)
-    }
-    return out
-  } catch {
-    return []
-  }
-}
-
-// Get all descendant PIDs of a process (transitive closure).
-function getDescendantPids(pid: number): number[] {
-  const descendants: number[] = []
-  for (const childPid of getChildPids(pid)) {
-    descendants.push(childPid)
-    descendants.push(...getDescendantPids(childPid))
-  }
-  return descendants
-}
-
-// Combined pattern for all supported AI agents (Claude Code, OpenCode)
-// Must be preceded by / or start, and followed by whitespace/null/end
-// This avoids matching directory paths like /fulcrum/opencode/sockets/ or /worktrees/claude-test/
-const AGENT_PATTERN = /(^|\/)(claude|opencode)(\s|\0|$)/i
-
-// Check if a process is an AI agent process by examining its command line
-function isAgentProcess(pid: number): boolean {
-  try {
-    const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8')
-    return AGENT_PATTERN.test(cmdline)
-  } catch {
-    // /proc not available (non-Linux), try ps
-    try {
-      const result = execSync(`ps -p ${pid} -o args= 2>/dev/null || true`, {
-        encoding: 'utf-8',
-      })
-      return AGENT_PATTERN.test(result)
-    } catch {
-      return false
-    }
-  }
-}
-
-// Kill a process tree (parent and all descendants)
-export function killProcessTree(pid: number): void {
-  const descendants = getDescendantPids(pid)
-
-  // Kill children first (deepest first), then parent
-  for (const childPid of descendants.reverse()) {
-    try {
-      process.kill(childPid, 'SIGKILL')
-    } catch {
-      // Process may have already exited
-    }
-  }
-
-  try {
-    process.kill(pid, 'SIGKILL')
-  } catch {
-    // Process may have already exited
-  }
-}
+export { killProcessTree } from './process-utils'
 
 export class DtachService implements DtachMultiplexer {
   readonly kind = 'dtach' as const
@@ -263,12 +168,13 @@ export function getMultiplexerService(kind: MultiplexerKind): MultiplexerService
     case 'dtach':
       return getDtachService()
     case 'tmux':
-      throw new Error('tmux multiplexer not yet implemented')
+      return getTmuxService()
   }
 }
 
 export function resetMultiplexerService(): void {
   dtachService = null
+  resetTmuxService()
 }
 
 /**
