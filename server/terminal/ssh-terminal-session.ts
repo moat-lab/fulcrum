@@ -7,6 +7,7 @@ import type { ITerminalSession } from './session-interface'
 import { getSSHConnectionManager, type SSHConnectionConfig } from './ssh-connection-manager'
 import { log } from '../lib/logger'
 import { shellEscape } from '../lib/shell-escape'
+import { getMultiplexerService } from './dtach-service'
 
 export interface SSHTerminalSessionOptions {
   id: string
@@ -111,20 +112,19 @@ export class SSHTerminalSession implements ITerminalSession {
     const manager = getSSHConnectionManager()
 
     try {
-      // Ensure remote sockets directory exists and create dtach session
-      const remoteSocketPath = `${this.remoteSocketsDir}/terminal-${this.id}.sock`
-      const envExports = [
-        `export FULCRUM_URL=${shellEscape(this.fulcrumUrl)}`,
-        ...(this._taskId ? [`export FULCRUM_TASK_ID=${shellEscape(this._taskId)}`] : []),
-        `export TERM=xterm-256color`,
-        `export COLORTERM=truecolor`,
-      ].join(' && ')
+      const multiplexer = getMultiplexerService('dtach')
+      const env: Record<string, string> = {
+        FULCRUM_URL: shellEscape(this.fulcrumUrl),
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+        ...(this._taskId ? { FULCRUM_TASK_ID: shellEscape(this._taskId) } : {}),
+      }
 
-      const createCmd = [
-        `mkdir -p ${shellEscape(this.remoteSocketsDir)}`,
-        `cd ${shellEscape(this.cwd)}`,
-        `${envExports} && dtach -n ${shellEscape(remoteSocketPath)} -z bash -li`,
-      ].join(' && ')
+      const createCmd = multiplexer.getRemoteCreateCommand(this.id, {
+        remoteDir: this.remoteSocketsDir,
+        cwd: shellEscape(this.cwd),
+        env,
+      })
 
       await manager.execCommand(this.sshConfig, createCmd)
       log.terminal.info('Remote dtach session created', { terminalId: this.id, host: this.sshConfig.host })
@@ -158,7 +158,6 @@ export class SSHTerminalSession implements ITerminalSession {
     }
 
     const manager = getSSHConnectionManager()
-    const remoteSocketPath = `${this.remoteSocketsDir}/terminal-${this.id}.sock`
 
     try {
       // Get a dedicated SSH connection for this terminal stream
@@ -183,7 +182,8 @@ export class SSHTerminalSession implements ITerminalSession {
       this.buffer.loadFromDisk()
 
       // Attach to the remote dtach session
-      this.stream.write(`stty -echoctl && exec dtach -a ${shellEscape(remoteSocketPath)} -z\n`)
+      const multiplexer = getMultiplexerService('dtach')
+      this.stream.write(`${multiplexer.getRemoteAttachCommand(this.id, this.remoteSocketsDir)}\n`)
 
       this.setupStreamHandlers()
       this.flushInputQueue()

@@ -6,6 +6,7 @@ import { broadcast } from '../websocket/terminal-ws'
 import { getSSHConnectionManager } from '../terminal/ssh-connection-manager'
 import type { Host } from '../../../shared/types'
 import { isValidPath, isValidUrl } from '../lib/shell-escape'
+import { getMultiplexerService } from '../terminal/dtach-service'
 
 const app = new Hono()
 
@@ -292,8 +293,10 @@ app.post('/:id/check-env', async (c) => {
   // Check each tool's availability via SSH
   const checks: Record<string, { installed: boolean; version?: string; error?: string }> = {}
 
+  const multiplexerKind = getMultiplexerService('dtach').kind
+
   const toolChecks = [
-    { name: 'dtach', cmd: 'dtach --version 2>&1 | head -1' },
+    { name: multiplexerKind, cmd: `${multiplexerKind} --version 2>&1 | head -1` },
     { name: 'fulcrum', cmd: 'fulcrum --version 2>&1 | head -1' },
     { name: 'claude', cmd: 'claude --version 2>&1 | head -1' },
     { name: 'opencode', cmd: 'opencode version 2>&1 | head -1' },
@@ -319,7 +322,7 @@ app.post('/:id/check-env', async (c) => {
     }
   }
 
-  const ready = checks['dtach']?.installed && checks['fulcrum']?.installed &&
+  const ready = checks[multiplexerKind]?.installed && checks['fulcrum']?.installed &&
     (checks['claude']?.installed || checks['opencode']?.installed)
 
   return c.json({ checks, ready })

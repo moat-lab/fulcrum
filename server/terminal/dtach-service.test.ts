@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
-import { DtachService, getDtachService } from './dtach-service'
+import { DtachService, getDtachService, getMultiplexerService, resetMultiplexerService } from './dtach-service'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -15,9 +15,17 @@ describe('DtachService', () => {
     testEnv.cleanup()
   })
 
+  describe('kind', () => {
+    test('returns dtach', () => {
+      const service = new DtachService()
+      expect(service.kind).toBe('dtach')
+    })
+  })
+
   describe('isAvailable', () => {
     test('returns boolean indicating dtach availability', () => {
-      const available = DtachService.isAvailable()
+      const service = new DtachService()
+      const available = service.isAvailable()
       expect(typeof available).toBe('boolean')
     })
   })
@@ -30,10 +38,10 @@ describe('DtachService', () => {
     })
   })
 
-  describe('getSocketPath', () => {
+  describe('getSessionIdentifier', () => {
     test('returns path in sockets directory', () => {
       const service = new DtachService()
-      const socketPath = service.getSocketPath('test-terminal-id')
+      const socketPath = service.getSessionIdentifier('test-terminal-id')
 
       expect(socketPath).toContain('sockets')
       expect(socketPath).toContain('terminal-test-terminal-id.sock')
@@ -41,16 +49,16 @@ describe('DtachService', () => {
 
     test('returns consistent path for same terminal ID', () => {
       const service = new DtachService()
-      const path1 = service.getSocketPath('my-terminal')
-      const path2 = service.getSocketPath('my-terminal')
+      const path1 = service.getSessionIdentifier('my-terminal')
+      const path2 = service.getSessionIdentifier('my-terminal')
 
       expect(path1).toBe(path2)
     })
 
     test('returns different paths for different terminal IDs', () => {
       const service = new DtachService()
-      const path1 = service.getSocketPath('terminal-1')
-      const path2 = service.getSocketPath('terminal-2')
+      const path1 = service.getSessionIdentifier('terminal-1')
+      const path2 = service.getSessionIdentifier('terminal-2')
 
       expect(path1).not.toBe(path2)
     })
@@ -63,10 +71,10 @@ describe('DtachService', () => {
     })
   })
 
-  describe('getCreateCommand', () => {
+  describe('getLocalCreateCommand', () => {
     test('returns dtach command with correct flags', () => {
       const service = new DtachService()
-      const cmd = service.getCreateCommand('test-id')
+      const cmd = service.getLocalCreateCommand('test-id')
 
       expect(cmd[0]).toBe('dtach')
       expect(cmd).toContain('-n')
@@ -79,12 +87,12 @@ describe('DtachService', () => {
 
       process.env.SHELL = '/bin/zsh'
       const service1 = new DtachService()
-      const cmd1 = service1.getCreateCommand('test-1')
+      const cmd1 = service1.getLocalCreateCommand('test-1')
       expect(cmd1).toContain('/bin/zsh')
 
       delete process.env.SHELL
       const service2 = new DtachService()
-      const cmd2 = service2.getCreateCommand('test-2')
+      const cmd2 = service2.getLocalCreateCommand('test-2')
       expect(cmd2).toContain('/bin/bash')
 
       if (originalShell) {
@@ -94,17 +102,17 @@ describe('DtachService', () => {
 
     test('includes socket path in command', () => {
       const service = new DtachService()
-      const cmd = service.getCreateCommand('test-id')
-      const socketPath = service.getSocketPath('test-id')
+      const cmd = service.getLocalCreateCommand('test-id')
+      const socketPath = service.getSessionIdentifier('test-id')
 
       expect(cmd).toContain(socketPath)
     })
   })
 
-  describe('getAttachCommand', () => {
+  describe('getLocalAttachCommand', () => {
     test('returns bash wrapper command', () => {
       const service = new DtachService()
-      const cmd = service.getAttachCommand('test-id')
+      const cmd = service.getLocalAttachCommand('test-id')
 
       expect(cmd[0]).toBe('bash')
       expect(cmd).toContain('-c')
@@ -112,7 +120,7 @@ describe('DtachService', () => {
 
     test('includes stty -echoctl to suppress control char echo', () => {
       const service = new DtachService()
-      const cmd = service.getAttachCommand('test-id')
+      const cmd = service.getLocalAttachCommand('test-id')
       const bashCommand = cmd.find((arg) => arg.includes('stty'))
 
       expect(bashCommand).toBeDefined()
@@ -121,8 +129,8 @@ describe('DtachService', () => {
 
     test('includes dtach -a with socket path', () => {
       const service = new DtachService()
-      const cmd = service.getAttachCommand('test-id')
-      const socketPath = service.getSocketPath('test-id')
+      const cmd = service.getLocalAttachCommand('test-id')
+      const socketPath = service.getSessionIdentifier('test-id')
       const bashCommand = cmd.find((arg) => arg.includes('dtach'))
 
       expect(bashCommand).toBeDefined()
@@ -133,11 +141,65 @@ describe('DtachService', () => {
 
     test('uses exec to replace wrapper shell with dtach', () => {
       const service = new DtachService()
-      const cmd = service.getAttachCommand('test-id')
+      const cmd = service.getLocalAttachCommand('test-id')
       const bashCommand = cmd.find((arg) => arg.includes('exec'))
 
       expect(bashCommand).toBeDefined()
       expect(bashCommand).toContain('exec dtach')
+    })
+  })
+
+  describe('getRemoteCreateCommand', () => {
+    test('returns shell command with mkdir, cd, and dtach -n', () => {
+      const service = new DtachService()
+      const cmd = service.getRemoteCreateCommand('test-id', {
+        remoteDir: '/home/user/.fulcrum/sockets',
+        cwd: '/home/user/project',
+      })
+
+      expect(cmd).toContain('mkdir -p /home/user/.fulcrum/sockets')
+      expect(cmd).toContain('cd /home/user/project')
+      expect(cmd).toContain('dtach -n /home/user/.fulcrum/sockets/terminal-test-id.sock -z bash -li')
+    })
+
+    test('includes env exports when provided', () => {
+      const service = new DtachService()
+      const cmd = service.getRemoteCreateCommand('test-id', {
+        remoteDir: '/home/user/.fulcrum/sockets',
+        cwd: '/home/user/project',
+        env: { FULCRUM_URL: 'http://localhost:7777', TERM: 'xterm-256color' },
+      })
+
+      expect(cmd).toContain('export FULCRUM_URL=http://localhost:7777')
+      expect(cmd).toContain('export TERM=xterm-256color')
+    })
+  })
+
+  describe('getRemoteAttachCommand', () => {
+    test('returns stty + exec dtach -a command', () => {
+      const service = new DtachService()
+      const cmd = service.getRemoteAttachCommand('test-id', '/home/user/.fulcrum/sockets')
+
+      expect(cmd).toContain('stty -echoctl')
+      expect(cmd).toContain('exec dtach -a /home/user/.fulcrum/sockets/terminal-test-id.sock -z')
+    })
+  })
+
+  describe('getMultiplexerService', () => {
+    test('returns DtachService for dtach kind', () => {
+      const service = getMultiplexerService('dtach')
+      expect(service).toBeInstanceOf(DtachService)
+      expect(service.kind).toBe('dtach')
+    })
+
+    test('returns same instance on subsequent calls (singleton)', () => {
+      const service1 = getMultiplexerService('dtach')
+      const service2 = getMultiplexerService('dtach')
+      expect(service1).toBe(service2)
+    })
+
+    test('throws for tmux kind (not yet implemented)', () => {
+      expect(() => getMultiplexerService('tmux')).toThrow('tmux multiplexer not yet implemented')
     })
   })
 
@@ -154,6 +216,15 @@ describe('DtachService', () => {
     })
   })
 
+  describe('resetMultiplexerService', () => {
+    test('clears singleton so next call creates new instance', () => {
+      const service1 = getDtachService()
+      resetMultiplexerService()
+      const service2 = getDtachService()
+      expect(service1).not.toBe(service2)
+    })
+  })
+
   describe('killSession', () => {
     test('does not throw for non-existent session', () => {
       const service = new DtachService()
@@ -161,10 +232,10 @@ describe('DtachService', () => {
     })
   })
 
-  describe('killClaudeInSession', () => {
+  describe('killAgentInSession', () => {
     test('returns false for non-existent session', () => {
       const service = new DtachService()
-      const result = service.killClaudeInSession('nonexistent')
+      const result = service.killAgentInSession('nonexistent')
       expect(result).toBe(false)
     })
   })

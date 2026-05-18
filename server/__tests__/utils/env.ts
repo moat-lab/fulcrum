@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resetDatabase } from '../../db'
 import { resetLogFilePath } from '../../lib/logger'
-import { resetDtachService } from '../../terminal/dtach-service'
+import { resetMultiplexerService } from '../../terminal/dtach-service'
 import { clearFnoxCache } from '../../lib/settings'
 
 /**
@@ -63,7 +63,7 @@ export function setupTestEnv(): TestEnv {
 
       // Reset cached paths in singletons so they pick up new FULCRUM_DIR
       resetLogFilePath()
-      resetDtachService()
+      resetMultiplexerService()
 
       // Restore original env values
       // IMPORTANT: Always restore FULCRUM_DIR, never delete it.
