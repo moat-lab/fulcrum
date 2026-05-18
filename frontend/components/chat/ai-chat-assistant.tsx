@@ -11,6 +11,7 @@ import { ChatInput, type ChatInputHandle, type FileAttachment } from './chat-inp
 import { useChat } from '@/hooks/use-chat'
 import { usePageContext } from '@/hooks/use-page-context'
 import { useOpencodeModels } from '@/hooks/use-opencode-models'
+import { useSystemDependencies } from '@/hooks/use-system-dependencies'
 import { useOpencodeModel as useOpencodeModelSetting, useAssistantModel } from '@/hooks/use-config'
 import { CLAUDE_MODEL_OPTIONS, type ClaudeModelId } from '@/stores/chat-store'
 import {
@@ -62,6 +63,8 @@ export const AiChatAssistant = observer(function AiChatAssistant() {
 
   // Fetch OpenCode models and default from settings
   const { providers: opencodeProviders, installed: opencodeInstalled } = useOpencodeModels()
+  const { data: systemDeps } = useSystemDependencies()
+  const codexInstalled = systemDeps?.codex?.installed ?? false
   const { data: defaultOpencodeModel } = useOpencodeModelSetting()
   const { data: defaultAssistantModel } = useAssistantModel()
 
@@ -213,6 +216,10 @@ export const AiChatAssistant = observer(function AiChatAssistant() {
     if (provider === 'claude') {
       return currentClaudeModel?.label || t('models.opus')
     }
+    if (provider === 'codex') {
+      // Codex doesn't have a per-session model picker — uses settings.agent.codexModel
+      return 'Codex'
+    }
     if (opencodeModel) {
       // Show just the model name, not the full provider/model path
       const parts = opencodeModel.split('/')
@@ -324,7 +331,7 @@ export const AiChatAssistant = observer(function AiChatAssistant() {
               </div>
               <div className="flex items-center gap-2">
                 {/* Provider Toggle - hidden on very small screens */}
-                {isOpencodeAvailable && (
+                {(isOpencodeAvailable || codexInstalled) && (
                   <div className="hidden sm:flex items-center rounded-full p-0.5 bg-muted/60">
                     <button
                       onClick={() => setProvider('claude')}
@@ -336,16 +343,30 @@ export const AiChatAssistant = observer(function AiChatAssistant() {
                     >
                       {t('providers.claude')}
                     </button>
-                    <button
-                      onClick={() => setProvider('opencode')}
-                      className={`px-2 py-1 text-[10px] font-medium rounded-full transition-all ${
-                        provider === 'opencode'
-                          ? 'bg-accent/20 text-accent'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {t('providers.opencode')}
-                    </button>
+                    {isOpencodeAvailable && (
+                      <button
+                        onClick={() => setProvider('opencode')}
+                        className={`px-2 py-1 text-[10px] font-medium rounded-full transition-all ${
+                          provider === 'opencode'
+                            ? 'bg-accent/20 text-accent'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {t('providers.opencode')}
+                      </button>
+                    )}
+                    {codexInstalled && (
+                      <button
+                        onClick={() => setProvider('codex')}
+                        className={`px-2 py-1 text-[10px] font-medium rounded-full transition-all ${
+                          provider === 'codex'
+                            ? 'bg-accent/20 text-accent'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Codex
+                      </button>
+                    )}
                   </div>
                 )}
 
