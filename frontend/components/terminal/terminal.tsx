@@ -188,10 +188,9 @@ export function Terminal({ className, onReady, onResize, onContainerReady, termi
   return (
     <div className="flex h-full w-full max-w-full flex-col">
       <div className="relative min-h-0 flex-1">
-        <div
-          ref={containerRef}
-          className={cn('h-full w-full max-w-full overflow-hidden p-2 bg-terminal-background touch-none', className)}
-        />
+        <div className={cn('h-full w-full max-w-full p-2 bg-terminal-background touch-none', className)}>
+          <div ref={containerRef} className="h-full w-full overflow-hidden" />
+        </div>
         <div className={cn('group absolute top-2 right-5 flex flex-col items-end gap-1', isDark ? 'text-white/50' : 'text-black/50')}>
           {onReset && (
             <button

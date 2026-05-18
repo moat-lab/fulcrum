@@ -606,10 +606,9 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
 
       {/* Terminal */}
       <div className="relative min-h-0 min-w-0 flex-1">
-        <div
-          ref={containerRef}
-          className={cn('h-full w-full overflow-hidden p-2 bg-terminal-background', className)}
-        />
+        <div className={cn('h-full w-full p-2 bg-terminal-background', className)}>
+          <div ref={containerRef} className="h-full w-full overflow-hidden" />
+        </div>
 
         {/* Loading overlay - shown while terminal is being created */}
         {isCreating && !terminalId && (

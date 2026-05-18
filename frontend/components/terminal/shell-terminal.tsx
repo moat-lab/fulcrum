@@ -219,7 +219,7 @@ export function ShellTerminal({
 
       <div className="relative min-h-0 min-w-0 flex-1">
         <Terminal
-          className={cn('h-full w-full overflow-hidden p-2 bg-terminal-background', className)}
+          className={cn('h-full w-full', className)}
           onReady={handleReady}
           onResize={handleResize}
           onContainerReady={handleContainerReady}
