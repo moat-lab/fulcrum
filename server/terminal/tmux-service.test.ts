@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { execSync } from 'child_process'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 import { TmuxService, getTmuxService, resetTmuxService } from './tmux-service'
+import { getDescendantPids, isAgentProcess } from './process-utils'
 
 function tmuxAvailable(): boolean {
   try {
@@ -251,6 +252,42 @@ describe('TmuxService', () => {
         expect(userFound).toBeUndefined()
       } finally {
         cleanupSession(userSession)
+      }
+    })
+
+    test('killAgentInSession kills agent process and leaves session alive', () => {
+      if (!tmuxAvailable()) return
+
+      const service = new TmuxService()
+      const killTestId = `kill-agent-${Date.now()}`
+      const killTestSession = `fulcrum-${killTestId}`
+
+      try {
+        const cmd = service.getLocalCreateCommand(killTestId)
+        execSync(cmd.join(' '))
+        expect(service.hasSession(killTestId)).toBe(true)
+
+        service.sendKeys(killTestSession, "bash -c 'exec -a claude sleep 60' &")
+        execSync('sleep 0.5')
+
+        const panePidStr = execSync(
+          `tmux list-panes -t ${killTestSession} -F '#{pane_pid}'`,
+          { encoding: 'utf-8' },
+        ).trim()
+        const panePid = parseInt(panePidStr, 10)
+        const descendants = getDescendantPids(panePid)
+        const agentPid = descendants.find((pid) => isAgentProcess(pid))
+        expect(agentPid).toBeDefined()
+
+        const result = service.killAgentInSession(killTestId)
+        expect(result).toBe(true)
+
+        execSync('sleep 0.2')
+        expect(() => process.kill(agentPid!, 0)).toThrow()
+
+        expect(service.hasSession(killTestId)).toBe(true)
+      } finally {
+        cleanupSession(killTestSession)
       }
     })
   })

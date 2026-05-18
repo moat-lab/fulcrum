@@ -1,0 +1,37 @@
+=== isAvailable ===
+tmux available: true
+
+=== getLocalCreateCommand ===
+create cmd: tmux new-session -d -s fulcrum-e2e-test-249-r2 /bin/zsh -li
+
+=== hasSession (after create) ===
+has session: true
+
+=== validateSession ===
+valid: true
+
+=== capturePaneContent ===
+contains marker: true
+
+=== listManagedSessions ===
+managed sessions: [{"id":"e2e-test-249-r2","name":"fulcrum-e2e-test-249-r2","createdAt":1779097229000,"attached":false}]
+
+=== killAgentInSession ===
+agent pid found: 10530
+agent ps args: claude 60
+killAgentInSession returned: true
+agent still alive: false
+session still alive: true
+
+=== killSession ===
+has session after kill: false
+
+=== getMultiplexerService("tmux") factory test ===
+kind: tmux
+isAvailable: true
+hasSession: true
+listManagedSessions count: 1
+found factory test: true
+killed, hasSession: false
+
+=== FACTORY INTEGRATION PASSED ===
