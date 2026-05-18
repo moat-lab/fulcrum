@@ -1,6 +1,7 @@
 import type { IPty } from 'bun-pty'
 import { unlinkSync } from 'fs'
 import { getMultiplexerService } from './dtach-service'
+import type { MultiplexerKind } from './multiplexer-service'
 import { BufferManager } from './buffer-manager'
 import { db, terminals } from '../db'
 import { eq } from 'drizzle-orm'
@@ -29,6 +30,7 @@ export interface TerminalSessionOptions {
   tabId?: string
   positionInTab?: number
   taskId?: string
+  multiplexerKind?: MultiplexerKind
   onData: (data: string) => void
   onExit: (exitCode: number, status: TerminalStatus) => void
   onShouldDestroy?: () => void
@@ -58,6 +60,7 @@ export class TerminalSession implements ITerminalSession {
   private _tabId?: string
   private _positionInTab: number
   private _taskId?: string
+  private _multiplexerKind: MultiplexerKind
 
   // Input queue for data sent before PTY is attached
   private inputQueue: string[] = []
@@ -76,6 +79,7 @@ export class TerminalSession implements ITerminalSession {
     this._tabId = options.tabId
     this._positionInTab = options.positionInTab ?? 0
     this._taskId = options.taskId
+    this._multiplexerKind = options.multiplexerKind ?? 'dtach'
     this.buffer = new BufferManager(this.cols, this.rows)
     this.buffer.setTerminalId(this.id)
     this.onData = options.onData
@@ -111,7 +115,7 @@ export class TerminalSession implements ITerminalSession {
   // Create a new dtach session (but don't attach yet - that happens in attach())
   async start(): Promise<void> {
     const spawn = await loadSpawnPty()
-    const multiplexer = getMultiplexerService('dtach')
+    const multiplexer = getMultiplexerService(this._multiplexerKind)
     const [cmd, ...args] = multiplexer.getLocalCreateCommand(this.id)
 
     try {
@@ -166,7 +170,7 @@ export class TerminalSession implements ITerminalSession {
       return // Already attached
     }
 
-    const multiplexer = getMultiplexerService('dtach')
+    const multiplexer = getMultiplexerService(this._multiplexerKind)
     const sessionId = multiplexer.getSessionIdentifier(this.id)
 
     log.terminal.info('Attach starting', {
@@ -294,7 +298,7 @@ export class TerminalSession implements ITerminalSession {
         return
       }
 
-      const mux = getMultiplexerService('dtach')
+      const mux = getMultiplexerService(this._multiplexerKind)
       const socketExists = mux.hasSession(this.id)
 
       log.terminal.debug('PTY onExit socket check', {
@@ -426,6 +430,7 @@ export class TerminalSession implements ITerminalSession {
       createdAt: this.createdAt,
       tabId: this._tabId,
       positionInTab: this._positionInTab,
+      multiplexerKind: this._multiplexerKind,
     }
   }
 
@@ -444,7 +449,7 @@ export class TerminalSession implements ITerminalSession {
     }
 
     // Kill the dtach process and its entire process tree (shell + children like Claude)
-    const mux = getMultiplexerService('dtach')
+    const mux = getMultiplexerService(this._multiplexerKind)
     mux.killSession(this.id)
 
     // Clean up the socket file if it still exists

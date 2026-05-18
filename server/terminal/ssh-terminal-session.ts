@@ -8,6 +8,7 @@ import { getSSHConnectionManager, type SSHConnectionConfig } from './ssh-connect
 import { log } from '../lib/logger'
 import { shellEscape } from '../lib/shell-escape'
 import { getMultiplexerService } from './dtach-service'
+import type { MultiplexerKind } from './multiplexer-service'
 
 export interface SSHTerminalSessionOptions {
   id: string
@@ -19,6 +20,7 @@ export interface SSHTerminalSessionOptions {
   tabId?: string
   positionInTab?: number
   taskId?: string
+  multiplexerKind?: MultiplexerKind
   // SSH-specific
   hostId: string
   sshConfig: SSHConnectionConfig
@@ -50,6 +52,7 @@ export class SSHTerminalSession implements ITerminalSession {
   private _positionInTab: number
   private _taskId?: string
   private _hostId: string
+  private _multiplexerKind: MultiplexerKind
   private sshConfig: SSHConnectionConfig
   private fulcrumUrl: string
   private remoteSocketsDir: string
@@ -72,6 +75,7 @@ export class SSHTerminalSession implements ITerminalSession {
     this._positionInTab = options.positionInTab ?? 0
     this._taskId = options.taskId
     this._hostId = options.hostId
+    this._multiplexerKind = options.multiplexerKind ?? 'dtach'
     this.sshConfig = options.sshConfig
     this.fulcrumUrl = options.fulcrumUrl
     this.buffer = new BufferManager(this.cols, this.rows)
@@ -112,7 +116,7 @@ export class SSHTerminalSession implements ITerminalSession {
     const manager = getSSHConnectionManager()
 
     try {
-      const multiplexer = getMultiplexerService('dtach')
+      const multiplexer = getMultiplexerService(this._multiplexerKind)
       const env: Record<string, string> = {
         FULCRUM_URL: shellEscape(this.fulcrumUrl),
         TERM: 'xterm-256color',
@@ -182,7 +186,7 @@ export class SSHTerminalSession implements ITerminalSession {
       this.buffer.loadFromDisk()
 
       // Attach to the remote dtach session
-      const multiplexer = getMultiplexerService('dtach')
+      const multiplexer = getMultiplexerService(this._multiplexerKind)
       this.stream.write(`${multiplexer.getRemoteAttachCommand(this.id, this.remoteSocketsDir)}\n`)
 
       this.setupStreamHandlers()
@@ -342,6 +346,7 @@ export class SSHTerminalSession implements ITerminalSession {
       tabId: this._tabId,
       positionInTab: this._positionInTab,
       hostId: this._hostId,
+      multiplexerKind: this._multiplexerKind,
     }
   }
 

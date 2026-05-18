@@ -131,6 +131,7 @@ export const terminals = sqliteTable('terminals', {
   tabId: text('tab_id'), // References terminalTabs.id (nullable for orphaned terminals)
   positionInTab: integer('position_in_tab').default(0), // Order within the tab
   hostId: text('host_id'), // FK to hosts (nullable - null = local terminal)
+  multiplexerKind: text('multiplexer_kind'), // 'dtach' | 'tmux' — which backend was used (null = legacy dtach)
   // Agent channel exchange (issue #180 / parent #153) — null when channel disabled.
   channelId: text('channel_id'), // Exchange-assigned mailbox id for the fulcrum-client mailbox
   channelRegisteredAt: text('channel_registered_at'), // ISO-8601 timestamp of last successful register
@@ -598,6 +599,7 @@ export const hosts = sqliteTable('hosts', {
   defaultDirectory: text('default_directory'), // Default remote cwd for tasks
   fulcrumUrl: text('fulcrum_url'), // Override FULCRUM_URL for this host (e.g., http://192.168.1.100:7777)
   hostFingerprint: text('host_fingerprint'), // SSH host key fingerprint (TOFU)
+  multiplexer: text('multiplexer').notNull().default('auto'), // 'dtach' | 'tmux' | 'auto'
   status: text('status').notNull().default('unknown'), // 'unknown' | 'connected' | 'error'
   lastConnectedAt: text('last_connected_at'),
   createdAt: text('created_at').notNull(),

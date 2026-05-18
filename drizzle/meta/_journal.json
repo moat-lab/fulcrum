@@ -575,6 +575,13 @@
       "when": 1778043600000,
       "tag": "0081_add_terminal_channel_id",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "6",
+      "when": 1778130000000,
+      "tag": "0082_add_multiplexer_columns",
+      "breakpoints": true
     }
   ]
 }

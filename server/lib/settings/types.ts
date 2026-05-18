@@ -12,6 +12,9 @@ export type EditorApp = 'vscode' | 'cursor' | 'windsurf' | 'zed' | 'antigravity'
 // Task type for defaults
 export type TaskType = 'worktree' | 'manual' | 'scratch'
 
+// Terminal multiplexer preference
+export type MultiplexerPreference = 'dtach' | 'tmux' | 'auto'
+
 // Assistant provider and model types
 export type AssistantProvider = 'claude' | 'opencode'
 export type AssistantModel = 'opus' | 'sonnet' | 'haiku'
@@ -186,6 +189,9 @@ export interface Settings {
     morningRitual: RitualConfig
     eveningRitual: RitualConfig
   }
+  terminal: {
+    multiplexer: MultiplexerPreference
+  }
   channels: ChannelsSettings
   caldav: CalDavSettings
 }
@@ -262,6 +268,9 @@ Send the evening summary and tomorrow's plan via these channels (in order): emai
 
 Then store the action plan as a memory tagged with: ritual, plan, evening-ritual.`,
     },
+  },
+  terminal: {
+    multiplexer: 'auto' as MultiplexerPreference,
   },
   channels: {
     email: {
@@ -366,6 +375,7 @@ export const VALID_SETTING_PATHS = new Set([
   'assistant.morningRitual.prompt',
   'assistant.eveningRitual.time',
   'assistant.eveningRitual.prompt',
+  'terminal.multiplexer',
   'channels.email.enabled',
   'channels.email.backend',
   'channels.email.googleAccountId',

@@ -24,6 +24,7 @@ export interface TerminalInfo {
   tabId?: string // Which tab this terminal belongs to (nullable)
   positionInTab?: number // Order within the tab
   hostId?: string // Remote host ID (nullable - null = local terminal)
+  multiplexerKind?: string // 'dtach' | 'tmux' — which backend this terminal uses
 }
 
 /**
