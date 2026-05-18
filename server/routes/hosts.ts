@@ -6,7 +6,8 @@ import { broadcast } from '../websocket/terminal-ws'
 import { getSSHConnectionManager } from '../terminal/ssh-connection-manager'
 import type { Host } from '../../../shared/types'
 import { isValidPath, isValidUrl } from '../lib/shell-escape'
-import { getMultiplexerService } from '../terminal/dtach-service'
+import { resolveMultiplexerKind } from '../terminal/dtach-service'
+import type { MultiplexerPreference } from '../terminal/dtach-service'
 
 const app = new Hono()
 
@@ -293,7 +294,8 @@ app.post('/:id/check-env', async (c) => {
   // Check each tool's availability via SSH
   const checks: Record<string, { installed: boolean; version?: string; error?: string }> = {}
 
-  const multiplexerKind = getMultiplexerService('dtach').kind
+  const hostMuxPref = (host.multiplexer ?? 'auto') as MultiplexerPreference
+  const multiplexerKind = resolveMultiplexerKind(hostMuxPref)
 
   const toolChecks = [
     { name: multiplexerKind, cmd: `${multiplexerKind} --version 2>&1 | head -1` },

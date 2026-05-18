@@ -11,6 +11,7 @@ import {
   type AssistantModel,
   type ChannelsSettings,
   type RitualConfig,
+  type MultiplexerPreference,
 } from './types'
 import type { AgentType } from '@shared/types'
 import { ensureFulcrumDir, expandPath } from './paths'
@@ -101,6 +102,9 @@ export function getSettings(): Settings {
         time: (fv('assistant.eveningRitual.time') as string) ?? DEFAULT_SETTINGS.assistant.eveningRitual.time,
         prompt: (fv('assistant.eveningRitual.prompt') as string) ?? DEFAULT_SETTINGS.assistant.eveningRitual.prompt,
       } as RitualConfig,
+    },
+    terminal: {
+      multiplexer: (fv('terminal.multiplexer') as MultiplexerPreference) ?? DEFAULT_SETTINGS.terminal.multiplexer,
     },
     channels: {
       email: {
@@ -196,6 +200,7 @@ export function getSettings(): Settings {
     tasks: settings.tasks,
     appearance: settings.appearance,
     assistant: settings.assistant,
+    terminal: settings.terminal,
     channels: settings.channels,
     caldav: settings.caldav,
   }

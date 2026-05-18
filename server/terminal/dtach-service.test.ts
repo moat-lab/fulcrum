@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
-import { DtachService, getDtachService, getMultiplexerService, resetMultiplexerService } from './dtach-service'
+import { DtachService, getDtachService, getMultiplexerService, resolveMultiplexerKind, resetMultiplexerService } from './dtach-service'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -223,6 +223,29 @@ describe('DtachService', () => {
       resetMultiplexerService()
       const service2 = getDtachService()
       expect(service1).not.toBe(service2)
+    })
+  })
+
+  describe('resolveMultiplexerKind', () => {
+    test('explicit dtach returns dtach', () => {
+      const kind = resolveMultiplexerKind('dtach')
+      expect(kind).toBe('dtach')
+    })
+
+    test('auto returns a valid MultiplexerKind', () => {
+      const kind = resolveMultiplexerKind('auto')
+      expect(['dtach', 'tmux']).toContain(kind)
+    })
+
+    test('explicit tmux throws when tmux is not available', () => {
+      const tmuxService = getMultiplexerService('tmux')
+      const originalIsAvailable = tmuxService.isAvailable.bind(tmuxService)
+      tmuxService.isAvailable = () => false
+      try {
+        expect(() => resolveMultiplexerKind('tmux')).toThrow('not available')
+      } finally {
+        tmuxService.isAvailable = originalIsAvailable
+      }
     })
   })
 

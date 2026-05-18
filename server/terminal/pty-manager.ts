@@ -1,6 +1,7 @@
 import { TerminalSession } from './terminal-session'
 import { SSHTerminalSession } from './ssh-terminal-session'
-import { getMultiplexerService } from './dtach-service'
+import { getMultiplexerService, resolveMultiplexerKind } from './dtach-service'
+import type { MultiplexerKind } from './multiplexer-service'
 import { destroyTerminalAndBroadcast } from './pty-instance'
 import { db, terminals, hosts } from '../db'
 import { eq, ne } from 'drizzle-orm'
@@ -8,7 +9,8 @@ import * as os from 'os'
 import type { TerminalInfo } from '../types'
 import type { ITerminalSession } from './session-interface'
 import { log } from '../lib/logger'
-import { getFulcrumDir, getSettingByKey } from '../lib/settings'
+import { getFulcrumDir, getSettingByKey, getSettings } from '../lib/settings'
+import type { MultiplexerPreference } from './dtach-service'
 import { getSSHConnectionManager } from './ssh-connection-manager'
 import { getRuntimeConfig } from '../lib/runtime-config'
 
@@ -29,12 +31,6 @@ export class PTYManager {
 
   // Called on server startup to restore terminals from DB
   async restoreFromDatabase(): Promise<void> {
-    const multiplexer = getMultiplexerService('dtach')
-
-    if (!multiplexer.isAvailable()) {
-      log.pty.error('dtach is not installed, terminal persistence disabled')
-      return
-    }
     const storedTerminals = db
       .select()
       .from(terminals)
@@ -94,6 +90,7 @@ export class PTYManager {
           createdAt: new Date(record.createdAt).getTime(),
           tabId: record.tabId ?? undefined,
           positionInTab: record.positionInTab ?? 0,
+          multiplexerKind: (record.multiplexerKind as MultiplexerKind) ?? 'dtach',
           hostId: host.id,
           sshConfig,
           fulcrumUrl: effectiveFulcrumUrl,
@@ -126,7 +123,23 @@ export class PTYManager {
         continue
       }
 
-      // Local terminals - existing dtach logic
+      // Local terminals - use stored multiplexer kind (default dtach for legacy)
+      const recordMuxKind = (record.multiplexerKind as MultiplexerKind) ?? 'dtach'
+      const multiplexer = getMultiplexerService(recordMuxKind)
+
+      if (!multiplexer.isAvailable()) {
+        log.pty.warn('Multiplexer not available for stored terminal, marking exited', {
+          terminalId: record.id,
+          multiplexerKind: recordMuxKind,
+        })
+        db.update(terminals)
+          .set({ status: 'exited', updatedAt: new Date().toISOString() })
+          .where(eq(terminals.id, record.id))
+          .run()
+        skippedCount++
+        continue
+      }
+
       const socketPath = multiplexer.getSessionIdentifier(record.id)
 
       // Retry socket check a few times with small delays to handle timing issues
@@ -169,6 +182,7 @@ export class PTYManager {
           createdAt: new Date(record.createdAt).getTime(),
           tabId: record.tabId ?? undefined,
           positionInTab: record.positionInTab ?? 0,
+          multiplexerKind: recordMuxKind,
           onData: (data) => this.callbacks.onData(record.id, data),
           onExit: (exitCode, status) => this.callbacks.onExit(record.id, exitCode, status),
           onShouldDestroy: () => {
@@ -245,6 +259,9 @@ export class PTYManager {
       }
       const effectiveFulcrumUrl = fulcrumUrl || `http://localhost:${getSettingByKey('port')}`
 
+      const hostMuxPref = (host.multiplexer ?? 'auto') as MultiplexerPreference
+      const hostMuxKind = resolveMultiplexerKind(hostMuxPref)
+
       // Persist to database
       db.insert(terminals)
         .values({
@@ -258,6 +275,7 @@ export class PTYManager {
           tabId: options.tabId,
           positionInTab: options.positionInTab ?? 0,
           hostId: options.hostId,
+          multiplexerKind: hostMuxKind,
           createdAt: now,
           updatedAt: now,
         })
@@ -273,6 +291,7 @@ export class PTYManager {
         tabId: options.tabId,
         positionInTab: options.positionInTab,
         taskId: options.taskId,
+        multiplexerKind: hostMuxKind,
         hostId: host.id,
         sshConfig,
         fulcrumUrl: effectiveFulcrumUrl,
@@ -288,14 +307,13 @@ export class PTYManager {
       return session.getInfo()
     }
 
-    // Local terminal (existing behavior)
+    // Local terminal
     if (getRuntimeConfig().remoteOnly) {
       throw new Error('remote-only mode requires hostId')
     }
 
-    if (!getMultiplexerService('dtach').isAvailable()) {
-      throw new Error('dtach is not installed')
-    }
+    const localMuxPref = getSettings().terminal.multiplexer
+    const localMuxKind = resolveMultiplexerKind(localMuxPref)
 
     const cwd = options.cwd || os.homedir()
 
@@ -307,10 +325,11 @@ export class PTYManager {
         cwd,
         cols: options.cols,
         rows: options.rows,
-        tmuxSession: '', // Not used with dtach but required by schema
+        tmuxSession: '',
         status: 'running',
         tabId: options.tabId,
         positionInTab: options.positionInTab ?? 0,
+        multiplexerKind: localMuxKind,
         createdAt: now,
         updatedAt: now,
       })
@@ -327,10 +346,10 @@ export class PTYManager {
       tabId: options.tabId,
       positionInTab: options.positionInTab,
       taskId: options.taskId,
+      multiplexerKind: localMuxKind,
       onData: (data) => this.callbacks.onData(id, data),
       onExit: (exitCode, status) => this.callbacks.onExit(id, exitCode, status),
       onShouldDestroy: () => {
-        // Use queueMicrotask to avoid destroying while in exit handler
         queueMicrotask(() => destroyTerminalAndBroadcast(id))
       },
     })
@@ -476,7 +495,9 @@ export class PTYManager {
       return true
     }
 
-    return getMultiplexerService('dtach').killAgentInSession(terminalId)
+    const info = session.getInfo()
+    const muxKind = (info.multiplexerKind as MultiplexerKind) ?? 'dtach'
+    return getMultiplexerService(muxKind).killAgentInSession(terminalId)
   }
 
   // Detach all PTYs but keep dtach sessions running

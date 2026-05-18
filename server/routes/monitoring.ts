@@ -6,6 +6,7 @@ import { join } from 'path'
 import { db, tasks } from '../db'
 import { getPTYManager } from '../terminal/pty-instance'
 import { getMultiplexerService } from '../terminal/dtach-service'
+import type { MultiplexerKind } from '../terminal/multiplexer-service'
 import { getMetrics, getCurrentMetrics, getHostMetricSummaries, getMonitorStatus } from '../services/metrics-collector'
 import { getZAiSettings } from '../lib/settings'
 import { getChannelMessages, getChannelMessageCounts } from '../services/channels/message-storage'
@@ -247,10 +248,10 @@ monitoringRoutes.get('/claude-instances', (c) => {
   try {
     const ptyManager = getPTYManager()
     const terminals = ptyManager.listTerminals()
-    const multiplexer = getMultiplexerService('dtach')
 
     for (const terminal of terminals) {
-      // Get dtach process for this terminal
+      const muxKind = (terminal.multiplexerKind as MultiplexerKind) ?? 'dtach'
+      const multiplexer = getMultiplexerService(muxKind)
       const socketPath = multiplexer.getSessionIdentifier(terminal.id)
       try {
         // Find processes using this socket
@@ -399,7 +400,10 @@ monitoringRoutes.post('/claude-instances/:terminalId/kill', (c) => {
   const terminalId = c.req.param('terminalId')
 
   try {
-    const multiplexer = getMultiplexerService('dtach')
+    const ptyManager = getPTYManager()
+    const info = ptyManager.getInfo(terminalId)
+    const muxKind = (info?.multiplexerKind as MultiplexerKind) ?? 'dtach'
+    const multiplexer = getMultiplexerService(muxKind)
     const killed = multiplexer.killAgentInSession(terminalId)
 
     return c.json({ success: true, killed })

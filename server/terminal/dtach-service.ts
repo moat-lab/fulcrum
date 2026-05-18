@@ -163,6 +163,8 @@ export function getDtachService(): DtachService {
   return dtachService
 }
 
+export type MultiplexerPreference = MultiplexerKind | 'auto'
+
 export function getMultiplexerService(kind: MultiplexerKind): MultiplexerService {
   switch (kind) {
     case 'dtach':
@@ -170,6 +172,27 @@ export function getMultiplexerService(kind: MultiplexerKind): MultiplexerService
     case 'tmux':
       return getTmuxService()
   }
+}
+
+export function resolveMultiplexerKind(preference: MultiplexerPreference): MultiplexerKind {
+  if (preference === 'dtach' || preference === 'tmux') {
+    const service = getMultiplexerService(preference)
+    if (!service.isAvailable()) {
+      throw new Error(`Multiplexer '${preference}' is explicitly configured but not available`)
+    }
+    return preference
+  }
+  // auto: prefer tmux if available, fallback to dtach
+  const tmux = getTmuxService()
+  if (tmux.isAvailable()) {
+    return 'tmux'
+  }
+  log.pty.warn('tmux not available, falling back to dtach for auto multiplexer selection')
+  return 'dtach'
+}
+
+export function resolveMultiplexerService(preference: MultiplexerPreference): MultiplexerService {
+  return getMultiplexerService(resolveMultiplexerKind(preference))
 }
 
 export function resetMultiplexerService(): void {

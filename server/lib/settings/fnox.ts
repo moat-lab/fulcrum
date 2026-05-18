@@ -67,6 +67,9 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'assistant.eveningRitual.time': { fnoxKey: 'FULCRUM_ASSISTANT_EVENING_TIME', provider: 'plain', type: 'string' },
   'assistant.eveningRitual.prompt': { fnoxKey: 'FULCRUM_ASSISTANT_EVENING_PROMPT', provider: 'plain', type: 'string' },
 
+  // Terminal
+  'terminal.multiplexer': { fnoxKey: 'FULCRUM_TERMINAL_MULTIPLEXER', provider: 'plain', type: 'string' },
+
   // Channels - Email
   'channels.email.enabled': { fnoxKey: 'FULCRUM_EMAIL_ENABLED', provider: 'plain', type: 'boolean' },
   'channels.email.backend': { fnoxKey: 'FULCRUM_EMAIL_BACKEND', provider: 'plain', type: 'string' },

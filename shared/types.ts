@@ -368,6 +368,7 @@ export interface Host {
   defaultDirectory: string | null
   fulcrumUrl: string | null
   hostFingerprint: string | null
+  multiplexer: string // 'dtach' | 'tmux' | 'auto'
   status: HostStatus
   lastConnectedAt: string | null
   createdAt: string
