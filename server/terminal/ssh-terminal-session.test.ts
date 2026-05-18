@@ -1,7 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
 
-// Mock ssh2 module
+// Mock ssh2 module — captures exec commands for assertion
+const execedCommands: string[] = []
+
 class MockClient {
   _sock = { destroyed: false, writable: true }
   _handlers = new Map<string, (...args: unknown[]) => void>()
@@ -19,6 +21,7 @@ class MockClient {
   end() {}
 
   exec(cmd: string, cb: (err: Error | null, stream: unknown) => void) {
+    execedCommands.push(cmd)
     const stream = {
       on(event: string, handler: (...args: unknown[]) => void) {
         if (event === 'data') setTimeout(() => handler(Buffer.from('ok')), 0)
@@ -119,6 +122,7 @@ describe('SSHTerminalSession', () => {
   beforeEach(() => {
     env = setupTestEnv()
     MockBufferManager.instances = []
+    execedCommands.length = 0
     resetSSHConnectionManager()
   })
 
@@ -221,13 +225,16 @@ describe('SSHTerminalSession', () => {
     expect(session.isRunning()).toBe(false)
   })
 
-  test('remoteSocketsDir uses username from config', () => {
+  test('start() uses $HOME in SSH create command, not hardcoded /home/<user>/', async () => {
     const session = createSession({
       sshConfig: { ...baseSshConfig, username: 'deploy' },
+      multiplexerKind: 'dtach',
     })
-    // The socket dir should be based on username
-    // Verify via getInfo - cwd should remain as set
-    expect(session.getInfo().cwd).toBe('/home/testuser/work')
+    await session.start()
+    const createCmd = execedCommands.find(c => c.includes('dtach'))
+    expect(createCmd).toBeDefined()
+    expect(createCmd).toContain('$HOME/.fulcrum/sockets')
+    expect(createCmd).not.toContain('/home/deploy/')
   })
 
   test('attach() connects SSH and sets up stream', async () => {

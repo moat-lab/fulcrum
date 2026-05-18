@@ -102,14 +102,17 @@ export class PTYManager {
         })
         this.sessions.set(record.id, session)
 
-        // Background health check for remote terminals
+        // Background health check for remote terminals — branch on multiplexer backend
         const manager = getSSHConnectionManager()
+        const remoteMuxKind = (record.multiplexerKind as MultiplexerKind) ?? 'dtach'
         queueMicrotask(async () => {
           try {
-            const remoteSocketPath = `/home/${sshConfig.username}/.fulcrum/sockets/terminal-${record.id}.sock`
-            await manager.execCommand(sshConfig, `test -S '${remoteSocketPath}'`, 10000)
+            const healthCmd = remoteMuxKind === 'tmux'
+              ? `tmux has-session -t 'fulcrum-${record.id}' 2>/dev/null`
+              : `test -S "$HOME/.fulcrum/sockets/terminal-${record.id}.sock"`
+            await manager.execCommand(sshConfig, healthCmd, 10000)
           } catch {
-            log.pty.warn('Remote dtach session not found, marking exited', { terminalId: record.id })
+            log.pty.warn('Remote session not found, marking exited', { terminalId: record.id, multiplexerKind: remoteMuxKind })
             db.update(terminals).set({ status: 'exited', updatedAt: new Date().toISOString() }).where(eq(terminals.id, record.id)).run()
             this.sessions.delete(record.id)
           }

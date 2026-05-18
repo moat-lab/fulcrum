@@ -80,7 +80,7 @@ export class SSHTerminalSession implements ITerminalSession {
     this.fulcrumUrl = options.fulcrumUrl
     this.buffer = new BufferManager(this.cols, this.rows)
     this.buffer.setTerminalId(this.id)
-    this.remoteSocketsDir = `/home/${options.sshConfig.username}/.fulcrum/sockets`
+    this.remoteSocketsDir = '$HOME/.fulcrum/sockets'
     this.onData = options.onData
     this.onExit = options.onExit
     this.onShouldDestroy = options.onShouldDestroy
@@ -272,10 +272,12 @@ export class SSHTerminalSession implements ITerminalSession {
   }
 
   private async checkRemoteSession(): Promise<boolean> {
-    const remoteSocketPath = `${this.remoteSocketsDir}/terminal-${this.id}.sock`
     try {
       const manager = getSSHConnectionManager()
-      await manager.execCommand(this.sshConfig, `test -S ${shellEscape(remoteSocketPath)}`)
+      const cmd = this._multiplexerKind === 'tmux'
+        ? `tmux has-session -t ${shellEscape(`fulcrum-${this.id}`)} 2>/dev/null`
+        : `test -S "$HOME/.fulcrum/sockets/terminal-${this.id}.sock"`
+      await manager.execCommand(this.sshConfig, cmd)
       return true
     } catch {
       return false
@@ -359,15 +361,19 @@ export class SSHTerminalSession implements ITerminalSession {
       this.stream = null
     }
 
-    // Kill remote dtach session
-    const remoteSocketPath = `${this.remoteSocketsDir}/terminal-${this.id}.sock`
+    // Kill remote session (dtach or tmux)
     const manager = getSSHConnectionManager()
-    manager.execCommand(this.sshConfig, [
-      // Find and kill dtach process using this socket
-      `pkill -f ${shellEscape('dtach.*' + remoteSocketPath)} 2>/dev/null || true`,
-      `rm -f ${shellEscape(remoteSocketPath)}`,
-    ].join(' && ')).catch((err) => {
-      log.terminal.warn('Failed to kill remote dtach session', { terminalId: this.id, error: String(err) })
+    const killCmd = this._multiplexerKind === 'tmux'
+      ? `tmux kill-session -t ${shellEscape(`fulcrum-${this.id}`)} 2>/dev/null || true`
+      : (() => {
+          const remoteSocketPath = `$HOME/.fulcrum/sockets/terminal-${this.id}.sock`
+          return [
+            `pkill -f "dtach.*$HOME/.fulcrum/sockets/terminal-${this.id}.sock" 2>/dev/null || true`,
+            `rm -f "${remoteSocketPath}"`,
+          ].join(' && ')
+        })()
+    manager.execCommand(this.sshConfig, killCmd).catch((err) => {
+      log.terminal.warn('Failed to kill remote session', { terminalId: this.id, multiplexerKind: this._multiplexerKind, error: String(err) })
     })
 
     // Release SSH connection
@@ -381,23 +387,34 @@ export class SSHTerminalSession implements ITerminalSession {
     log.terminal.info('SSH terminal killed', { terminalId: this.id })
   }
 
-  // Kill agent processes on remote host
   async killAgentInSession(): Promise<boolean> {
-    const remoteSocketPath = `${this.remoteSocketsDir}/terminal-${this.id}.sock`
     try {
       const manager = getSSHConnectionManager()
-      // Find dtach PID, then find agent children
-      await manager.execCommand(this.sshConfig, [
-        `DTACH_PID=$(pgrep -f ${shellEscape('dtach.*' + remoteSocketPath)} 2>/dev/null | head -1)`,
-        `if [ -n "$DTACH_PID" ]; then`,
-        `  for PID in $(pgrep -P $DTACH_PID 2>/dev/null); do`,
-        `    CMDLINE=$(cat /proc/$PID/cmdline 2>/dev/null || ps -p $PID -o args= 2>/dev/null)`,
-        `    if echo "$CMDLINE" | grep -qiE '(^|/)claude(\\s|$)|(^|/)opencode(\\s|$)'; then`,
-        `      kill -9 $PID 2>/dev/null || true`,
-        `    fi`,
-        `  done`,
-        `fi`,
-      ].join('\n'))
+      const cmd = this._multiplexerKind === 'tmux'
+        ? [
+            `for PPID in $(tmux list-panes -t ${shellEscape(`fulcrum-${this.id}`)} -F '#{pane_pid}' 2>/dev/null); do`,
+            `  for PID in $(pgrep -P $PPID 2>/dev/null); do`,
+            `    CMDLINE=$(cat /proc/$PID/cmdline 2>/dev/null || ps -p $PID -o args= 2>/dev/null)`,
+            `    if echo "$CMDLINE" | grep -qiE '(^|/)claude(\\s|$)|(^|/)opencode(\\s|$)'; then`,
+            `      kill -9 $PID 2>/dev/null || true`,
+            `    fi`,
+            `  done`,
+            `done`,
+          ].join('\n')
+        : (() => {
+            return [
+              `DTACH_PID=$(pgrep -f "dtach.*$HOME/.fulcrum/sockets/terminal-${this.id}.sock" 2>/dev/null | head -1)`,
+              `if [ -n "$DTACH_PID" ]; then`,
+              `  for PID in $(pgrep -P $DTACH_PID 2>/dev/null); do`,
+              `    CMDLINE=$(cat /proc/$PID/cmdline 2>/dev/null || ps -p $PID -o args= 2>/dev/null)`,
+              `    if echo "$CMDLINE" | grep -qiE '(^|/)claude(\\s|$)|(^|/)opencode(\\s|$)'; then`,
+              `      kill -9 $PID 2>/dev/null || true`,
+              `    fi`,
+              `  done`,
+              `fi`,
+            ].join('\n')
+          })()
+      await manager.execCommand(this.sshConfig, cmd)
       return true
     } catch {
       return false
