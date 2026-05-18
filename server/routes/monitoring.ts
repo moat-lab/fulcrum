@@ -6,6 +6,7 @@ import { join } from 'path'
 import { db, tasks } from '../db'
 import { getPTYManager } from '../terminal/pty-instance'
 import { getMultiplexerService } from '../terminal/dtach-service'
+import { getTmuxService } from '../terminal/tmux-service'
 import type { MultiplexerKind } from '../terminal/multiplexer-service'
 import { getMetrics, getCurrentMetrics, getHostMetricSummaries, getMonitorStatus } from '../services/metrics-collector'
 import { getZAiSettings } from '../lib/settings'
@@ -251,48 +252,52 @@ monitoringRoutes.get('/claude-instances', (c) => {
 
     for (const terminal of terminals) {
       const muxKind = (terminal.multiplexerKind as MultiplexerKind) ?? 'dtach'
-      const multiplexer = getMultiplexerService(muxKind)
-      const socketPath = multiplexer.getSessionIdentifier(terminal.id)
       try {
-        // Find processes using this socket
         const foundPids: number[] = []
 
-        if (isMacOS) {
-          // macOS: use ps to get all processes with their command lines
-          try {
-            const psResult = execSync('ps -Axo pid,args', {
-              encoding: 'utf-8',
-              timeout: 5000,
-              stdio: ['pipe', 'pipe', 'pipe'],
-            })
-            for (const line of psResult.split('\n').slice(1)) { // Skip header
-              if (line.includes(socketPath)) {
-                const match = line.match(/^\s*(\d+)/)
-                if (match) {
-                  foundPids.push(parseInt(match[1], 10))
+        if (muxKind === 'tmux') {
+          const tmux = getTmuxService()
+          const sessionName = tmux.getSessionIdentifier(terminal.id)
+          const panePids = tmux.getSessionPanePids(sessionName)
+          foundPids.push(...panePids)
+        } else {
+          const multiplexer = getMultiplexerService(muxKind)
+          const socketPath = multiplexer.getSessionIdentifier(terminal.id)
+
+          if (isMacOS) {
+            try {
+              const psResult = execSync('ps -Axo pid,args', {
+                encoding: 'utf-8',
+                timeout: 5000,
+                stdio: ['pipe', 'pipe', 'pipe'],
+              })
+              for (const line of psResult.split('\n').slice(1)) {
+                if (line.includes(socketPath)) {
+                  const match = line.match(/^\s*(\d+)/)
+                  if (match) {
+                    foundPids.push(parseInt(match[1], 10))
+                  }
                 }
               }
-            }
-          } catch {
-            // Ignore ps errors
-          }
-        } else {
-          // Linux: use /proc filesystem
-          const procDirs = readdirSync('/proc').filter((d) => /^\d+$/.test(d))
-          for (const pidStr of procDirs) {
-            const pid = parseInt(pidStr, 10)
-            try {
-              const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8')
-              if (cmdline.includes(socketPath)) {
-                foundPids.push(pid)
-              }
             } catch {
-              // Skip
+              // Ignore ps errors
+            }
+          } else {
+            const procDirs = readdirSync('/proc').filter((d) => /^\d+$/.test(d))
+            for (const pidStr of procDirs) {
+              const pid = parseInt(pidStr, 10)
+              try {
+                const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8')
+                if (cmdline.includes(socketPath)) {
+                  foundPids.push(pid)
+                }
+              } catch {
+                // Skip
+              }
             }
           }
         }
 
-        // For each found dtach process, add it and all descendants
         for (const pid of foundPids) {
           const descendants = getDescendantPids(pid)
           for (const descendantPid of [...descendants, pid]) {
