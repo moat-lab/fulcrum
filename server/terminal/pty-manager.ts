@@ -1,6 +1,6 @@
 import { TerminalSession } from './terminal-session'
 import { SSHTerminalSession } from './ssh-terminal-session'
-import { getDtachService, DtachService } from './dtach-service'
+import { getMultiplexerService } from './dtach-service'
 import { destroyTerminalAndBroadcast } from './pty-instance'
 import { db, terminals, hosts } from '../db'
 import { eq, ne } from 'drizzle-orm'
@@ -29,13 +29,12 @@ export class PTYManager {
 
   // Called on server startup to restore terminals from DB
   async restoreFromDatabase(): Promise<void> {
-    // Check if dtach is available
-    if (!DtachService.isAvailable()) {
+    const multiplexer = getMultiplexerService('dtach')
+
+    if (!multiplexer.isAvailable()) {
       log.pty.error('dtach is not installed, terminal persistence disabled')
       return
     }
-
-    const dtach = getDtachService()
     const storedTerminals = db
       .select()
       .from(terminals)
@@ -128,12 +127,12 @@ export class PTYManager {
       }
 
       // Local terminals - existing dtach logic
-      const socketPath = dtach.getSocketPath(record.id)
+      const socketPath = multiplexer.getSessionIdentifier(record.id)
 
       // Retry socket check a few times with small delays to handle timing issues
       let socketFound = false
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        if (dtach.hasSession(record.id)) {
+        if (multiplexer.hasSession(record.id)) {
           socketFound = true
           break
         }
@@ -144,7 +143,7 @@ export class PTYManager {
 
       if (socketFound) {
         // Validate the socket is actually functional
-        const socketValid = dtach.validateSocket(record.id)
+        const socketValid = multiplexer.validateSession(record.id)
         if (!socketValid) {
           log.pty.warn('Socket exists but validation failed (stale)', {
             terminalId: record.id,
@@ -294,7 +293,7 @@ export class PTYManager {
       throw new Error('remote-only mode requires hostId')
     }
 
-    if (!DtachService.isAvailable()) {
+    if (!getMultiplexerService('dtach').isAvailable()) {
       throw new Error('dtach is not installed')
     }
 
@@ -477,8 +476,7 @@ export class PTYManager {
       return true
     }
 
-    const dtach = getDtachService()
-    return dtach.killClaudeInSession(terminalId)
+    return getMultiplexerService('dtach').killAgentInSession(terminalId)
   }
 
   // Detach all PTYs but keep dtach sessions running

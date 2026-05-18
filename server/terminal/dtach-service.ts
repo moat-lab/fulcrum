@@ -3,6 +3,12 @@ import * as path from 'path'
 import { execSync } from 'child_process'
 import { getFulcrumDir } from '../lib/settings'
 import { log } from '../lib/logger'
+import type {
+  DtachMultiplexer,
+  MultiplexerKind,
+  MultiplexerService,
+  RemoteSessionOptions,
+} from './multiplexer-service'
 
 // Find process IDs by matching command line arguments
 function findProcessesByArg(searchArg: string): number[] {
@@ -103,7 +109,8 @@ export function killProcessTree(pid: number): void {
   }
 }
 
-export class DtachService {
+export class DtachService implements DtachMultiplexer {
+  readonly kind = 'dtach' as const
   private socketsDir: string
 
   constructor() {
@@ -114,30 +121,26 @@ export class DtachService {
     }
   }
 
-  getSocketPath(terminalId: string): string {
+  getSessionIdentifier(terminalId: string): string {
     return path.join(this.socketsDir, `terminal-${terminalId}.sock`)
   }
 
   hasSession(terminalId: string): boolean {
-    return existsSync(this.getSocketPath(terminalId))
+    return existsSync(this.getSessionIdentifier(terminalId))
   }
 
-  // Validate that a socket is actually functional (not stale)
-  // This tries to connect to the socket briefly to check if dtach is listening
-  validateSocket(terminalId: string): boolean {
-    const socketPath = this.getSocketPath(terminalId)
+  validateSession(terminalId: string): boolean {
+    const socketPath = this.getSessionIdentifier(terminalId)
 
-    // First check if the socket file exists
     if (!existsSync(socketPath)) {
-      log.pty.debug('validateSocket: socket file does not exist', { terminalId, socketPath })
+      log.pty.debug('validateSession: socket file does not exist', { terminalId, socketPath })
       return false
     }
 
-    // Check if it's actually a socket file
     try {
       const stats = statSync(socketPath)
       if (!stats.isSocket()) {
-        log.pty.warn('validateSocket: path exists but is not a socket', {
+        log.pty.warn('validateSession: path exists but is not a socket', {
           terminalId,
           socketPath,
           mode: stats.mode,
@@ -145,7 +148,7 @@ export class DtachService {
         return false
       }
     } catch (err) {
-      log.pty.warn('validateSocket: failed to stat socket', {
+      log.pty.warn('validateSession: failed to stat socket', {
         terminalId,
         socketPath,
         error: String(err),
@@ -153,27 +156,24 @@ export class DtachService {
       return false
     }
 
-    // Try to connect to the socket using socat or nc with a short timeout
-    // dtach -a would work but spawns a shell - instead we just probe the socket
     try {
-      // Use a simple test: check if there's a dtach process using this socket
       const dtachPids = findProcessesByArg(socketPath)
       if (dtachPids.length === 0) {
-        log.pty.warn('validateSocket: no dtach process found for socket', {
+        log.pty.warn('validateSession: no dtach process found for socket', {
           terminalId,
           socketPath,
         })
         return false
       }
 
-      log.pty.debug('validateSocket: dtach process found', {
+      log.pty.debug('validateSession: dtach process found', {
         terminalId,
         socketPath,
         pids: dtachPids,
       })
       return true
     } catch (err) {
-      log.pty.warn('validateSocket: failed to find dtach process', {
+      log.pty.warn('validateSession: failed to find dtach process', {
         terminalId,
         socketPath,
         error: String(err),
@@ -182,26 +182,37 @@ export class DtachService {
     }
   }
 
-  // Get command to create a new detached session
-  getCreateCommand(terminalId: string): string[] {
-    const socketPath = this.getSocketPath(terminalId)
+  getLocalCreateCommand(terminalId: string): string[] {
+    const socketPath = this.getSessionIdentifier(terminalId)
     const shell = process.env.SHELL || '/bin/bash'
     return ['dtach', '-n', socketPath, '-z', shell, '-li']
   }
 
-  // Get command to attach to an existing session
-  getAttachCommand(terminalId: string): string[] {
-    const socketPath = this.getSocketPath(terminalId)
-    // -echoctl: don't echo control chars as ^X (prevents ^P showing for Ctrl+P)
-    // Normal echo is preserved so typing is visible. Only control char display is suppressed.
+  getRemoteCreateCommand(terminalId: string, options: RemoteSessionOptions): string {
+    const remoteSocketPath = `${options.remoteDir}/terminal-${terminalId}.sock`
+    const envExports = options.env
+      ? Object.entries(options.env).map(([k, v]) => `export ${k}=${v}`).join(' && ')
+      : ''
+    const envPrefix = envExports ? `${envExports} && ` : ''
+    return [
+      `mkdir -p ${options.remoteDir}`,
+      `cd ${options.cwd}`,
+      `${envPrefix}dtach -n ${remoteSocketPath} -z bash -li`,
+    ].join(' && ')
+  }
+
+  getLocalAttachCommand(terminalId: string): string[] {
+    const socketPath = this.getSessionIdentifier(terminalId)
     return ['bash', '-c', `stty -echoctl && exec dtach -a ${socketPath} -z`]
   }
 
-  // Kill the dtach session and all its child processes
-  killSession(terminalId: string): void {
-    const socketPath = this.getSocketPath(terminalId)
+  getRemoteAttachCommand(terminalId: string, remoteDir: string): string {
+    const remoteSocketPath = `${remoteDir}/terminal-${terminalId}.sock`
+    return `stty -echoctl && exec dtach -a ${remoteSocketPath} -z`
+  }
 
-    // Find dtach process(es) using this socket
+  killSession(terminalId: string): void {
+    const socketPath = this.getSessionIdentifier(terminalId)
     const dtachPids = findProcessesByArg(socketPath)
 
     for (const pid of dtachPids) {
@@ -209,19 +220,13 @@ export class DtachService {
     }
   }
 
-  // Kill AI agent processes within a dtach session (but keep shell running)
   killAgentInSession(terminalId: string): boolean {
-    const socketPath = this.getSocketPath(terminalId)
-
-    // Find dtach process(es) using this socket
+    const socketPath = this.getSessionIdentifier(terminalId)
     const dtachPids = findProcessesByArg(socketPath)
 
     let killedAny = false
     for (const dtachPid of dtachPids) {
-      // Get all descendant processes
       const descendants = getDescendantPids(dtachPid)
-
-      // Find agent processes among descendants
       for (const pid of descendants) {
         if (isAgentProcess(pid)) {
           killProcessTree(pid)
@@ -233,13 +238,7 @@ export class DtachService {
     return killedAny
   }
 
-  // Legacy alias for backward compatibility
-  killClaudeInSession(terminalId: string): boolean {
-    return this.killAgentInSession(terminalId)
-  }
-
-  // Check if dtach is available
-  static isAvailable(): boolean {
+  isAvailable(): boolean {
     try {
       execSync('which dtach', { encoding: 'utf-8' })
       return true
@@ -259,10 +258,20 @@ export function getDtachService(): DtachService {
   return dtachService
 }
 
-/**
- * Reset the dtach service singleton.
- * Called during test cleanup to ensure the next getDtachService() uses the new FULCRUM_DIR.
- */
-export function resetDtachService(): void {
+export function getMultiplexerService(kind: MultiplexerKind): MultiplexerService {
+  switch (kind) {
+    case 'dtach':
+      return getDtachService()
+    case 'tmux':
+      throw new Error('tmux multiplexer not yet implemented')
+  }
+}
+
+export function resetMultiplexerService(): void {
   dtachService = null
 }
+
+/**
+ * @deprecated Use resetMultiplexerService instead
+ */
+export const resetDtachService = resetMultiplexerService

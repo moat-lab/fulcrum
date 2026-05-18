@@ -1,6 +1,6 @@
 import type { IPty } from 'bun-pty'
 import { unlinkSync } from 'fs'
-import { getDtachService } from './dtach-service'
+import { getMultiplexerService } from './dtach-service'
 import { BufferManager } from './buffer-manager'
 import { db, terminals } from '../db'
 import { eq } from 'drizzle-orm'
@@ -111,8 +111,8 @@ export class TerminalSession implements ITerminalSession {
   // Create a new dtach session (but don't attach yet - that happens in attach())
   async start(): Promise<void> {
     const spawn = await loadSpawnPty()
-    const dtach = getDtachService()
-    const [cmd, ...args] = dtach.getCreateCommand(this.id)
+    const multiplexer = getMultiplexerService('dtach')
+    const [cmd, ...args] = multiplexer.getLocalCreateCommand(this.id)
 
     try {
       // Spawn dtach -n which creates the session and exits immediately
@@ -166,14 +166,14 @@ export class TerminalSession implements ITerminalSession {
       return // Already attached
     }
 
-    const dtach = getDtachService()
-    const socketPath = dtach.getSocketPath(this.id)
+    const multiplexer = getMultiplexerService('dtach')
+    const sessionId = multiplexer.getSessionIdentifier(this.id)
 
     log.terminal.info('Attach starting', {
       terminalId: this.id,
       name: this._name,
       cwd: this.cwd,
-      socketPath,
+      socketPath: sessionId,
     })
 
     // Wait for socket to appear (handles race condition on first dtach use)
@@ -183,7 +183,7 @@ export class TerminalSession implements ITerminalSession {
     let socketFound = false
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      if (dtach.hasSession(this.id)) {
+      if (multiplexer.hasSession(this.id)) {
         socketFound = true
         log.terminal.debug('Socket found', { terminalId: this.id, attempt })
         break
@@ -196,7 +196,7 @@ export class TerminalSession implements ITerminalSession {
     if (!socketFound) {
       log.terminal.error('Attach failed: dtach socket not found after polling', {
         terminalId: this.id,
-        socketPath,
+        socketPath: sessionId,
         maxAttempts: MAX_ATTEMPTS,
       })
       this.status = 'exited'
@@ -210,7 +210,7 @@ export class TerminalSession implements ITerminalSession {
     this.buffer.loadFromDisk()
 
     const spawn = await loadSpawnPty()
-    const [cmd, ...args] = dtach.getAttachCommand(this.id)
+    const [cmd, ...args] = multiplexer.getLocalAttachCommand(this.id)
 
     try {
       this.pty = spawn(cmd, args, {
@@ -294,8 +294,8 @@ export class TerminalSession implements ITerminalSession {
         return
       }
 
-      const dtach = getDtachService()
-      const socketExists = dtach.hasSession(this.id)
+      const mux = getMultiplexerService('dtach')
+      const socketExists = mux.hasSession(this.id)
 
       log.terminal.debug('PTY onExit socket check', {
         terminalId: this.id,
@@ -444,11 +444,11 @@ export class TerminalSession implements ITerminalSession {
     }
 
     // Kill the dtach process and its entire process tree (shell + children like Claude)
-    const dtach = getDtachService()
-    dtach.killSession(this.id)
+    const mux = getMultiplexerService('dtach')
+    mux.killSession(this.id)
 
     // Clean up the socket file if it still exists
-    const socketPath = dtach.getSocketPath(this.id)
+    const socketPath = mux.getSessionIdentifier(this.id)
     try {
       unlinkSync(socketPath)
       log.terminal.debug('Socket file removed', { terminalId: this.id, socketPath })
