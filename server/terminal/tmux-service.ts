@@ -174,7 +174,7 @@ export class TmuxService implements TmuxMultiplexer {
     }
   }
 
-  private getSessionPanePids(sessionName: string): number[] {
+  getSessionPanePids(sessionName: string): number[] {
     try {
       const output = execSync(
         `tmux list-panes -t ${sessionName} -F '#{pane_pid}' 2>/dev/null`,
