@@ -1,19 +1,13 @@
 /**
  * Codex chat service for the built-in assistant.
  *
- * Uses the @openai/codex-sdk TypeScript library to drive the local Codex CLI via
- * its app-server JSON-RPC protocol. Threads are created per Fulcrum session and
- * persisted in ~/.codex/sessions; we keep a Map of fulcrumSessionId → codexThreadId
- * so follow-up messages resume the same thread.
- *
- * Event stream:
- *  - reasoning items   → emitted as `content:delta` events tagged with reasoning style
- *  - agent_message     → final assistant text streamed as `content:delta`
- *  - command_execution → surfaced as a tool-call style status line
- *  - error / failure   → `error` event
- *  - turn.completed    → `done`
+ * Codex has no streaming SDK comparable to @anthropic-ai/claude-agent-sdk or
+ * @opencode-ai/sdk, so we spawn `codex exec` for each user message and stream
+ * its stdout back as content deltas. The response arrives as a single block
+ * (no incremental tokens) — acceptable for v1.
  */
-import { Codex, type Thread, type ThreadEvent } from '@openai/codex-sdk'
+import { spawn, type ChildProcessByStdio } from 'node:child_process'
+import type { Readable } from 'node:stream'
 import { homedir } from 'node:os'
 import { log } from '../lib/logger'
 import { getSettings } from '../lib/settings'
@@ -21,24 +15,9 @@ import { db, tasks, projects, repositories, apps, projectRepositories } from '..
 import { eq } from 'drizzle-orm'
 import type { PageContext, AttachmentData } from '../../shared/types'
 
-// Maps Fulcrum session ID → Codex thread ID so follow-up turns resume the same thread.
-const codexThreadIds = new Map<string, string>()
-
-// Single shared Codex SDK client (Codex binary is launched per-thread by the SDK).
-let codexClient: Codex | null = null
-
-function getClient(): Codex {
-  if (codexClient) return codexClient
-  codexClient = new Codex({
-    // Pass through process env so codex picks up OPENAI_API_KEY / auth tokens.
-    env: process.env as Record<string, string>,
-  })
-  return codexClient
-}
-
 /**
- * Build context message for the assistant chat with page context.
- * Mirrors opencode-chat-service.buildContextMessage.
+ * Build the system prompt for the chat assistant with page context.
+ * Mirrors opencode-chat-service.buildContextMessage but trimmed to essentials.
  */
 async function buildContextMessage(context?: PageContext): Promise<string | null> {
   if (!context) return null
@@ -90,34 +69,16 @@ async function buildContextMessage(context?: PageContext): Promise<string | null
   return parts.join('\n')
 }
 
-function getOrCreateThread(
-  fulcrumSessionId: string,
-  model: string | null,
-): Thread {
-  const codex = getClient()
-  const existingThreadId = codexThreadIds.get(fulcrumSessionId)
-
-  const threadOptions = {
-    ...(model && { model }),
-    sandboxMode: 'workspace-write' as const,
-    skipGitRepoCheck: true,
-    workingDirectory: homedir(),
-    approvalPolicy: 'never' as const,
-  }
-
-  if (existingThreadId) {
-    return codex.resumeThread(existingThreadId, threadOptions)
-  }
-  return codex.startThread(threadOptions)
-}
-
 /**
- * Stream a chat message through the Codex SDK.
+ * Stream a chat message through `codex exec`.
  *
- * Yields content deltas as the agent emits text/reasoning, plus a final done event.
+ * Yields:
+ *  - `content:delta` events with text chunks (Codex emits in a single block; we still split on newlines for UX)
+ *  - `done` when complete
+ *  - `error` on failure
  */
 export async function* streamCodexMessage(
-  sessionId: string,
+  _sessionId: string,
   message: string,
   model: string | undefined,
   context?: PageContext,
@@ -127,73 +88,84 @@ export async function* streamCodexMessage(
   const codexModel = model || settings.agent.codexModel || null
 
   const contextMsg = await buildContextMessage(context)
-  const fullMessage = contextMsg ? `[Page context]\n${contextMsg}\n\n[User]\n${message}` : message
+  const prompt = contextMsg ? `[Page context]\n${contextMsg}\n\n[User]\n${message}` : message
+
+  const args = [
+    'exec',
+    '--ephemeral',
+    '--skip-git-repo-check',
+    '--dangerously-bypass-approvals-and-sandbox',
+    '-C', homedir(),
+  ]
+  if (codexModel) args.push('-m', codexModel)
+  args.push('--', prompt)
+
+  let child: ChildProcessByStdio<null, Readable, Readable>
+  try {
+    child = spawn('codex', args, { stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log.chat.error('Failed to spawn codex exec', { error: msg })
+    yield { type: 'error', data: { message: msg } }
+    return
+  }
+
+  // Codex exec streams partial reasoning + final answer to stdout. We forward chunks
+  // verbatim — the UI can render them as a single growing message.
+  const queue: string[] = []
+  let done = false
+  let errorMessage: string | null = null
+  let stderrBuf = ''
+  let resolveNext: (() => void) | null = null
+  const notify = () => {
+    if (resolveNext) {
+      const r = resolveNext
+      resolveNext = null
+      r()
+    }
+  }
+
+  child.stdout.on('data', (chunk: Buffer) => {
+    queue.push(chunk.toString('utf-8'))
+    notify()
+  })
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderrBuf += chunk.toString('utf-8')
+  })
+  child.on('error', (err) => {
+    errorMessage = err.message
+    done = true
+    notify()
+  })
+  child.on('close', (code) => {
+    if (code !== 0 && !errorMessage) {
+      errorMessage = `codex exec exited with code ${code}${stderrBuf ? `\n${stderrBuf.slice(0, 500)}` : ''}`
+    }
+    done = true
+    notify()
+  })
 
   try {
-    const thread = getOrCreateThread(sessionId, codexModel)
-    const { events } = await thread.runStreamed(fullMessage)
-
-    // Track per-item text so we only yield the delta when an item updates.
-    const itemText = new Map<string, string>()
-
-    for await (const event of events as AsyncGenerator<ThreadEvent>) {
-      switch (event.type) {
-        case 'thread.started':
-          codexThreadIds.set(sessionId, event.thread_id)
-          break
-
-        case 'item.started':
-        case 'item.updated': {
-          const item = event.item
-          if (item.type === 'agent_message' || item.type === 'reasoning') {
-            const prev = itemText.get(item.id) || ''
-            const next = item.text || ''
-            const delta = next.slice(prev.length)
-            if (delta) {
-              itemText.set(item.id, next)
-              yield { type: 'content:delta', data: { text: delta } }
-            }
-          } else if (item.type === 'command_execution' && event.type === 'item.started') {
-            yield {
-              type: 'content:delta',
-              data: { text: `\n\n\`\`\`bash\n$ ${item.command}\n\`\`\`\n\n` },
-            }
-          }
-          break
-        }
-
-        case 'item.completed': {
-          const item = event.item
-          if (item.type === 'agent_message' || item.type === 'reasoning') {
-            const prev = itemText.get(item.id) || ''
-            const next = item.text || ''
-            const delta = next.slice(prev.length)
-            if (delta) {
-              itemText.set(item.id, next)
-              yield { type: 'content:delta', data: { text: delta } }
-            }
-          }
-          break
-        }
-
-        case 'turn.failed':
-          yield { type: 'error', data: { message: event.error.message } }
-          return
-
-        case 'error':
-          yield { type: 'error', data: { message: event.message } }
-          return
-
-        case 'turn.completed':
-          yield { type: 'done', data: { usage: event.usage } }
-          return
+    while (!done || queue.length > 0) {
+      if (queue.length === 0) {
+        await new Promise<void>((resolve) => {
+          resolveNext = resolve
+        })
+        continue
       }
+      const text = queue.shift()!
+      yield { type: 'content:delta', data: { text } }
+    }
+
+    if (errorMessage) {
+      yield { type: 'error', data: { message: errorMessage } }
+      return
     }
 
     yield { type: 'done', data: {} }
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    log.chat.error('Codex chat stream error', { sessionId, error: errorMsg })
-    yield { type: 'error', data: { message: errorMsg } }
+    const msg = err instanceof Error ? err.message : String(err)
+    log.chat.error('Codex chat stream error', { error: msg })
+    yield { type: 'error', data: { message: msg } }
   }
 }

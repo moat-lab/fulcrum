@@ -9,7 +9,6 @@ import type { FileAttachment } from '@/components/assistant/chat-panel'
 import type { AgentType } from '../../../shared/types'
 import { log } from '@/lib/logger'
 import { useOpencodeModels } from '@/hooks/use-opencode-models'
-import { useSystemDependencies } from '@/hooks/use-system-dependencies'
 import { useOpencodeModel as useOpencodeModelSetting, useAssistantProvider, useAssistantModel } from '@/hooks/use-config'
 
 /** Generate a default title for new chats based on current timestamp */
@@ -80,10 +79,6 @@ function AssistantView() {
 
   // Check if OpenCode is available
   const isOpencodeAvailable = opencodeInstalled && Object.keys(opencodeProviders).length > 0
-
-  // Check if Codex is available (just installed; no per-model probe)
-  const { data: systemDeps } = useSystemDependencies()
-  const isCodexAvailable = systemDeps?.codex?.installed ?? false
 
   // Initialize from settings on mount
   useEffect(() => {
@@ -624,7 +619,6 @@ function AssistantView() {
         opencodeModel={opencodeModel}
         opencodeProviders={opencodeProviders}
         isOpencodeAvailable={isOpencodeAvailable}
-        isCodexAvailable={isCodexAvailable}
         editorContent={editorContent}
         canvasContent={canvasContent}
         documents={documents}

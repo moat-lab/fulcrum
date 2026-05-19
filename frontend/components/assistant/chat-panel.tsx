@@ -213,7 +213,6 @@ interface ChatPanelProps {
   opencodeModel: string | null
   opencodeProviders: Record<string, string[]>
   isOpencodeAvailable: boolean
-  isCodexAvailable: boolean
   onProviderChange: (provider: AgentType) => void
   onModelChange: (model: ClaudeModelId) => void
   onOpencodeModelChange: (model: string) => void
@@ -234,7 +233,6 @@ export function ChatPanel({
   opencodeModel,
   opencodeProviders,
   isOpencodeAvailable,
-  isCodexAvailable,
   onProviderChange,
   onModelChange,
   onOpencodeModelChange,
@@ -383,7 +381,7 @@ export function ChatPanel({
         )}
 
         {/* Provider Toggle */}
-        {(isOpencodeAvailable || isCodexAvailable) && (
+        {isOpencodeAvailable && (
           <div className="flex items-center rounded-full p-0.5 bg-muted/60">
             <button
               onClick={() => onProviderChange('claude')}
@@ -396,32 +394,17 @@ export function ChatPanel({
             >
               {t('providers.claude')}
             </button>
-            {isOpencodeAvailable && (
-              <button
-                onClick={() => onProviderChange('opencode')}
-                className={cn(
-                  'px-2 py-1 text-[10px] font-medium rounded-full transition-all',
-                  provider === 'opencode'
-                    ? 'bg-accent/20 text-accent'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {t('providers.opencode')}
-              </button>
-            )}
-            {isCodexAvailable && (
-              <button
-                onClick={() => onProviderChange('codex')}
-                className={cn(
-                  'px-2 py-1 text-[10px] font-medium rounded-full transition-all',
-                  provider === 'codex'
-                    ? 'bg-accent/20 text-accent'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                Codex
-              </button>
-            )}
+            <button
+              onClick={() => onProviderChange('opencode')}
+              className={cn(
+                'px-2 py-1 text-[10px] font-medium rounded-full transition-all',
+                provider === 'opencode'
+                  ? 'bg-accent/20 text-accent'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {t('providers.opencode')}
+            </button>
           </div>
         )}
 
