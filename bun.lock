@@ -22,6 +22,7 @@
         "@modelcontextprotocol/sdk": "^1.11.0",
         "@monaco-editor/react": "^4.7.0",
         "@octokit/rest": "^22.0.1",
+        "@openai/codex-sdk": "^0.130.0",
         "@opencode-ai/sdk": "^1.1.34",
         "@radix-ui/react-collapsible": "^1.1.12",
         "@slack/bolt": "^4.6.0",
@@ -473,6 +474,22 @@
     "@open-draft/logger": ["@open-draft/logger@0.3.0", "", { "dependencies": { "is-node-process": "^1.2.0", "outvariant": "^1.4.0" } }, "sha512-X2g45fzhxH238HKO4xbSr7+wBS8Fvw6ixhTDuvLd5mqh6bJJCFAPwU9mPDxbcrRtfxv4u5IHCEH77BmxvXmmxQ=="],
 
     "@open-draft/until": ["@open-draft/until@2.1.0", "", {}, "sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg=="],
+
+    "@openai/codex": ["@openai/codex@0.130.0", "", { "optionalDependencies": { "@openai/codex-darwin-arm64": "npm:@openai/codex@0.130.0-darwin-arm64", "@openai/codex-darwin-x64": "npm:@openai/codex@0.130.0-darwin-x64", "@openai/codex-linux-arm64": "npm:@openai/codex@0.130.0-linux-arm64", "@openai/codex-linux-x64": "npm:@openai/codex@0.130.0-linux-x64", "@openai/codex-win32-arm64": "npm:@openai/codex@0.130.0-win32-arm64", "@openai/codex-win32-x64": "npm:@openai/codex@0.130.0-win32-x64" }, "bin": { "codex": "bin/codex.js" } }, "sha512-WGDj+RZ3TXWC/7MlwprgLWOqzpwatPIINPhP3IRzHA0ni+o3QZ4i4xrS2uWwGmHUJ395J5JHwoZAAZYyfJyz6w=="],
+
+    "@openai/codex-darwin-arm64": ["@openai/codex@0.130.0-darwin-arm64", "", { "os": "darwin", "cpu": "arm64" }, "sha512-R9pkGC7kwC8yQ8el5hvBlmugQlcsG/pHMEFgZluu03X9fD2TezGxdq3KqRDRCZuMYl07ILamVEoqknuJ0cq7MA=="],
+
+    "@openai/codex-darwin-x64": ["@openai/codex@0.130.0-darwin-x64", "", { "os": "darwin", "cpu": "x64" }, "sha512-gJ+7J8djevgtdra+NgDAiQQPW+O3KTsgGfE3E5dpDfww3zS5OCeV0V2dhxqnJdlOjOSDw99o0P2LqBv19mhpRw=="],
+
+    "@openai/codex-linux-arm64": ["@openai/codex@0.130.0-linux-arm64", "", { "os": "linux", "cpu": "arm64" }, "sha512-tFtH0V9/hEI3d9y7zP92BXI9FM4Z3+STNQaOR52Czv18TRtCFUp7CbIUYaToopuq6UBfnE1VKr8RLhwT5FcbmA=="],
+
+    "@openai/codex-linux-x64": ["@openai/codex@0.130.0-linux-x64", "", { "os": "linux", "cpu": "x64" }, "sha512-3VcNlez99xdnEf+kB1IOpWv9fICYV9PiGj4sLCO4TCcShLnyxe+YBGa3poknkvXLnMG0qiN9SMnYS2FGrMxQcA=="],
+
+    "@openai/codex-sdk": ["@openai/codex-sdk@0.130.0", "", { "dependencies": { "@openai/codex": "0.130.0" } }, "sha512-ICKaZ5zrIDg71AiQcsUToVoe5Icmrc3LwSM5+2z7Cf8F1x6nOaY7/ucpFlr4aH8oDe7t3dangc+MsWZTkdvDFw=="],
+
+    "@openai/codex-win32-arm64": ["@openai/codex@0.130.0-win32-arm64", "", { "os": "win32", "cpu": "arm64" }, "sha512-vdpmiNp57L/arZabltLXn8TyEtNa7W1meOEkr+3R6W/8ZyBt++wuqz1Orv134OT2grrcFJsIVCAIPiqUxCvBkA=="],
+
+    "@openai/codex-win32-x64": ["@openai/codex@0.130.0-win32-x64", "", { "os": "win32", "cpu": "x64" }, "sha512-FzMznm7fr5/nbjZgOujZ9Y9AbdGm7ji1FOoWiY3U+srqauvZaTgn6o6aCheSL7kuymu7nTLOO/cAyWV6NuesqQ=="],
 
     "@opencode-ai/plugin": ["@opencode-ai/plugin@1.1.8", "", { "dependencies": { "@opencode-ai/sdk": "1.1.8", "zod": "4.1.8" } }, "sha512-d+eL4PMZo4hOOxyY1nqSM5iJMPnOxS1F3jLwFv4iuuW4+s0sf9dOU/VqpnuQw0lalH1Pz8N5e+7pHGAFQqk0bg=="],
 
@@ -1694,7 +1711,7 @@
 
     "libqp": ["libqp@2.1.1", "", {}, "sha512-0Wd+GPz1O134cP62YU2GTOPNA7Qgl09XwCqM5zpBv87ERCXdfDtyKXvV7c9U22yWJh44QZqBocFnXN11K96qow=="],
 
-    "libsignal": ["@whiskeysockets/libsignal-node@github:whiskeysockets/libsignal-node#1c30d7d", { "dependencies": { "curve25519-js": "^0.0.4", "protobufjs": "6.8.8" } }, "WhiskeySockets-libsignal-node-1c30d7d", "sha512-5q4/OuDQaMYx3RpDqMqS3WYyqjrsSMpU8ipQZtpYnm5l6DwNoLV9oIYMDK0NILKW+tyk3tVCIA11BMYQ+A1+GA=="],
+    "libsignal": ["@whiskeysockets/libsignal-node@github:whiskeysockets/libsignal-node#1c30d7d", { "dependencies": { "curve25519-js": "^0.0.4", "protobufjs": "6.8.8" } }, "WhiskeySockets-libsignal-node-1c30d7d"],
 
     "lightningcss": ["lightningcss@1.30.2", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.30.2", "lightningcss-darwin-arm64": "1.30.2", "lightningcss-darwin-x64": "1.30.2", "lightningcss-freebsd-x64": "1.30.2", "lightningcss-linux-arm-gnueabihf": "1.30.2", "lightningcss-linux-arm64-gnu": "1.30.2", "lightningcss-linux-arm64-musl": "1.30.2", "lightningcss-linux-x64-gnu": "1.30.2", "lightningcss-linux-x64-musl": "1.30.2", "lightningcss-win32-arm64-msvc": "1.30.2", "lightningcss-win32-x64-msvc": "1.30.2" } }, "sha512-utfs7Pr5uJyyvDETitgsaqSyjCb2qNRAtuqUeWIAKztsOYdcACf2KtARYXg2pSvhkt+9NfoaNY7fxjl6nuMjIQ=="],
 

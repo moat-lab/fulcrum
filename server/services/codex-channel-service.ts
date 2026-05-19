@@ -1,29 +1,21 @@
 /**
  * Codex observer service for processing observe-only channel messages.
  *
- * Uses text-only processing with Fulcrum-mediated actions:
- * 1. Spawns `codex exec` with the message + structured-output JSON schema
- * 2. Parses the JSON response for actions (store_memory, ignore)
- * 3. Fulcrum executes the actions — the AI never directly invokes tools
+ * Uses @openai/codex-sdk with structured output (outputSchema) to constrain Codex
+ * to emit a JSON action object that Fulcrum executes — Codex itself never gets
+ * direct tool access, so untrusted channel input can't reach filesystem/exec/deploy.
  *
- * This ensures untrusted channel input cannot access filesystem, exec, or deploy tools.
- *
- * Codex has no SDK analog to @anthropic-ai/claude-agent-sdk or @opencode-ai/sdk, so
- * we shell out to `codex exec` for each observer invocation. The `--ephemeral` flag
- * skips session persistence, `--output-schema` constrains the final response shape,
- * and `--dangerously-bypass-approvals-and-sandbox` is safe here because we never
- * give Codex tools — it only emits JSON we parse and act on.
+ * Each observation runs in a fresh ephemeral thread (no resume/persistence) and a
+ * read-only sandbox, with the trust prompt bypassed via the SDK's `config` option.
  */
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir, homedir } from 'node:os'
-import { join } from 'node:path'
+import { Codex, type Thread, type RunResult } from '@openai/codex-sdk'
+import { homedir } from 'node:os'
 import { log } from '../lib/logger'
 import { getSettings } from '../lib/settings'
 import { storeMemory } from './memory-service'
 import type { ChannelHistoryMessage } from './channels/message-storage'
 
-// JSON Schema for Codex's --output-schema flag, matching the observer action shape.
+// JSON Schema describing the observer's output shape.
 const OBSERVER_OUTPUT_SCHEMA = {
   type: 'object',
   required: ['actions'],
@@ -50,6 +42,16 @@ const OBSERVER_OUTPUT_SCHEMA = {
     },
   },
 } as const
+
+let codexClient: Codex | null = null
+
+function getClient(): Codex {
+  if (codexClient) return codexClient
+  codexClient = new Codex({
+    env: process.env as Record<string, string>,
+  })
+  return codexClient
+}
 
 function getObserverSystemPrompt(recentTasks?: Array<{ id: string; title: string; status: string }>): string {
   const today = new Date()
@@ -283,84 +285,8 @@ async function executeObserverActions(
   }
 }
 
-function extractJsonFromResponse(text: string): unknown | null {
-  let jsonText = text.trim()
-  const fenced = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fenced) {
-    jsonText = fenced[1].trim()
-  } else {
-    // Codex exec sometimes prints status banners; try to isolate the last JSON object.
-    const firstBrace = jsonText.indexOf('{')
-    const lastBrace = jsonText.lastIndexOf('}')
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      jsonText = jsonText.slice(firstBrace, lastBrace + 1)
-    }
-  }
-  try {
-    return JSON.parse(jsonText)
-  } catch {
-    return null
-  }
-}
-
-// Run `codex exec` with the observer prompt and return its final stdout.
-function runCodexExec(opts: {
-  prompt: string
-  model: string | null
-  timeoutMs: number
-}): Promise<{ stdout: string; exitCode: number; timedOut: boolean }> {
-  return new Promise((resolve, reject) => {
-    const schemaDir = mkdtempSync(join(tmpdir(), 'fulcrum-codex-observer-'))
-    const schemaPath = join(schemaDir, 'observer-schema.json')
-    writeFileSync(schemaPath, JSON.stringify(OBSERVER_OUTPUT_SCHEMA))
-
-    const args = [
-      'exec',
-      '--ephemeral',
-      '--skip-git-repo-check',
-      '--dangerously-bypass-approvals-and-sandbox',
-      '--output-schema', schemaPath,
-      '-C', homedir(),
-    ]
-    if (opts.model) args.push('-m', opts.model)
-    args.push('--', opts.prompt)
-
-    const child = spawn('codex', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
-    })
-
-    let stdout = ''
-    let stderr = ''
-    let timedOut = false
-
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill('SIGTERM')
-    }, opts.timeoutMs)
-
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf-8') })
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf-8') })
-
-    child.on('error', (err) => {
-      clearTimeout(timer)
-      try { rmSync(schemaDir, { recursive: true, force: true }) } catch { /* ignore */ }
-      reject(err)
-    })
-
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      try { rmSync(schemaDir, { recursive: true, force: true }) } catch { /* ignore */ }
-      if (stderr.trim()) {
-        log.messaging.debug('Codex observer stderr', { stderr: stderr.slice(0, 500) })
-      }
-      resolve({ stdout, exitCode: code ?? -1, timedOut })
-    })
-  })
-}
-
 /**
- * Process an observe-only channel message via Codex without direct tool access.
+ * Process an observe-only channel message via Codex SDK without direct tool access.
  */
 export async function* streamCodexObserverMessage(
   sessionId: string,
@@ -376,7 +302,7 @@ export async function* streamCodexObserverMessage(
 ): AsyncGenerator<{ type: string; data: unknown }> {
   try {
     const settings = getSettings()
-    const model = options.model || settings.assistant.observerCodexModel || settings.agent.codexModel
+    const model = options.model || settings.assistant.observerCodexModel || settings.agent.codexModel || null
 
     let contextualMessage = ''
     if (options.channelHistory && options.channelHistory.length > 0) {
@@ -401,32 +327,49 @@ ${userMessage}`
 
 ${contextualMessage}`
 
-    const result = await runCodexExec({
-      prompt: fullPrompt,
-      model: model ?? null,
-      timeoutMs: 60_000,
+    const codex = getClient()
+    const thread: Thread = codex.startThread({
+      ...(model && { model }),
+      sandboxMode: 'read-only',
+      skipGitRepoCheck: true,
+      workingDirectory: homedir(),
+      approvalPolicy: 'never',
     })
 
-    if (result.timedOut) {
+    // Race against a 60s timeout to bound observer cost.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 60_000)
+
+    let result: RunResult
+    try {
+      result = await thread.run(fullPrompt, {
+        outputSchema: OBSERVER_OUTPUT_SCHEMA,
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+
+    if (controller.signal.aborted) {
       log.messaging.warn('Codex observer timeout', { sessionId })
       yield { type: 'timeout', data: {} }
       return
     }
 
-    if (result.exitCode !== 0) {
-      throw new Error(`codex exec exited with code ${result.exitCode}`)
+    let parsed: { actions?: ObserverAction[] } | null = null
+    try {
+      parsed = JSON.parse(result.finalResponse)
+    } catch {
+      log.messaging.debug('Codex observer response was not valid JSON, skipping', {
+        sessionId, responsePreview: result.finalResponse.slice(0, 200),
+      })
     }
 
-    const parsed = extractJsonFromResponse(result.stdout) as { actions?: ObserverAction[] } | null
     const fulcrumPort = getSettings().server?.port ?? 7777
     let executedActions: ObserverAction[] = []
     if (parsed?.actions && Array.isArray(parsed.actions)) {
       await executeObserverActions(parsed.actions, options, sessionId, fulcrumPort)
       executedActions = parsed.actions
-    } else {
-      log.messaging.debug('Codex observer response was not valid JSON, skipping', {
-        sessionId, responsePreview: result.stdout.slice(0, 200),
-      })
     }
 
     yield { type: 'done', data: { actions: executedActions } }
