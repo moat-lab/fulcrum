@@ -152,7 +152,12 @@
       "contextMenu": {
         "rename": "Rename",
         "download": "Download",
-        "delete": "Delete"
+        "delete": "Delete",
+        "copyPath": "Copy path"
+      },
+      "copyPathToast": {
+        "success": "Path copied to clipboard",
+        "error": "Failed to copy path"
       },
       "renameDialog": {
         "title": "Rename file",

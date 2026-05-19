@@ -13,7 +13,9 @@ import {
   PencilEdit02Icon,
   Download01Icon,
   Delete02Icon,
+  Copy01Icon,
 } from '@hugeicons/core-free-icons'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { fuzzyScore } from '@/lib/fuzzy-search'
 import type { FileTreeEntry } from '@/types'
@@ -96,14 +98,19 @@ interface FileContextMenuProps {
 
 /**
  * Wraps a file row with a right-click / long-press context menu.
- * If no action callbacks are provided, the children render with no menu.
+ * Copy path is always available; other actions appear when their callbacks are provided.
  */
 function FileContextMenu({ path, onRename, onDownload, onDelete, children }: FileContextMenuProps) {
   const { t } = useTranslation('repositories')
 
-  if (!onRename && !onDownload && !onDelete) {
-    return <>{children}</>
-  }
+  const handleCopyPath = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(path)
+      toast.success(t('detailView.fileTree.copyPathToast.success'))
+    } catch {
+      toast.error(t('detailView.fileTree.copyPathToast.error'))
+    }
+  }, [path, t])
 
   return (
     <ContextMenu.Root>
@@ -117,6 +124,13 @@ function FileContextMenu({ path, onRename, onDownload, onDelete, children }: Fil
               'min-w-40 rounded-lg p-1 shadow-md ring-1 duration-100 outline-none'
             )}
           >
+            <ContextMenu.Item
+              onClick={handleCopyPath}
+              className="focus:bg-accent focus:text-accent-foreground min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0"
+            >
+              <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={2} />
+              {t('detailView.fileTree.contextMenu.copyPath')}
+            </ContextMenu.Item>
             {onRename && (
               <ContextMenu.Item
                 onClick={() => onRename(path)}
