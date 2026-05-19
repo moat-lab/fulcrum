@@ -10,10 +10,6 @@ jobs:
   check:
     name: Lint & Typecheck
     runs-on: [self-hosted, linux, vctcn]
-    container:
-      image: catthehacker/ubuntu:full-24.04
-    env:
-      RUNNER_TOOL_CACHE: /home/runner/actions-tool-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,10 +44,6 @@ jobs:
   test:
     name: Test
     runs-on: [self-hosted, linux, vctcn]
-    container:
-      image: catthehacker/ubuntu:full-24.04
-    env:
-      RUNNER_TOOL_CACHE: /home/runner/actions-tool-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
