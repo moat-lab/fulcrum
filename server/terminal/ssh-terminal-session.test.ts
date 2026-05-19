@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { setupTestEnv, type TestEnv } from '../__tests__/utils/env'
+import type { BufferManager } from './buffer-manager'
 
 // Mock ssh2 module — captures exec commands for assertion
 const execedCommands: string[] = []
@@ -56,37 +57,14 @@ class MockClient {
 
 mock.module('ssh2', () => ({ Client: MockClient }))
 
-// Note: deliberately NOT mocking '../db', '../lib/logger', or 'drizzle-orm'.
+// Note: deliberately NOT mocking './buffer-manager', '../db', '../lib/logger',
+// or 'drizzle-orm'.
 // Bun's mock.module() leaks across test files (process-wide), so module-level
-// mocks of these widely-imported singletons would corrupt unrelated test
+// mocks of these widely-imported modules would corrupt unrelated test
 // suites that run after this file. Instead each test below calls
 // setupTestEnv() to get a real isolated sqlite + log file under tmpdir, which
 // gives ssh-terminal-session.ts's `db.update(terminals)…run()` a working
 // target without polluting global state.
-
-class MockBufferManager {
-  static instances: MockBufferManager[] = []
-
-  resizeCalls: Array<{ cols: number; rows: number }> = []
-
-  constructor(readonly cols = 80, readonly rows = 24) {
-    MockBufferManager.instances.push(this)
-  }
-
-  setTerminalId() {}
-  append() {}
-  getContents() { return '' }
-  resize(cols: number, rows: number) { this.resizeCalls.push({ cols, rows }) }
-  clear() {}
-  saveToDisk() {}
-  loadFromDisk() {}
-  deleteFromDisk() {}
-}
-
-// Mock buffer manager
-mock.module('./buffer-manager', () => ({
-  BufferManager: MockBufferManager,
-}))
 
 import { SSHTerminalSession } from './ssh-terminal-session'
 import { resetSSHConnectionManager } from './ssh-connection-manager'
@@ -116,22 +94,37 @@ function createSession(overrides?: Partial<ConstructorParameters<typeof SSHTermi
   })
 }
 
+function getReplayBuffer(session: SSHTerminalSession): BufferManager {
+  return (session as unknown as { buffer: BufferManager }).buffer
+}
+
 describe('SSHTerminalSession', () => {
   let env: TestEnv
+  const sessions: SSHTerminalSession[] = []
 
   beforeEach(() => {
     env = setupTestEnv()
-    MockBufferManager.instances = []
     execedCommands.length = 0
+    sessions.length = 0
     resetSSHConnectionManager()
   })
 
   afterEach(() => {
+    for (const session of sessions) {
+      getReplayBuffer(session)._dispose()
+    }
+    sessions.length = 0
     env?.cleanup()
   })
 
+  function createTrackedSession(overrides?: Partial<ConstructorParameters<typeof SSHTerminalSession>[0]>) {
+    const session = createSession(overrides)
+    sessions.push(session)
+    return session
+  }
+
   test('getInfo returns correct fields', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     const info = session.getInfo()
 
     expect(info.id).toBe('test-session-1')
@@ -144,27 +137,27 @@ describe('SSHTerminalSession', () => {
   })
 
   test('rename updates name', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     session.rename('New Name')
     expect(session.name).toBe('New Name')
     expect(session.getInfo().name).toBe('New Name')
   })
 
   test('assignTab updates tab info', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     session.assignTab('tab-1', 2)
     expect(session.tabId).toBe('tab-1')
     expect(session.positionInTab).toBe(2)
   })
 
   test('assignTab with null clears tab', () => {
-    const session = createSession({ tabId: 'tab-1', positionInTab: 2 })
+    const session = createTrackedSession({ tabId: 'tab-1', positionInTab: 2 })
     session.assignTab(null)
     expect(session.tabId).toBeUndefined()
   })
 
   test('start() creates remote dtach session', async () => {
-    const session = createSession()
+    const session = createTrackedSession()
     await session.start()
     // Should not throw - dtach created successfully
     expect(session.isRunning()).toBe(true)
@@ -172,7 +165,7 @@ describe('SSHTerminalSession', () => {
 
   test('start() sets error status on failure', async () => {
     let exitCalled = false
-    const session = createSession({
+    const session = createTrackedSession({
       sshConfig: { ...baseSshConfig, authMethod: 'password' as const },
       onExit: () => { exitCalled = true },
     })
@@ -182,51 +175,60 @@ describe('SSHTerminalSession', () => {
   })
 
   test('write() queues data before stream is ready', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     // Before attach, no stream
     expect(session.isAttached()).toBe(false)
     // Write should not throw
     session.write('hello')
   })
 
-  test('initializes replay buffer with SSH terminal dimensions', () => {
-    createSession({ cols: 132, rows: 43 })
-    expect(MockBufferManager.instances[0]?.cols).toBe(132)
-    expect(MockBufferManager.instances[0]?.rows).toBe(43)
+  test('initializes replay buffer with SSH terminal dimensions', async () => {
+    const session = createTrackedSession({ cols: 132, rows: 43 })
+    const buffer = getReplayBuffer(session)
+
+    expect(buffer.getLineCount()).toBe(43)
+    buffer.append('a'.repeat(100))
+    await buffer.flushPending()
+    expect(buffer._visibleText().split('\n')[0]).toHaveLength(100)
   })
 
   test('resize() updates dimensions', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     session.resize(120, 40)
     const info = session.getInfo()
     expect(info.cols).toBe(120)
     expect(info.rows).toBe(40)
   })
 
-  test('resize() updates replay buffer dimensions', () => {
-    const session = createSession()
+  test('resize() updates replay buffer dimensions', async () => {
+    const session = createTrackedSession()
     session.resize(120, 40)
-    expect(MockBufferManager.instances[0]?.resizeCalls).toEqual([{ cols: 120, rows: 40 }])
+    const buffer = getReplayBuffer(session)
+
+    expect(buffer.getLineCount()).toBe(40)
+    buffer.append('a'.repeat(100))
+    await buffer.flushPending()
+    expect(buffer._visibleText().split('\n')[0]).toHaveLength(100)
   })
 
   test('isRunning() returns true initially', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     expect(session.isRunning()).toBe(true)
   })
 
   test('isAttached() returns false before attach', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     expect(session.isAttached()).toBe(false)
   })
 
   test('kill() marks session as exited', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     session.kill()
     expect(session.isRunning()).toBe(false)
   })
 
   test('start() uses $HOME in SSH create command, not hardcoded /home/<user>/', async () => {
-    const session = createSession({
+    const session = createTrackedSession({
       sshConfig: { ...baseSshConfig, username: 'deploy' },
       multiplexerKind: 'dtach',
     })
@@ -238,14 +240,14 @@ describe('SSHTerminalSession', () => {
   })
 
   test('attach() connects SSH and sets up stream', async () => {
-    const session = createSession()
+    const session = createTrackedSession()
     await session.start()
     await session.attach()
     expect(session.isAttached()).toBe(true)
   })
 
   test('detach() releases connection', async () => {
-    const session = createSession()
+    const session = createTrackedSession()
     await session.start()
     await session.attach()
     expect(session.isAttached()).toBe(true)
@@ -254,14 +256,14 @@ describe('SSHTerminalSession', () => {
   })
 
   test('clearBuffer() clears buffer', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     // Should not throw
     session.clearBuffer()
     expect(session.getBuffer()).toBe('')
   })
 
   test('getBuffer() returns empty string initially', () => {
-    const session = createSession()
+    const session = createTrackedSession()
     expect(session.getBuffer()).toBe('')
   })
 })

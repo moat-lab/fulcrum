@@ -312,4 +312,5 @@ export function resetSSHConnectionManager(): void {
     sshManager.destroyAll()
     sshManager = null
   }
+  _Client = null
 }

@@ -9,7 +9,7 @@ on:
 jobs:
   check:
     name: Lint & Typecheck
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vctcn]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vctcn]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,6 +59,14 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
+
+      - name: Install dtach
+        run: |
+          if ! command -v dtach >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y dtach
+          fi
+          command -v dtach
 
       - name: Install dependencies
         run: bun install
