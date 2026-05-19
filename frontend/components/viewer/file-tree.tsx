@@ -13,7 +13,9 @@ import {
   PencilEdit02Icon,
   Download01Icon,
   Delete02Icon,
+  Copy01Icon,
 } from '@hugeicons/core-free-icons'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { fuzzyScore } from '@/lib/fuzzy-search'
 import type { FileTreeEntry } from '@/types'
@@ -22,6 +24,7 @@ interface FileTreeProps {
   entries: FileTreeEntry[]
   selectedFile: string | null
   expandedDirs: string[]
+  rootPath?: string | null
   onSelectFile: (path: string) => void
   onToggleDir: (path: string) => void
   onCollapseAll: () => void
@@ -29,6 +32,43 @@ interface FileTreeProps {
   onDownloadFile?: (path: string) => void
   onDeleteFile?: (path: string) => void
   onFilesDropped?: (files: File[], targetDir: string) => void | Promise<void>
+}
+
+/** Join a root path with a relative path, normalizing separators. */
+function joinPath(root: string, rel: string): string {
+  return `${root.replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}`
+}
+
+/** Copy text via Clipboard API, falling back to a hidden textarea for non-secure contexts. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Fall through to legacy fallback
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  let ok = false
+  try {
+    // execCommand('copy') is deprecated but is the only fallback over plain HTTP / non-secure contexts.
+    const exec = (document as unknown as { execCommand: (c: string) => boolean }).execCommand
+    ok = exec.call(document, 'copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(textarea)
+  return ok
 }
 
 /** Flatten tree to get all file paths */
@@ -88,6 +128,7 @@ function isFilesDrag(e: React.DragEvent): boolean {
 
 interface FileContextMenuProps {
   path: string
+  rootPath?: string | null
   onRename?: (path: string) => void
   onDownload?: (path: string) => void
   onDelete?: (path: string) => void
@@ -96,14 +137,38 @@ interface FileContextMenuProps {
 
 /**
  * Wraps a file row with a right-click / long-press context menu.
- * If no action callbacks are provided, the children render with no menu.
+ * Copy path is always available; other actions appear when their callbacks are provided.
  */
-function FileContextMenu({ path, onRename, onDownload, onDelete, children }: FileContextMenuProps) {
+function FileContextMenu({
+  path,
+  rootPath,
+  onRename,
+  onDownload,
+  onDelete,
+  children,
+}: FileContextMenuProps) {
   const { t } = useTranslation('repositories')
 
-  if (!onRename && !onDownload && !onDelete) {
-    return <>{children}</>
-  }
+  const doCopy = useCallback(
+    async (text: string) => {
+      const ok = await copyText(text)
+      if (ok) {
+        toast.success(t('detailView.fileTree.copyPathToast.success'))
+      } else {
+        toast.error(t('detailView.fileTree.copyPathToast.error'))
+      }
+    },
+    [t]
+  )
+
+  const handleCopyRelative = useCallback(() => {
+    void doCopy(path)
+  }, [doCopy, path])
+
+  const handleCopyAbsolute = useCallback(() => {
+    if (!rootPath) return
+    void doCopy(joinPath(rootPath, path))
+  }, [doCopy, rootPath, path])
 
   return (
     <ContextMenu.Root>
@@ -117,6 +182,22 @@ function FileContextMenu({ path, onRename, onDownload, onDelete, children }: Fil
               'min-w-40 rounded-lg p-1 shadow-md ring-1 duration-100 outline-none'
             )}
           >
+            <ContextMenu.Item
+              onClick={handleCopyRelative}
+              className="focus:bg-accent focus:text-accent-foreground min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0"
+            >
+              <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={2} />
+              {t('detailView.fileTree.contextMenu.copyPath')}
+            </ContextMenu.Item>
+            {rootPath && (
+              <ContextMenu.Item
+                onClick={handleCopyAbsolute}
+                className="focus:bg-accent focus:text-accent-foreground min-h-7 gap-2 rounded-md px-2 py-1 text-xs/relaxed flex cursor-default items-center outline-hidden select-none [&_svg]:pointer-events-none [&_svg]:shrink-0"
+              >
+                <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={2} />
+                {t('detailView.fileTree.contextMenu.copyFullPath')}
+              </ContextMenu.Item>
+            )}
             {onRename && (
               <ContextMenu.Item
                 onClick={() => onRename(path)}
@@ -157,6 +238,7 @@ interface TreeNodeProps {
   selectedFile: string | null
   expandedDirs: string[]
   dragOverPath: string | null
+  rootPath?: string | null
   onSelectFile: (path: string) => void
   onToggleDir: (path: string) => void
   onRenameFile?: (path: string) => void
@@ -172,6 +254,7 @@ function TreeNode({
   selectedFile,
   expandedDirs,
   dragOverPath,
+  rootPath,
   onSelectFile,
   onToggleDir,
   onRenameFile,
@@ -252,6 +335,7 @@ function TreeNode({
       ) : (
         <FileContextMenu
           path={entry.path}
+          rootPath={rootPath}
           onRename={onRenameFile}
           onDownload={onDownloadFile}
           onDelete={onDeleteFile}
@@ -270,6 +354,7 @@ function TreeNode({
               selectedFile={selectedFile}
               expandedDirs={expandedDirs}
               dragOverPath={dragOverPath}
+              rootPath={rootPath}
               onSelectFile={onSelectFile}
               onToggleDir={onToggleDir}
               onRenameFile={onRenameFile}
@@ -289,6 +374,7 @@ export function FileTree({
   entries,
   selectedFile,
   expandedDirs,
+  rootPath,
   onSelectFile,
   onToggleDir,
   onCollapseAll,
@@ -462,6 +548,7 @@ export function FileTree({
               <FileContextMenu
                 key={file.path}
                 path={file.path}
+                rootPath={rootPath}
                 onRename={onRenameFile}
                 onDownload={onDownloadFile}
                 onDelete={onDeleteFile}
@@ -502,6 +589,7 @@ export function FileTree({
               selectedFile={selectedFile}
               expandedDirs={expandedDirs}
               dragOverPath={dragOverPath}
+              rootPath={rootPath}
               onSelectFile={onSelectFile}
               onToggleDir={onToggleDir}
               onRenameFile={onRenameFile}
