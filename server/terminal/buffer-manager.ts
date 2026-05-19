@@ -53,6 +53,7 @@ export class BufferManager {
   private terminal: Terminal
   private serializer: SerializeAddon
   private terminalId: string | null = null
+  private pendingWrites: Promise<void>[] = []
 
   // Raw chunks kept for disk persistence so history survives daemon restart.
   // The emulator is the source of truth for current screen state; this ring
@@ -100,7 +101,7 @@ export class BufferManager {
     // Feed the canonical emulator. Its parser consumes any escape sequences
     // (including DECRQSS responses, OSC color queries, DA reports, etc.) so
     // they never appear in serialized output.
-    this.terminal.write(data)
+    this.writeToTerminal(data)
   }
 
   /**
@@ -126,10 +127,12 @@ export class BufferManager {
    * `terminal:attach` to capture a deterministic snapshot after SIGWINCH —
    * replaces the previous fixed 60 ms setTimeout guess.
    */
-  flushPending(): Promise<void> {
-    return new Promise((resolve) => {
-      this.terminal.write('', () => resolve())
-    })
+  async flushPending(): Promise<void> {
+    while (this.pendingWrites.length > 0) {
+      const pending = this.pendingWrites
+      this.pendingWrites = []
+      await Promise.all(pending)
+    }
   }
 
   clear(): void {
@@ -200,7 +203,7 @@ export class BufferManager {
 
       // Hydrate the emulator. The parser consumes escape sequences and rebuilds
       // canonical screen state.
-      this.terminal.write(content)
+      this.writeToTerminal(content)
 
       log.buffer.debug('Loaded buffer', { terminalId: this.terminalId, bytes: this.totalBytes })
     } catch (err) {
@@ -234,5 +237,13 @@ export class BufferManager {
   /** Test-only: dispose the underlying emulator. */
   _dispose(): void {
     this.terminal.dispose()
+  }
+
+  private writeToTerminal(data: string): void {
+    this.pendingWrites.push(
+      new Promise((resolve) => {
+        this.terminal.write(data, resolve)
+      })
+    )
   }
 }
