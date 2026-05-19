@@ -260,7 +260,9 @@ export function InitializeWorktreeTaskModal({ task, open, onOpenChange }: Initia
       // Resolve agent options: repo -> project -> (global is handled by backend)
       const agentOptions = agent === 'claude'
         ? (selectedRepo?.claudeOptions ?? selectedRepoProject?.claudeOptions)
-        : (selectedRepo?.opencodeOptions ?? selectedRepoProject?.opencodeOptions)
+        : agent === 'codex'
+          ? (selectedRepo?.codexOptions ?? selectedRepoProject?.codexOptions)
+          : (selectedRepo?.opencodeOptions ?? selectedRepoProject?.opencodeOptions)
 
       // Initialize the task as a worktree task by updating it with git fields
       await fetchJSON<Task>(`/api/tasks/${task.id}/initialize-worktree`, {
@@ -278,6 +280,9 @@ export function InitializeWorktreeTaskModal({ task, open, onOpenChange }: Initia
           startupScript: [selectedRepoProject?.startupScript, selectedRepo?.startupScript].filter(Boolean).join('\n') || undefined,
           agentOptions: agentOptions || undefined,
           opencodeModel: agent === 'opencode' ? opencodeModel : undefined,
+          codexModel: agent === 'codex'
+            ? (selectedRepo?.codexModel ?? selectedRepoProject?.codexModel ?? undefined)
+            : undefined,
         }),
       })
 

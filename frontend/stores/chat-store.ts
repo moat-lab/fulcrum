@@ -7,12 +7,13 @@ import type { FileAttachment } from '@/components/chat/chat-input'
 
 const STORAGE_KEY = 'fulcrum-chat-session'
 
-export type ProviderId = 'claude' | 'opencode'
+export type ProviderId = 'claude' | 'opencode' | 'codex'
 export type ClaudeModelId = 'opus' | 'sonnet' | 'haiku'
 
 export const PROVIDER_OPTIONS: { id: ProviderId; label: string; description: string }[] = [
   { id: 'claude', label: 'Claude Code', description: 'Anthropic Claude' },
   { id: 'opencode', label: 'OpenCode', description: 'Multi-provider' },
+  { id: 'codex', label: 'Codex', description: 'OpenAI Codex CLI' },
 ]
 
 export const CLAUDE_MODEL_OPTIONS: { id: ClaudeModelId; label: string; description: string }[] = [
@@ -83,7 +84,7 @@ export const ChatStore = types
     /** Error message */
     error: types.maybeNull(types.string),
     /** Selected provider */
-    provider: types.optional(types.enumeration(['claude', 'opencode']), 'claude'),
+    provider: types.optional(types.enumeration(['claude', 'opencode', 'codex']), 'claude'),
     /** Selected Claude model (only used when provider is 'claude') */
     model: types.optional(types.enumeration(['opus', 'sonnet', 'haiku']), 'opus'),
     /** Selected OpenCode model (only used when provider is 'opencode') */
@@ -127,7 +128,7 @@ export const ChatStore = types
         self.model = model
       },
 
-      setProvider(provider: 'claude' | 'opencode') {
+      setProvider(provider: ProviderId) {
         // When switching providers, clear the session so a new one is created
         if (self.provider !== provider) {
           self.sessionId = null
@@ -180,7 +181,7 @@ export const ChatStore = types
 
         // Parse stored session (new format: { sessionId, provider } or legacy: just sessionId)
         let sessionId: string
-        let storedProvider: 'claude' | 'opencode' = 'claude'
+        let storedProvider: ProviderId = 'claude'
 
         try {
           const parsed = JSON.parse(stored)
@@ -197,7 +198,7 @@ export const ChatStore = types
             const data: { id: string; provider?: string; messages?: Array<{ role: string; content: string; createdAt: string }> } =
               yield response.json()
             self.sessionId = sessionId
-            self.provider = (data.provider as 'claude' | 'opencode') || storedProvider
+            self.provider = (data.provider as ProviderId) || storedProvider
 
             // Restore messages from DB
             if (data.messages && data.messages.length > 0) {

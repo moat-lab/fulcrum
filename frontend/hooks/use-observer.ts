@@ -16,7 +16,7 @@ export interface ObserverInvocation {
   senderId: string
   senderName: string | null
   messagePreview: string
-  provider: 'claude' | 'opencode'
+  provider: 'claude' | 'opencode' | 'codex'
   status: 'processing' | 'completed' | 'failed' | 'timeout' | 'circuit_open'
   actions: ObserverActionRecord[] | null
   error: string | null

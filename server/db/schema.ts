@@ -16,10 +16,11 @@ export const tasks = sqliteTable('tasks', {
   prUrl: text('pr_url'), // GitHub PR URL for auto-completion tracking
   prAutoClosedAt: text('pr_auto_closed_at'), // ISO timestamp; once set, PR monitor never auto-closes this task again
   startupScript: text('startup_script'), // Command to run after worktree creation
-  agent: text('agent').notNull().default('claude'), // AI agent: 'claude' | 'opencode'
+  agent: text('agent').notNull().default('claude'), // AI agent: 'claude' | 'opencode' | 'codex'
   aiMode: text('ai_mode'), // 'default' | 'plan' | null - AI mode for agent startup
   agentOptions: text('agent_options'), // JSON: { [flag]: value } - CLI options for agent
   opencodeModel: text('opencode_model'), // OpenCode model in format 'provider/model' - null means use default
+  codexModel: text('codex_model'), // Codex model name (e.g. 'gpt-5-codex') - null means use Codex's own default
   pinned: integer('pinned', { mode: 'boolean' }).default(false), // Show task at top of kanban column and calendar list
   // Generalized task management fields
   projectId: text('project_id'), // FK to projects (nullable - null = orphan/inbox)
@@ -142,7 +143,9 @@ export const repositories = sqliteTable('repositories', {
   claudeOptions: text('claude_options'), // JSON: { [flag]: value } - CLI options for Claude Code
   opencodeOptions: text('opencode_options'), // JSON: { [flag]: value } - CLI options for OpenCode
   opencodeModel: text('opencode_model'), // OpenCode model in format 'provider/model' - null means use global default
-  defaultAgent: text('default_agent'), // 'claude' | 'opencode' | null - null means use global default
+  codexOptions: text('codex_options'), // JSON: { [flag]: value } - CLI options for Codex
+  codexModel: text('codex_model'), // Codex model name (e.g. 'gpt-5-codex') - null means use global default
+  defaultAgent: text('default_agent'), // 'claude' | 'opencode' | 'codex' | null - null means use global default
   remoteUrl: text('remote_url'), // GitHub remote URL for filtering issues/PRs
   isCopierTemplate: integer('is_copier_template', { mode: 'boolean' }).default(false), // Mark as Copier template
   lastUsedAt: text('last_used_at'), // Timestamp of last task creation with this repo
@@ -223,10 +226,12 @@ export const projects = sqliteTable('projects', {
   terminalTabId: text('terminal_tab_id').unique(), // FK to terminalTabs (dedicated)
   status: text('status').notNull().default('active'), // 'active' | 'archived'
   // Agent configuration - inherited by repositories unless overridden
-  defaultAgent: text('default_agent'), // 'claude' | 'opencode' | null - null means use global default
+  defaultAgent: text('default_agent'), // 'claude' | 'opencode' | 'codex' | null - null means use global default
   claudeOptions: text('claude_options'), // JSON: { [flag]: value } - CLI options for Claude Code
   opencodeOptions: text('opencode_options'), // JSON: { [flag]: value } - CLI options for OpenCode
   opencodeModel: text('opencode_model'), // OpenCode model in format 'provider/model' - null means use global default
+  codexOptions: text('codex_options'), // JSON: { [flag]: value } - CLI options for Codex
+  codexModel: text('codex_model'), // Codex model name (e.g. 'gpt-5-codex') - null means use global default
   startupScript: text('startup_script'), // Commands to run before agent invocation
   lastAccessedAt: text('last_accessed_at'),
   createdAt: text('created_at').notNull(),

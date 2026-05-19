@@ -177,6 +177,7 @@ app.post('/', async (c) => {
         agent?: string
         agentOptions?: Record<string, string> | null
         opencodeModel?: string | null
+        codexModel?: string | null
         tags?: string[]
         blockedByTaskIds?: string[]
         type?: 'worktree' | 'scratch' | null
@@ -214,6 +215,7 @@ app.post('/', async (c) => {
       aiMode: body.aiMode || null,
       agentOptions: body.agentOptions ? JSON.stringify(body.agentOptions) : null,
       opencodeModel: body.opencodeModel || null,
+      codexModel: body.codexModel || null,
       type: body.type || null,
       // New generalized task fields
       projectId: body.projectId || null,
@@ -448,6 +450,7 @@ app.post('/:id/initialize-worktree', async (c) => {
       startupScript?: string
       agentOptions?: Record<string, string> | null
       opencodeModel?: string | null
+      codexModel?: string | null
       prefix?: string | null
     }>()
 
@@ -487,6 +490,7 @@ app.post('/:id/initialize-worktree', async (c) => {
         startupScript: body.startupScript || null,
         agentOptions: body.agentOptions ? JSON.stringify(body.agentOptions) : null,
         opencodeModel: body.opencodeModel || null,
+        codexModel: body.codexModel || null,
         status: 'IN_PROGRESS',
         startedAt: now,
         updatedAt: now,
@@ -585,6 +589,7 @@ const TASK_PATCH_FIELDS: Record<string, (v: unknown) => unknown> = {
   agent: (v) => v,
   aiMode: (v) => v,
   opencodeModel: (v) => v,
+  codexModel: (v) => v,
   startupScript: (v) => v,
   type: (v) => v,
   startedAt: (v) => v,

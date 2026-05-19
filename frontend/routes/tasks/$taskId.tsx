@@ -20,7 +20,7 @@ import { useGitPush } from '@/hooks/use-git-push'
 import { useGitSyncParent } from '@/hooks/use-git-sync-parent'
 import { useGitCreatePR } from '@/hooks/use-git-create-pr'
 import { useKillClaudeInTask } from '@/hooks/use-kill-claude'
-import { useEditorApp, useEditorHost, useEditorSshPort, usePort, useOpencodeModel, useScratchStartupScript } from '@/hooks/use-config'
+import { useEditorApp, useEditorHost, useEditorSshPort, usePort, useOpencodeModel, useCodexModel, useScratchStartupScript } from '@/hooks/use-config'
 import { useTerminalWS } from '@/hooks/use-terminal-ws'
 import { useStore } from '@/stores'
 import { buildEditorUrl, openExternalUrl } from '@/lib/editor-url'
@@ -142,6 +142,7 @@ function TaskView() {
   const { data: editorSshPort } = useEditorSshPort()
   const { data: serverPort } = usePort()
   const { data: globalOpencodeModel } = useOpencodeModel()
+  const { data: globalCodexModel } = useCodexModel()
   const { data: scratchStartupScript } = useScratchStartupScript()
   const { data: repositories = [] } = useRepositories()
 
@@ -150,6 +151,8 @@ function TaskView() {
 
   // Resolve OpenCode model: task > repo > global (cascade precedence)
   const resolvedOpencodeModel = task?.opencodeModel ?? repository?.opencodeModel ?? globalOpencodeModel
+  // Resolve Codex model: task > repo > global (cascade precedence)
+  const resolvedCodexModel = task?.codexModel ?? repository?.codexModel ?? globalCodexModel
 
   // Read AI mode state - prefer persisted task data, fall back to navigation state for backward compat
   const navState = location.state as { aiMode?: 'default' | 'plan'; description?: string; focusTerminal?: boolean } | undefined
@@ -1018,6 +1021,7 @@ function TaskView() {
               startupScript={isScratchTask ? (scratchStartupScript ?? undefined) : task.startupScript}
               agentOptions={task.agentOptions}
               opencodeModel={resolvedOpencodeModel}
+              codexModel={resolvedCodexModel}
               serverPort={serverPort}
               autoFocus={shouldAutoFocus}
               isScratch={isScratchTask}
@@ -1118,6 +1122,7 @@ function TaskView() {
               startupScript={isScratchTask ? (scratchStartupScript ?? undefined) : task.startupScript}
               agentOptions={task.agentOptions}
               opencodeModel={resolvedOpencodeModel}
+              codexModel={resolvedCodexModel}
               serverPort={serverPort}
               autoFocus={shouldAutoFocus}
               isScratch={isScratchTask}

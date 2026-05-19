@@ -403,7 +403,9 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
     // Select the appropriate agent options: repo -> project -> (global is handled by backend)
     const agentOptions = agent === 'claude'
       ? (selectedRepo?.claudeOptions ?? selectedRepoProject?.claudeOptions)
-      : (selectedRepo?.opencodeOptions ?? selectedRepoProject?.opencodeOptions)
+      : agent === 'codex'
+        ? (selectedRepo?.codexOptions ?? selectedRepoProject?.codexOptions)
+        : (selectedRepo?.opencodeOptions ?? selectedRepoProject?.opencodeOptions)
 
     createTask.mutate(
       {
@@ -427,6 +429,9 @@ export function CreateTaskModal({ open: controlledOpen, onOpenChange, defaultRep
         startupScript: isCodeTask ? ([selectedRepoProject?.startupScript, selectedRepo?.startupScript].filter(Boolean).join('\n') || undefined) : undefined,
         agentOptions: (isCodeTask || isScratch) ? (agentOptions || undefined) : undefined,
         opencodeModel: (isCodeTask || isScratch) && agent === 'opencode' ? opencodeModel : undefined,
+        codexModel: (isCodeTask || isScratch) && agent === 'codex'
+          ? (selectedRepo?.codexModel ?? selectedRepoProject?.codexModel ?? undefined)
+          : undefined,
         // Generalized task fields
         tags: tags.length > 0 ? tags : undefined,
         dueDate: dueDate || null,

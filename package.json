@@ -1,7 +1,7 @@
 {
   "name": "@knowsuchagency/fulcrum",
   "private": true,
-  "version": "5.10.6",
+  "version": "5.11.0",
   "description": "Harness Attention. Orchestrate Agents. Ship.",
   "license": "PolyForm-Perimeter-1.0.0",
   "type": "module",
@@ -34,6 +34,7 @@
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
+    "@openai/codex-sdk": "^0.130.0",
     "@opencode-ai/sdk": "^1.1.34",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@slack/bolt": "^4.6.0",

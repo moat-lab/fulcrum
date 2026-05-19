@@ -13,7 +13,7 @@ export type EditorApp = 'vscode' | 'cursor' | 'windsurf' | 'zed' | 'antigravity'
 export type TaskType = 'worktree' | 'manual' | 'scratch'
 
 // Assistant provider and model types
-export type AssistantProvider = 'claude' | 'opencode'
+export type AssistantProvider = 'claude' | 'opencode' | 'codex'
 export type AssistantModel = 'opus' | 'sonnet' | 'haiku'
 
 // Ritual configuration (for assistant daily rituals)
@@ -125,6 +125,8 @@ export interface Settings {
     opencodePlanAgent: string
     autoScrollToBottom: boolean
     claudeCodePath: string | null
+    /** Codex model name (e.g. "gpt-5-codex"). null = use Codex's own default. */
+    codexModel: string | null
   }
   tasks: {
     defaultTaskType: TaskType
@@ -144,6 +146,8 @@ export interface Settings {
     observerProvider: AssistantProvider | null
     /** OpenCode model for observer processing (null = use main agent.opencodeModel) */
     observerOpencodeModel: string | null
+    /** Codex model for observer processing (null = use main agent.codexModel) */
+    observerCodexModel: string | null
     customInstructions: string | null
     documentsDir: string
     ritualsEnabled: boolean
@@ -184,6 +188,7 @@ export const DEFAULT_SETTINGS: Settings = {
     opencodePlanAgent: 'plan',
     autoScrollToBottom: false,
     claudeCodePath: null,
+    codexModel: null,
   },
   tasks: {
     defaultTaskType: 'worktree',
@@ -201,6 +206,7 @@ export const DEFAULT_SETTINGS: Settings = {
     observerModel: 'haiku',
     observerProvider: null,
     observerOpencodeModel: null,
+    observerCodexModel: null,
     customInstructions: null,
     documentsDir: '~/.fulcrum/documents',
     ritualsEnabled: false,
@@ -292,6 +298,7 @@ export const VALID_SETTING_PATHS = new Set([
   'agent.opencodePlanAgent',
   'agent.autoScrollToBottom',
   'agent.claudeCodePath',
+  'agent.codexModel',
   'tasks.defaultTaskType',
   'tasks.startWorktreeTasksImmediately',
   'tasks.scratchStartupScript',
@@ -303,6 +310,7 @@ export const VALID_SETTING_PATHS = new Set([
   'assistant.observerModel',
   'assistant.observerProvider',
   'assistant.observerOpencodeModel',
+  'assistant.observerCodexModel',
   'assistant.customInstructions',
   'assistant.documentsDir',
   'assistant.ritualsEnabled',

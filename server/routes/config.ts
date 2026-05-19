@@ -366,24 +366,26 @@ const CONFIG_VALIDATORS: Record<string, (value: unknown) => ValidatorResult> = {
     return { value: value === '' ? null : value }
   },
   [CONFIG_KEYS.EDITOR_APP]: enumValidator(['vscode', 'cursor', 'windsurf', 'zed', 'antigravity'] as const, 'Editor app'),
-  [CONFIG_KEYS.DEFAULT_AGENT]: enumValidator(['claude', 'opencode'] as const, 'Default agent'),
+  [CONFIG_KEYS.DEFAULT_AGENT]: enumValidator(['claude', 'opencode', 'codex'] as const, 'Default agent'),
   [CONFIG_KEYS.OPENCODE_MODEL]: nullableStringValidator('OpenCode model'),
   [CONFIG_KEYS.OPENCODE_DEFAULT_AGENT]: nonEmptyStringValidator('OpenCode agent name'),
   [CONFIG_KEYS.OPENCODE_PLAN_AGENT]: nonEmptyStringValidator('OpenCode agent name'),
   [CONFIG_KEYS.AGENT_AUTO_SCROLL_TO_BOTTOM]: booleanValidator('Auto-scroll to bottom'),
   [CONFIG_KEYS.CLAUDE_CODE_PATH]: nullableStringValidator('Claude Code path'),
+  [CONFIG_KEYS.CODEX_MODEL]: nullableStringValidator('Codex model'),
   [CONFIG_KEYS.DEFAULT_TASK_TYPE]: enumValidator(['worktree', 'manual', 'scratch'] as const, 'Default task type'),
   [CONFIG_KEYS.START_WORKTREE_TASKS_IMMEDIATELY]: booleanValidator('Start worktree tasks immediately'),
-  [CONFIG_KEYS.ASSISTANT_PROVIDER]: enumValidator(['claude', 'opencode'] as const, 'Assistant provider'),
+  [CONFIG_KEYS.ASSISTANT_PROVIDER]: enumValidator(['claude', 'opencode', 'codex'] as const, 'Assistant provider'),
   [CONFIG_KEYS.ASSISTANT_MODEL]: enumValidator(['opus', 'sonnet', 'haiku'] as const, 'Assistant model'),
   [CONFIG_KEYS.ASSISTANT_OBSERVER_MODEL]: enumValidator(['opus', 'sonnet', 'haiku'] as const, 'Assistant model'),
   [CONFIG_KEYS.ASSISTANT_OBSERVER_PROVIDER]: (value) => {
-    if (value !== null && value !== 'claude' && value !== 'opencode') {
-      return { error: 'Observer provider must be "claude", "opencode", or null' }
+    if (value !== null && value !== 'claude' && value !== 'opencode' && value !== 'codex') {
+      return { error: 'Observer provider must be "claude", "opencode", "codex", or null' }
     }
     return { value }
   },
   [CONFIG_KEYS.ASSISTANT_OBSERVER_OPENCODE_MODEL]: nullableStringValidator('Observer OpenCode model'),
+  [CONFIG_KEYS.ASSISTANT_OBSERVER_CODEX_MODEL]: nullableStringValidator('Observer Codex model'),
   [CONFIG_KEYS.ASSISTANT_CUSTOM_INSTRUCTIONS]: nullableStringValidator('Custom instructions'),
   [CONFIG_KEYS.EMAIL_POLL_INTERVAL]: (value) => {
     const num = typeof value === 'string' ? parseInt(value, 10) : value

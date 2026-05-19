@@ -42,7 +42,9 @@ export function AgentSetupBanner() {
 
   const isInstalled = agentToCheck === 'claude'
     ? dependencies?.claudeCode?.installed
-    : dependencies?.openCode?.installed
+    : agentToCheck === 'codex'
+      ? dependencies?.codex?.installed
+      : dependencies?.openCode?.installed
 
   if (isInstalled) {
     return null

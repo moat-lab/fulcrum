@@ -121,6 +121,7 @@ export function TaskTerminalHeader({
     aiMode: null,
     agentOptions: null,
     opencodeModel: null,
+    codexModel: null,
     type: isStandalone ? 'scratch' : null,
     projectId: null,
     repositoryId: null,

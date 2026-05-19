@@ -234,6 +234,16 @@ export function useClaudeCodePath() {
   }
 }
 
+export function useCodexModel() {
+  const query = useConfig(CONFIG_KEYS.CODEX_MODEL)
+
+  return {
+    ...query,
+    data: (query.data?.value as string | null) ?? null,
+    isDefault: query.data?.isDefault ?? true,
+  }
+}
+
 export type Language = 'en' | 'zh' | null
 
 export function useLanguage() {
@@ -312,7 +322,7 @@ export function useScratchStartupScript() {
 }
 
 // Assistant settings
-export type AssistantProvider = 'claude' | 'opencode'
+export type AssistantProvider = 'claude' | 'opencode' | 'codex'
 export type AssistantModel = 'opus' | 'sonnet' | 'haiku'
 export const ASSISTANT_MODELS: AssistantModel[] = ['opus', 'sonnet', 'haiku']
 

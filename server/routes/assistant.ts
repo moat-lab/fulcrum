@@ -5,6 +5,7 @@ import { sweepRuns } from '../db/schema'
 import { eq, desc } from 'drizzle-orm'
 import * as assistantService from '../services/assistant-service'
 import { streamOpencodeMessage } from '../services/opencode-chat-service'
+import { streamCodexMessage } from '../services/codex-chat-service'
 import type { PageContext, ImageData, AttachmentData } from '../../shared/types'
 
 const assistantRoutes = new Hono()
@@ -16,7 +17,7 @@ const assistantRoutes = new Hono()
 assistantRoutes.post('/sessions', async (c) => {
   const body = await c.req.json<{
     title?: string
-    provider?: 'claude' | 'opencode'
+    provider?: 'claude' | 'opencode' | 'codex'
     model?: string
     projectId?: string
     context?: PageContext
@@ -160,6 +161,27 @@ assistantRoutes.post('/sessions/:id/messages', async (c) => {
         })
       }
       // Save assistant response to DB
+      if (fullResponse) {
+        assistantService.addMessage(sessionId, { role: 'assistant', content: fullResponse, sessionId })
+      }
+    })
+  }
+
+  if (session.provider === 'codex') {
+    // Codex: spawn `codex exec` per message, stream stdout as content deltas.
+    assistantService.addMessage(sessionId, { role: 'user', content: message || '', sessionId })
+
+    return streamSSE(c, async (stream) => {
+      let fullResponse = ''
+      for await (const event of streamCodexMessage(sessionId, message || '', model, context, mergedAttachments.length > 0 ? mergedAttachments : undefined)) {
+        if (event.type === 'content:delta' && (event.data as { text?: string })?.text) {
+          fullResponse += (event.data as { text: string }).text
+        }
+        await stream.writeSSE({
+          event: event.type,
+          data: JSON.stringify(event.data),
+        })
+      }
       if (fullResponse) {
         assistantService.addMessage(sessionId, { role: 'assistant', content: fullResponse, sessionId })
       }

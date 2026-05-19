@@ -23,6 +23,7 @@ interface AssistantLayoutProps {
   opencodeModel: string | null
   opencodeProviders: Record<string, string[]>
   isOpencodeAvailable: boolean
+  isCodexAvailable: boolean
   editorContent: string
   canvasContent: string | null
   documents: Document[]
@@ -61,6 +62,7 @@ export function AssistantLayout({
   opencodeModel,
   opencodeProviders,
   isOpencodeAvailable,
+  isCodexAvailable,
   editorContent,
   canvasContent,
   documents,
@@ -130,6 +132,7 @@ export function AssistantLayout({
             opencodeModel={opencodeModel}
             opencodeProviders={opencodeProviders}
             isOpencodeAvailable={isOpencodeAvailable}
+            isCodexAvailable={isCodexAvailable}
             onProviderChange={onProviderChange}
             onModelChange={onModelChange}
             onOpencodeModelChange={onOpencodeModelChange}

@@ -153,10 +153,12 @@ export function useUpdateProject() {
         notes?: string | null
         status?: 'active' | 'archived'
         // Agent configuration
-        defaultAgent?: 'claude' | 'opencode' | null
+        defaultAgent?: 'claude' | 'opencode' | 'codex' | null
         claudeOptions?: Record<string, string> | null
         opencodeOptions?: Record<string, string> | null
         opencodeModel?: string | null
+        codexOptions?: Record<string, string> | null
+        codexModel?: string | null
         startupScript?: string | null
       }
     }) =>

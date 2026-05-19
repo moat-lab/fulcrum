@@ -23,6 +23,8 @@ export interface AgentCommandOptions {
   opencodeDefaultAgent?: string
   /** OpenCode agent name for plan mode (e.g., 'plan', 'Planner-Sisyphus') */
   opencodePlanAgent?: string
+  /** Codex model name (e.g., 'gpt-5-codex'); null/undefined uses Codex's own default from ~/.codex/config.toml */
+  codexModel?: string | null
 }
 
 export interface AgentCommandBuilder {
@@ -115,11 +117,57 @@ const opencodeBuilder: AgentCommandBuilder = {
 }
 
 /**
+ * Codex (OpenAI) command builder
+ * https://github.com/openai/codex
+ *
+ * Codex TUI mode:
+ * - `codex` (no subcommand) launches interactive TUI in cwd
+ * - `--dangerously-bypass-approvals-and-sandbox` skips approvals + sandbox (Fulcrum worktrees are already isolated)
+ * - Pre-trust the cwd via `-c projects."$(pwd)".trust_level="trusted"` so Codex skips its
+ *   "Do you trust the contents of this directory?" boot prompt. This is the same key Codex
+ *   writes to ~/.codex/config.toml when the user answers "Yes" manually.
+ * - `-m MODEL` selects model; otherwise uses ~/.codex/config.toml default
+ * - No `--append-system-prompt` analog — prepend system prompt to user prompt (same workaround as OpenCode)
+ * - Plan mode falls through to default mode (not supported by design)
+ */
+const codexBuilder: AgentCommandBuilder = {
+  buildCommand({ prompt, systemPrompt, additionalOptions, codexModel }) {
+    const fullPrompt = `${systemPrompt}\n\n${prompt}`
+    const escapedPrompt = escapeForShell(fullPrompt)
+
+    // Trust the current working directory at launch time. $(pwd) is expanded by the
+    // shell that runs this command inside the dtach session, so the path is the
+    // worktree we just cd'd into.
+    const trustOverride = `-c "projects.\\"$(pwd)\\".trust_level=\\"trusted\\""`
+
+    let extraFlags = ''
+    if (codexModel) {
+      extraFlags += ` -m ${escapeForShellIfNeeded(codexModel)}`
+    }
+    if (additionalOptions && Object.keys(additionalOptions).length > 0) {
+      extraFlags += Object.entries(additionalOptions)
+        .map(([key, value]) => ` --${key} ${value}`)
+        .join('')
+    }
+
+    return `codex --dangerously-bypass-approvals-and-sandbox ${trustOverride}${extraFlags} ${escapedPrompt}`
+  },
+  notFoundPatterns: [
+    /codex: command not found/,
+    /codex: not found/,
+    /'codex' is not recognized/,
+    /command not found: codex/,
+  ],
+  processPattern: /\bcodex\b/i,
+}
+
+/**
  * Map of agent types to their command builders
  */
 export const AGENT_BUILDERS: Record<AgentType, AgentCommandBuilder> = {
   claude: claudeBuilder,
   opencode: opencodeBuilder,
+  codex: codexBuilder,
 }
 
 /**

@@ -58,6 +58,32 @@ function isOpenCodeInstalled(): { installed: boolean; path?: string } {
 }
 
 /**
+ * Check if Codex CLI is installed
+ * Checks PATH first, then common installation locations
+ */
+function isCodexInstalled(): { installed: boolean; path?: string } {
+  const pathCheck = isCommandAvailable('codex')
+  if (pathCheck.installed) {
+    return pathCheck
+  }
+
+  const commonPaths = [
+    join(homedir(), '.codex', 'bin', 'codex'),
+    join(homedir(), '.local', 'bin', 'codex'),
+    '/usr/local/bin/codex',
+    '/opt/homebrew/bin/codex',
+  ]
+
+  for (const path of commonPaths) {
+    if (existsSync(path)) {
+      return { installed: true, path }
+    }
+  }
+
+  return { installed: false }
+}
+
+/**
  * GET /api/system/dependencies
  * Returns the status of required and optional dependencies
  */
@@ -85,12 +111,23 @@ app.get('/dependencies', (c) => {
       ? { installed: false }
       : isOpenCodeInstalled()
 
+  // Check for Codex CLI
+  // Same pattern as Claude Code - trust CLI's alias-aware detection via env vars
+  const codexInstalledFromEnv = process.env.FULCRUM_CODEX_INSTALLED === '1'
+  const codexMissingFromEnv = process.env.FULCRUM_CODEX_MISSING === '1'
+  const codexCheck = codexInstalledFromEnv
+    ? { installed: true }
+    : codexMissingFromEnv
+      ? { installed: false }
+      : isCodexInstalled()
+
   // Check for dtach (should always be installed if we got here, but check anyway)
   const dtachCheck = isCommandAvailable('dtach')
 
   return c.json({
     claudeCode: claudeCheck,
     openCode: openCodeCheck,
+    codex: codexCheck,
     dtach: dtachCheck,
   })
 })

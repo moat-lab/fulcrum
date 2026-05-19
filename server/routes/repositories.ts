@@ -17,6 +17,7 @@ function toApiResponse(row: typeof repositories.$inferSelect): Repository {
     ...row,
     claudeOptions: row.claudeOptions ? JSON.parse(row.claudeOptions) : null,
     opencodeOptions: row.opencodeOptions ? JSON.parse(row.opencodeOptions) : null,
+    codexOptions: row.codexOptions ? JSON.parse(row.codexOptions) : null,
   }
 }
 
@@ -236,7 +237,9 @@ app.patch('/:id', async (c) => {
       claudeOptions?: Record<string, string> | null
       opencodeOptions?: Record<string, string> | null
       opencodeModel?: string | null
-      defaultAgent?: 'claude' | 'opencode' | null
+      codexOptions?: Record<string, string> | null
+      codexModel?: string | null
+      defaultAgent?: 'claude' | 'opencode' | 'codex' | null
       isCopierTemplate?: boolean
     }>()
 
@@ -271,6 +274,9 @@ app.patch('/:id', async (c) => {
     }
     if ('opencodeOptions' in body) {
       updateData.opencodeOptions = body.opencodeOptions ? JSON.stringify(body.opencodeOptions) : null
+    }
+    if ('codexOptions' in body) {
+      updateData.codexOptions = body.codexOptions ? JSON.stringify(body.codexOptions) : null
     }
 
     db.update(repositories)

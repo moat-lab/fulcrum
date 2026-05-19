@@ -192,6 +192,7 @@ export const RootStore = types
       agent?: string
       agentOptions?: Record<string, string> | null
       opencodeModel?: string | null
+      codexModel?: string | null
       aiMode?: 'default' | 'plan'
       description?: string
       taskName: string
@@ -387,10 +388,12 @@ export const RootStore = types
           agent?: string
           agentOptions?: Record<string, string> | null
           opencodeModel?: string | null
+          codexModel?: string | null
           aiMode?: 'default' | 'plan'
           description?: string
           taskName: string
           serverPort?: number
+          isScratch?: boolean
         }
       }) {
         const requestId = generateRequestId()
