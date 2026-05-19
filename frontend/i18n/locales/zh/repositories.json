@@ -151,7 +151,8 @@
         "rename": "重命名",
         "download": "下载",
         "delete": "删除",
-        "copyPath": "复制路径"
+        "copyPath": "复制相对路径",
+        "copyFullPath": "复制完整路径"
       },
       "copyPathToast": {
         "success": "路径已复制到剪贴板",

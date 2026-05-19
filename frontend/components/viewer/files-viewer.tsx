@@ -352,6 +352,7 @@ const FilesViewerInner = observer(function FilesViewerInner() {
         entries={fileTree || []}
         selectedFile={selectedFile}
         expandedDirs={expandedDirs}
+        rootPath={worktreePath}
         onSelectFile={handleSelectFile}
         onToggleDir={handleToggleDir}
         onCollapseAll={collapseAll}
