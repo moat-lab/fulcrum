@@ -84,9 +84,14 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
         state: 'working',
         message: target.tabLabel,
       })
+      log.terminal.info('herdr agent reported', {
+        terminalId,
+        paneId: tab.root_pane.pane_id,
+        agent: target.agent,
+      })
     } catch (err) {
       // Non-fatal — agent labeling is a nicety, not load-bearing.
-      log.terminal.debug('reportAgent failed (non-fatal)', {
+      log.terminal.warn('reportAgent failed (non-fatal)', {
         terminalId,
         paneId: tab.root_pane.pane_id,
         error: String(err),
