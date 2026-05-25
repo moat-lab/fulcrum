@@ -138,6 +138,15 @@ export function getSettings(): Settings {
       googleClientSecret: DEFAULT_SETTINGS.caldav.googleClientSecret,
       oauthTokens: DEFAULT_SETTINGS.caldav.oauthTokens,
     },
+    terminal: {
+      herdr: {
+        enabled: (fv('terminal.herdr.enabled') as boolean | null) ?? DEFAULT_SETTINGS.terminal.herdr.enabled,
+        session: (fv('terminal.herdr.session') as string) ?? DEFAULT_SETTINGS.terminal.herdr.session,
+        scratchWorkspaceLabel: (fv('terminal.herdr.scratchWorkspaceLabel') as string) ?? DEFAULT_SETTINGS.terminal.herdr.scratchWorkspaceLabel,
+        autoCloseTab: (fv('terminal.herdr.autoCloseTab') as boolean | null) ?? DEFAULT_SETTINGS.terminal.herdr.autoCloseTab,
+        binary: (fv('terminal.herdr.binary') as string) ?? DEFAULT_SETTINGS.terminal.herdr.binary,
+      },
+    },
   }
 
   // Apply environment variable overrides
