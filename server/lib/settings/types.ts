@@ -284,7 +284,7 @@ Then store the action plan as a memory tagged with: ritual, plan, evening-ritual
   terminal: {
     herdr: {
       enabled: true,
-      session: 'fulcrum',
+      session: 'default',
       scratchWorkspaceLabel: 'scratch',
       autoCloseTab: true,
       binary: 'herdr',

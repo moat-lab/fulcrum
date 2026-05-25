@@ -122,6 +122,11 @@ FULCRUM_DIR="${FULCRUM_DIR:-$HOME/tmp/fulcrum}"
 # If you encounter "Address already in use", set PORT=8888 or similar in .env
 PORT="${PORT:-8888}"
 
+# Isolate herdr mirror tabs from the user's primary herdr workflow:
+# dev tasks land in a "dev" session, prod uses "default" (or whatever
+# the user has configured). Respect any existing value.
+export FULCRUM_TERMINAL_HERDR_SESSION="${FULCRUM_TERMINAL_HERDR_SESSION:-dev}"
+
 # Determine host binding. --tailnet wins if both are set: it's the safer option
 # (only the tailscale interface, not the LAN). Backend always stays on
 # loopback — Vite proxies /api and /ws to it.
@@ -147,7 +152,7 @@ DEBUG="1"
 # Pass through env vars explicitly since they may not inherit through concurrently/bunx
 # --kill-others ensures if one process dies, all are killed
 bunx concurrently --kill-others -n server,client -c blue,green \
-  "FULCRUM_DIR=$FULCRUM_DIR PORT=$PORT mise run server" \
+  "FULCRUM_DIR=$FULCRUM_DIR PORT=$PORT FULCRUM_TERMINAL_HERDR_SESSION=$FULCRUM_TERMINAL_HERDR_SESSION mise run server" \
   "DEBUG=$DEBUG VITE_BACKEND_PORT=$VITE_BACKEND_PORT VITE_HOST=\\"$VITE_HOST\\" mise run client"
 """
 

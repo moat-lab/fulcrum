@@ -183,6 +183,14 @@ export function getSettings(): Settings {
     assistant: settings.assistant,
     channels: settings.channels,
     caldav: settings.caldav,
+    terminal: {
+      herdr: {
+        ...settings.terminal.herdr,
+        // Env override lets `mise run dev` pin a separate herdr session
+        // for development without persisting the change to fnox.
+        session: process.env.FULCRUM_TERMINAL_HERDR_SESSION ?? settings.terminal.herdr.session,
+      },
+    },
   }
 }
 
