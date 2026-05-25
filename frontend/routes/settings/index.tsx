@@ -22,6 +22,7 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Folder01Icon, RotateLeft01Icon, Tick02Icon, TestTube01Icon, Loading03Icon, Upload04Icon, Delete02Icon, ArrowDown01Icon, Alert02Icon, ArrowUp02Icon, RefreshIcon, Settings05Icon, AiInnovation01Icon, MessageMultiple01Icon, Calendar03Icon } from '@hugeicons/core-free-icons'
 import { toast } from 'sonner'
+import { HerdrTerminalSection } from '@/components/settings/herdr-terminal-section'
 import {
   usePort,
   useDefaultGitReposDir,
@@ -1535,6 +1536,11 @@ function SettingsPage() {
                     </p>
                   </div>
                 </div>
+              </SettingsSection>
+
+              {/* Terminal (herdr mirror) */}
+              <SettingsSection title="Terminal (herdr mirror)">
+                <HerdrTerminalSection />
               </SettingsSection>
 
               {/* Server */}

@@ -53,6 +53,11 @@ export const CONFIG_KEYS = {
   CALDAV_GOOGLE_CLIENT_ID: 'caldav.googleClientId',
   CALDAV_GOOGLE_CLIENT_SECRET: 'caldav.googleClientSecret',
   CALDAV_OAUTH_TOKENS: 'caldav.oauthTokens',
+  TERMINAL_HERDR_ENABLED: 'terminal.herdr.enabled',
+  TERMINAL_HERDR_SESSION: 'terminal.herdr.session',
+  TERMINAL_HERDR_SCRATCH_WORKSPACE_LABEL: 'terminal.herdr.scratchWorkspaceLabel',
+  TERMINAL_HERDR_AUTO_CLOSE_TAB: 'terminal.herdr.autoCloseTab',
+  TERMINAL_HERDR_BINARY: 'terminal.herdr.binary',
 } as const
 
 export type ConfigKey = (typeof CONFIG_KEYS)[keyof typeof CONFIG_KEYS]

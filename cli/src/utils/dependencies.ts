@@ -128,6 +128,15 @@ export const DEPENDENCIES: Dependency[] = [
       pacman: 'sudo pacman -S --noconfirm age',
     },
   },
+  {
+    name: 'herdr',
+    command: 'herdr',
+    description: 'Optional terminal multiplexer for SSH access to task terminals',
+    required: false,
+    install: {
+      curl: 'curl -fsSL https://herdr.dev/install.sh | sh',
+    },
+  },
 ]
 
 /**

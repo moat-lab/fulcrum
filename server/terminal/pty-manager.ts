@@ -7,6 +7,7 @@ import * as os from 'os'
 import type { TerminalInfo } from '../types'
 import { log } from '../lib/logger'
 import { getFulcrumDir } from '../lib/settings'
+import { mirrorTerminal, closeMirror, reconcileMirrorOnRestore } from '../services/herdr-mirror'
 
 import type { TerminalStatus } from '../types'
 
@@ -107,6 +108,10 @@ export class PTYManager {
           socketPath,
         })
         restoredCount++
+
+        // Reconcile herdr mirror: if the row's pane is gone (e.g. herdr
+        // server was restarted, but our dtach session survived), re-mirror.
+        void reconcileMirrorOnRestore(record.id)
       } else {
         // Session is gone after retries - mark as exited
         db.update(terminals)
@@ -162,6 +167,7 @@ export class PTYManager {
         status: 'running',
         tabId: options.tabId,
         positionInTab: options.positionInTab ?? 0,
+        taskId: options.taskId,
         createdAt: now,
         updatedAt: now,
       })
@@ -191,6 +197,12 @@ export class PTYManager {
     // Start the dtach session (creates and attaches)
     session.start()
 
+    // Fire-and-forget: mirror this terminal into a herdr tab if enabled.
+    // mirrorTerminal swallows all errors itself; we never block dtach create on it.
+    if (options.taskId) {
+      void mirrorTerminal(id)
+    }
+
     return session.getInfo()
   }
 
@@ -219,6 +231,11 @@ export class PTYManager {
       tabId: info.tabId,
       stack: new Error().stack?.split('\n').slice(1, 6).join('\n'),
     })
+
+    // Close the herdr mirror tab (if any) before deleting the row, so
+    // closeMirror can read the herdr ids. Fire-and-forget — never block
+    // destroy on it.
+    void closeMirror(terminalId)
 
     session.kill()
     this.sessions.delete(terminalId)

@@ -156,6 +156,15 @@ export interface Settings {
   }
   channels: ChannelsSettings
   caldav: CalDavSettings
+  terminal: {
+    herdr: {
+      enabled: boolean
+      session: string
+      scratchWorkspaceLabel: string
+      autoCloseTab: boolean
+      binary: string
+    }
+  }
 }
 
 // Default settings with new structure
@@ -272,6 +281,15 @@ Then store the action plan as a memory tagged with: ritual, plan, evening-ritual
     googleClientSecret: '',
     oauthTokens: null,
   },
+  terminal: {
+    herdr: {
+      enabled: true,
+      session: 'fulcrum',
+      scratchWorkspaceLabel: 'scratch',
+      autoCloseTab: true,
+      binary: 'herdr',
+    },
+  },
 }
 
 // Old default port for migration detection
@@ -336,6 +354,11 @@ export const VALID_SETTING_PATHS = new Set([
   'channels.telegram.botToken',
   'caldav.enabled',
   'caldav.syncIntervalMinutes',
+  'terminal.herdr.enabled',
+  'terminal.herdr.session',
+  'terminal.herdr.scratchWorkspaceLabel',
+  'terminal.herdr.autoCloseTab',
+  'terminal.herdr.binary',
 ])
 
 // Legacy flat settings interface for backward compatibility

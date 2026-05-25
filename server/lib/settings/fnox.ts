@@ -97,6 +97,13 @@ export const FNOX_CONFIG_MAP: Record<string, ConfigEntry> = {
   'caldav.enabled': { fnoxKey: 'FULCRUM_CALDAV_ENABLED', provider: 'plain', type: 'boolean' },
   'caldav.syncIntervalMinutes': { fnoxKey: 'FULCRUM_CALDAV_SYNC_INTERVAL', provider: 'plain', type: 'number' },
 
+  // Terminal — herdr mirror
+  'terminal.herdr.enabled': { fnoxKey: 'FULCRUM_TERMINAL_HERDR_ENABLED', provider: 'plain', type: 'boolean' },
+  'terminal.herdr.session': { fnoxKey: 'FULCRUM_TERMINAL_HERDR_SESSION', provider: 'plain', type: 'string' },
+  'terminal.herdr.scratchWorkspaceLabel': { fnoxKey: 'FULCRUM_TERMINAL_HERDR_SCRATCH_LABEL', provider: 'plain', type: 'string' },
+  'terminal.herdr.autoCloseTab': { fnoxKey: 'FULCRUM_TERMINAL_HERDR_AUTO_CLOSE_TAB', provider: 'plain', type: 'boolean' },
+  'terminal.herdr.binary': { fnoxKey: 'FULCRUM_TERMINAL_HERDR_BINARY', provider: 'plain', type: 'string' },
+
   // Notifications
   'notifications.enabled': { fnoxKey: 'FULCRUM_NOTIF_ENABLED', provider: 'plain', type: 'boolean' },
   'notifications.toast.enabled': { fnoxKey: 'FULCRUM_NOTIF_TOAST_ENABLED', provider: 'plain', type: 'boolean' },

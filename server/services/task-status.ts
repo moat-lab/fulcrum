@@ -1,9 +1,10 @@
 import { db, type Task, repositories } from '../db'
-import { tasks, taskTags, terminalViewState } from '../db/schema'
+import { tasks, taskTags, terminalViewState, terminals } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { broadcast } from '../websocket/terminal-ws'
 import { sendNotification } from './notification-service'
 import { killClaudeInTerminalsForWorktree } from '../terminal/pty-instance'
+import { closeMirror } from './herdr-mirror'
 import { log } from '../lib/logger'
 import { getWorktreeBasePath, getScratchBasePath } from '../lib/settings'
 import { createGitWorktree, copyFilesToWorktree } from '../lib/git-utils'
@@ -305,6 +306,25 @@ export async function updateTaskStatus(
       } catch (err) {
         log.api.error('Failed to kill Claude in worktree', {
           worktreePath: updated.worktreePath,
+          error: String(err),
+        })
+      }
+    }
+
+    // Close any herdr mirror tabs created for this task's terminals
+    if (newStatus === 'DONE' || newStatus === 'CANCELED') {
+      try {
+        const taskTerminals = db
+          .select({ id: terminals.id })
+          .from(terminals)
+          .where(eq(terminals.taskId, updated.id))
+          .all()
+        for (const t of taskTerminals) {
+          void closeMirror(t.id)
+        }
+      } catch (err) {
+        log.api.warn('Failed to close herdr mirrors for task', {
+          taskId: updated.id,
           error: String(err),
         })
       }

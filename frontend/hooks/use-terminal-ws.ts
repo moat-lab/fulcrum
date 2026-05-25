@@ -32,6 +32,11 @@ export interface TerminalInfo {
   createdAt: number
   tabId?: string
   positionInTab?: number
+  // Herdr mirror — present when this terminal has been mirrored into a herdr tab.
+  herdrWorkspaceId?: string | null
+  herdrTabId?: string | null
+  herdrPaneId?: string | null
+  herdrSession?: string | null
 }
 
 interface UseTerminalWSOptions {

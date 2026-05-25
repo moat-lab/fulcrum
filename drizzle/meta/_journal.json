@@ -526,6 +526,13 @@
       "when": 1779494400000,
       "tag": "0074_add_codex_agent_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "6",
+      "when": 1779494500000,
+      "tag": "0075_add_terminal_herdr_columns",
+      "breakpoints": true
     }
   ]
 }

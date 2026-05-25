@@ -115,6 +115,12 @@ export const terminals = sqliteTable('terminals', {
   // Tab association
   tabId: text('tab_id'), // References terminalTabs.id (nullable for orphaned terminals)
   positionInTab: integer('position_in_tab').default(0), // Order within the tab
+  // Task association — non-null when this terminal is the agent terminal for a task
+  taskId: text('task_id'),
+  // Herdr mirror — populated when the terminal has been mirrored into a herdr tab
+  herdrWorkspaceId: text('herdr_workspace_id'),
+  herdrTabId: text('herdr_tab_id'),
+  herdrPaneId: text('herdr_pane_id'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

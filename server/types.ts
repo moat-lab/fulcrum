@@ -23,6 +23,13 @@ export interface TerminalInfo {
   createdAt: number
   tabId?: string // Which tab this terminal belongs to (nullable)
   positionInTab?: number // Order within the tab
+  // Herdr mirror — populated when the terminal has been mirrored into a herdr tab.
+  // The values let clients render an "attach via herdr" indicator without
+  // making a separate request.
+  herdrWorkspaceId?: string | null
+  herdrTabId?: string | null
+  herdrPaneId?: string | null
+  herdrSession?: string | null // The session name needed for `herdr --session <name>`
 }
 
 /**

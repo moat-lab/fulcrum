@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm'
 import { getShellEnv } from '../lib/env'
 import type { TerminalInfo, TerminalStatus } from '../types'
 import { log } from '../lib/logger'
-import { getSettingByKey } from '../lib/settings'
+import { getSettingByKey, getSetting } from '../lib/settings'
 
 export interface TerminalSessionOptions {
   id: string
@@ -407,6 +407,23 @@ export class TerminalSession {
   }
 
   getInfo(): TerminalInfo {
+    // Look up the herdr mirror ids from the DB row each time getInfo is
+    // called. They're populated asynchronously by mirrorTerminal() after
+    // start() returns, so we cannot capture them in the constructor.
+    const row = db
+      .select({
+        herdrWorkspaceId: terminals.herdrWorkspaceId,
+        herdrTabId: terminals.herdrTabId,
+        herdrPaneId: terminals.herdrPaneId,
+      })
+      .from(terminals)
+      .where(eq(terminals.id, this.id))
+      .get()
+
+    const herdrSession = row?.herdrTabId
+      ? ((getSetting('terminal.herdr.session') as string) || 'fulcrum')
+      : null
+
     return {
       id: this.id,
       name: this.name,
@@ -418,6 +435,10 @@ export class TerminalSession {
       createdAt: this.createdAt,
       tabId: this._tabId,
       positionInTab: this._positionInTab,
+      herdrWorkspaceId: row?.herdrWorkspaceId ?? null,
+      herdrTabId: row?.herdrTabId ?? null,
+      herdrPaneId: row?.herdrPaneId ?? null,
+      herdrSession,
     }
   }
 

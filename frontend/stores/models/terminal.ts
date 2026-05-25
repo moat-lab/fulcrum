@@ -26,6 +26,11 @@ export const TerminalModel = types
     createdAt: types.number,
     tabId: types.maybeNull(types.string),
     positionInTab: types.optional(types.number, 0),
+    // Herdr mirror — populated when the terminal has been mirrored into a herdr tab.
+    herdrWorkspaceId: types.maybeNull(types.string),
+    herdrTabId: types.maybeNull(types.string),
+    herdrPaneId: types.maybeNull(types.string),
+    herdrSession: types.maybeNull(types.string),
   })
   .volatile(() => ({
     /** The xterm.js terminal instance */
@@ -82,6 +87,10 @@ export const TerminalModel = types
       if (data.rows !== undefined) self.rows = data.rows
       if (data.tabId !== undefined) self.tabId = data.tabId
       if (data.positionInTab !== undefined) self.positionInTab = data.positionInTab
+      if (data.herdrWorkspaceId !== undefined) self.herdrWorkspaceId = data.herdrWorkspaceId ?? null
+      if (data.herdrTabId !== undefined) self.herdrTabId = data.herdrTabId ?? null
+      if (data.herdrPaneId !== undefined) self.herdrPaneId = data.herdrPaneId ?? null
+      if (data.herdrSession !== undefined) self.herdrSession = data.herdrSession ?? null
     },
 
     /** Set the xterm.js terminal instance */

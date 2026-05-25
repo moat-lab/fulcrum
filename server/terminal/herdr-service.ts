@@ -1,0 +1,289 @@
+import { existsSync } from 'fs'
+import * as net from 'net'
+import * as os from 'os'
+import * as path from 'path'
+import { spawn } from 'child_process'
+import { execSync } from 'child_process'
+import { log } from '../lib/logger'
+import { getSetting } from '../lib/settings'
+
+// --- Wire protocol types ---
+
+interface HerdrRequest {
+  id: string
+  method: string
+  params: Record<string, unknown>
+}
+
+interface HerdrResponse {
+  id: string
+  result?: Record<string, unknown>
+  error?: { code: string; message: string }
+}
+
+// --- Returned shapes (subset of what herdr 0.6.x sends back) ---
+
+export interface HerdrWorkspaceInfo {
+  workspace_id: string
+  label: string
+  number: number
+  focused: boolean
+  pane_count: number
+  tab_count: number
+  active_tab_id?: string
+  agent_status?: string
+}
+
+export interface HerdrTabInfo {
+  tab_id: string
+  workspace_id: string
+  number: number
+  label: string
+  focused: boolean
+  pane_count: number
+  agent_status?: string
+}
+
+export interface HerdrPaneInfo {
+  pane_id: string
+  terminal_id: string
+  workspace_id: string
+  tab_id: string
+  focused: boolean
+  cwd?: string
+  agent_status?: string
+  revision?: number
+}
+
+export interface CreatedWorkspace {
+  workspace: HerdrWorkspaceInfo
+  tab: HerdrTabInfo
+  root_pane: HerdrPaneInfo
+}
+
+export interface CreatedTab {
+  tab: HerdrTabInfo
+  root_pane: HerdrPaneInfo
+}
+
+const CONFIG_DIR = path.join(os.homedir(), '.config', 'herdr')
+const RESPONSE_TIMEOUT_MS = 4000
+const START_POLL_MS = 100
+const START_POLL_ATTEMPTS = 30 // 3s total
+
+export class HerdrService {
+  private requestSeq = 0
+
+  constructor(
+    private readonly session: string,
+    private readonly binary: string
+  ) {}
+
+  /** Path to the herdr API socket for the current session. */
+  getApiSocketPath(): string {
+    return path.join(CONFIG_DIR, 'sessions', this.session, 'herdr.sock')
+  }
+
+  /** Is herdr's API socket present (server already running)? */
+  isServerRunning(): boolean {
+    return existsSync(this.getApiSocketPath())
+  }
+
+  /**
+   * Make sure the herdr server for this session is running.
+   * Spawns `herdr --session <name> server` detached if absent, then polls
+   * for the socket to appear. Returns true if reachable when we finish.
+   */
+  async ensureServerRunning(): Promise<boolean> {
+    if (this.isServerRunning()) return true
+
+    log.terminal.info('herdr server not running; starting it', { session: this.session })
+    try {
+      const child = spawn(this.binary, ['--session', this.session, 'server'], {
+        stdio: 'ignore',
+        detached: true,
+      })
+      child.unref()
+    } catch (err) {
+      log.terminal.error('failed to spawn herdr server', { session: this.session, error: String(err) })
+      return false
+    }
+
+    for (let i = 0; i < START_POLL_ATTEMPTS; i++) {
+      if (this.isServerRunning()) return true
+      await new Promise((r) => setTimeout(r, START_POLL_MS))
+    }
+    log.terminal.error('herdr server did not appear after spawn', { session: this.session })
+    return false
+  }
+
+  /**
+   * Send one JSON request and read one JSON response.
+   * The herdr API server closes the connection after each response, so we
+   * open a fresh socket per call. Simple, predictable, no multiplexing.
+   */
+  private call<T = Record<string, unknown>>(
+    method: string,
+    params: Record<string, unknown> = {}
+  ): Promise<T> {
+    const id = `fulcrum_${++this.requestSeq}`
+    const req: HerdrRequest = { id, method, params }
+    const line = JSON.stringify(req) + '\n'
+    const socketPath = this.getApiSocketPath()
+
+    return new Promise<T>((resolve, reject) => {
+      const sock = net.connect(socketPath)
+      let buf = ''
+      let settled = false
+
+      const timer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        sock.destroy()
+        reject(new Error(`herdr call timed out: ${method}`))
+      }, RESPONSE_TIMEOUT_MS)
+
+      const finish = (err: Error | null, value?: T) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        sock.destroy()
+        if (err) reject(err)
+        else resolve(value as T)
+      }
+
+      sock.on('error', (err) => finish(err))
+
+      sock.on('connect', () => sock.write(line))
+
+      sock.on('data', (chunk: Buffer) => {
+        buf += chunk.toString('utf8')
+        const nl = buf.indexOf('\n')
+        if (nl < 0) return
+        const lineOut = buf.slice(0, nl)
+        try {
+          const resp = JSON.parse(lineOut) as HerdrResponse
+          if (resp.error) {
+            finish(new Error(`herdr ${method}: ${resp.error.code}: ${resp.error.message}`))
+          } else {
+            finish(null, (resp.result ?? {}) as T)
+          }
+        } catch (err) {
+          finish(new Error(`herdr ${method}: malformed JSON: ${String(err)}`))
+        }
+      })
+
+      sock.on('close', () => {
+        if (settled) return
+        // Server closed without sending a complete response line.
+        finish(new Error(`herdr ${method}: socket closed before response`))
+      })
+    })
+  }
+
+  // --- Public API ---
+
+  async ping(): Promise<{ type: string; version: string; protocol: number }> {
+    return this.call('ping') as Promise<{ type: string; version: string; protocol: number }>
+  }
+
+  async listWorkspaces(): Promise<HerdrWorkspaceInfo[]> {
+    const r = await this.call<{ workspaces: HerdrWorkspaceInfo[] }>('workspace.list')
+    return r.workspaces ?? []
+  }
+
+  async createWorkspace(opts: { cwd: string; label: string }): Promise<CreatedWorkspace> {
+    return this.call<CreatedWorkspace>('workspace.create', opts)
+  }
+
+  /**
+   * Return an existing workspace matching `label` (case-sensitive), or
+   * create a new one with the given `cwd`/`label`. When created, also
+   * returns the tab + root_pane that herdr makes alongside.
+   */
+  async ensureWorkspace(opts: {
+    label: string
+    cwd: string
+  }): Promise<{ workspace: HerdrWorkspaceInfo; created?: CreatedWorkspace }> {
+    const existing = await this.listWorkspaces()
+    const hit = existing.find((w) => w.label === opts.label)
+    if (hit) return { workspace: hit }
+    const created = await this.createWorkspace(opts)
+    return { workspace: created.workspace, created }
+  }
+
+  async createTab(opts: { workspaceId: string; label: string; cwd?: string }): Promise<CreatedTab> {
+    return this.call<CreatedTab>('tab.create', {
+      workspace_id: opts.workspaceId,
+      label: opts.label,
+      ...(opts.cwd ? { cwd: opts.cwd } : {}),
+    })
+  }
+
+  async closeTab(tabId: string): Promise<void> {
+    await this.call('tab.close', { tab_id: tabId })
+  }
+
+  async listPanes(workspaceId?: string): Promise<HerdrPaneInfo[]> {
+    const r = await this.call<{ panes: HerdrPaneInfo[] }>(
+      'pane.list',
+      workspaceId ? { workspace_id: workspaceId } : {}
+    )
+    return r.panes ?? []
+  }
+
+  /**
+   * Type a command into the pane's shell and execute it (appends a newline).
+   *
+   * The `pane.run` CLI subcommand maps to `pane.send_text` over the socket,
+   * with the trailing `\r` we add here. There is no dedicated socket
+   * method for "run a command".
+   */
+  async runInPane(paneId: string, command: string): Promise<void> {
+    await this.call('pane.send_text', { pane_id: paneId, text: command + '\r' })
+  }
+
+  async paneExists(paneId: string): Promise<boolean> {
+    try {
+      await this.call('pane.get', { pane_id: paneId })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  static isAvailable(binary = 'herdr'): boolean {
+    try {
+      execSync(`${binary} --version`, { stdio: 'ignore' })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+// --- Singleton plumbing ---
+
+let cached: HerdrService | null = null
+let cachedKey = ''
+
+/**
+ * Get the herdr service for the configured session. Re-instantiates if the
+ * settings have changed (session name / binary path).
+ */
+export function getHerdrService(): HerdrService {
+  const session = (getSetting('terminal.herdr.session') as string) || 'fulcrum'
+  const binary = (getSetting('terminal.herdr.binary') as string) || 'herdr'
+  const key = `${session}::${binary}`
+  if (!cached || cachedKey !== key) {
+    cached = new HerdrService(session, binary)
+    cachedKey = key
+  }
+  return cached
+}
+
+/** Reset the singleton (test cleanup, settings reload). */
+export function resetHerdrService(): void {
+  cached = null
+  cachedKey = ''
+}
