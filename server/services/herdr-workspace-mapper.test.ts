@@ -35,6 +35,7 @@ function insertTask(opts: {
   title: string
   projectId?: string | null
   repositoryId?: string | null
+  agent?: string
 }): void {
   db.insert(tasks)
     .values({
@@ -42,7 +43,7 @@ function insertTask(opts: {
       title: opts.title,
       status: 'TO_DO',
       position: 0,
-      agent: 'claude',
+      agent: opts.agent ?? 'claude',
       projectId: opts.projectId ?? null,
       repositoryId: opts.repositoryId ?? null,
       createdAt: ts(),
@@ -76,7 +77,13 @@ describe('resolveWorkspaceForTaskId', () => {
       workspaceLabel: 'Fulcrum',
       workspaceCwd: '/home/stephan/projects/fulcrum',
       tabLabel: 'fix bug',
+      agent: 'claude',
     })
+  })
+
+  test('returned target carries the task agent (opencode)', () => {
+    insertTask({ id: 't1', title: 'opencode task', agent: 'opencode' })
+    expect(resolveWorkspaceForTaskId('t1')?.agent).toBe('opencode')
   })
 
   test('git task with repositoryId only: resolves project via join table', () => {

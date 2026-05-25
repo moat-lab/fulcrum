@@ -71,6 +71,28 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
     // `-z` makes dtach pass control characters straight through.
     await svc.runInPane(tab.root_pane.pane_id, `stty -echoctl && exec dtach -a ${socketPath} -z`)
 
+    // Tell herdr what agent is running inside this pane. Herdr's own
+    // process-introspection only sees `dtach -a` since the real agent
+    // lives on the other side of the socket — without this, the agents
+    // sidebar would be empty even though Claude/OpenCode/Codex is alive.
+    // We report `working` because the agent is being launched right now;
+    // herdr's own output_matched heuristics will refine it from there.
+    try {
+      await svc.reportAgent(tab.root_pane.pane_id, {
+        source: 'fulcrum',
+        agent: target.agent,
+        state: 'working',
+        message: target.tabLabel,
+      })
+    } catch (err) {
+      // Non-fatal — agent labeling is a nicety, not load-bearing.
+      log.terminal.debug('reportAgent failed (non-fatal)', {
+        terminalId,
+        paneId: tab.root_pane.pane_id,
+        error: String(err),
+      })
+    }
+
     const now = new Date().toISOString()
     db.update(terminals)
       .set({

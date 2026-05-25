@@ -12,6 +12,11 @@ export interface HerdrTaskTarget {
   workspaceLabel: string
   workspaceCwd: string
   tabLabel: string
+  /**
+   * The agent label to report to herdr (claude / opencode / codex / etc.).
+   * Falls back to 'claude' when the task row has no agent set.
+   */
+  agent: string
 }
 
 const TAB_LABEL_MAX = 32
@@ -43,6 +48,7 @@ export function resolveWorkspaceForTaskId(taskId: string): HerdrTaskTarget | nul
   }
 
   const tabLabel = truncate(task.title, TAB_LABEL_MAX)
+  const agent = task.agent || 'claude'
   const scratchLabel =
     (getSetting('terminal.herdr.scratchWorkspaceLabel') as string) || 'scratch'
 
@@ -55,6 +61,7 @@ export function resolveWorkspaceForTaskId(taskId: string): HerdrTaskTarget | nul
         workspaceLabel: project.name,
         workspaceCwd: repoCwd ?? os.homedir(),
         tabLabel,
+        agent,
       }
     }
   }
@@ -74,6 +81,7 @@ export function resolveWorkspaceForTaskId(taskId: string): HerdrTaskTarget | nul
           workspaceLabel: project.name,
           workspaceCwd: repoCwd ?? os.homedir(),
           tabLabel,
+          agent,
         }
       }
     }
@@ -84,6 +92,7 @@ export function resolveWorkspaceForTaskId(taskId: string): HerdrTaskTarget | nul
         workspaceLabel: repo.displayName,
         workspaceCwd: repo.path,
         tabLabel,
+        agent,
       }
     }
   }
@@ -93,6 +102,7 @@ export function resolveWorkspaceForTaskId(taskId: string): HerdrTaskTarget | nul
     workspaceLabel: scratchLabel,
     workspaceCwd: os.homedir(),
     tabLabel,
+    agent,
   }
 }
 

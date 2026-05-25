@@ -252,6 +252,35 @@ export class HerdrService {
     }
   }
 
+  /**
+   * Tell herdr what agent is running inside a pane. Required when the pane
+   * isn't directly hosting the agent process (e.g. our mirror panes run
+   * `dtach -a` and the real agent lives on the other side of the socket,
+   * so herdr's own process inspection can't see it).
+   *
+   * `source` is the reporter id — pass a stable string (we use "fulcrum")
+   * so repeat reports update the existing record rather than accumulating.
+   */
+  async reportAgent(
+    paneId: string,
+    opts: {
+      source: string
+      agent: string
+      state: 'idle' | 'working' | 'blocked' | 'unknown'
+      message?: string
+      customStatus?: string
+    }
+  ): Promise<void> {
+    await this.call('pane.report_agent', {
+      pane_id: paneId,
+      source: opts.source,
+      agent: opts.agent,
+      state: opts.state,
+      ...(opts.message ? { message: opts.message } : {}),
+      ...(opts.customStatus ? { custom_status: opts.customStatus } : {}),
+    })
+  }
+
   static isAvailable(binary = 'herdr'): boolean {
     try {
       execSync(`${binary} --version`, { stdio: 'ignore' })
