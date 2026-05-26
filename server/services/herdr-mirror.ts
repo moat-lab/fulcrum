@@ -246,6 +246,56 @@ export async function reconcileMirrorOnRestore(terminalId: string): Promise<void
   }
 }
 
+/**
+ * Close every herdr tab that was mirrored from any terminal belonging to the
+ * given task. Used when a task is deleted, so the user doesn't end up with an
+ * orphan tab in herdr after the worktree and DB row are gone.
+ *
+ * Unlike {@link closeMirror} this ignores the per-terminal `autoCloseTab`
+ * setting — deleting the task is an explicit user action that should always
+ * tear the tab down regardless of the auto-close-on-terminal-destroy preference.
+ *
+ * Fire-and-forget: errors are logged but never thrown. The DB rows are not
+ * touched here; the task delete path drops the terminal rows separately.
+ */
+export async function closeHerdrTabsForTask(taskId: string): Promise<void> {
+  if (!isMirrorEnabled()) return
+
+  const rows = db
+    .select()
+    .from(terminals)
+    .where(and(eq(terminals.taskId, taskId), isNotNull(terminals.herdrTabId)))
+    .all()
+
+  const tabIds = new Set<string>()
+  for (const r of rows) {
+    if (r.herdrTabId) tabIds.add(r.herdrTabId)
+  }
+  if (tabIds.size === 0) return
+
+  try {
+    const svc = getHerdrService()
+    if (!svc.isServerRunning()) {
+      log.terminal.debug('closeHerdrTabsForTask: herdr server not running; skipping', { taskId })
+      return
+    }
+    for (const tabId of tabIds) {
+      try {
+        await svc.closeTab(tabId)
+        log.terminal.info('herdr tab closed for deleted task', { taskId, tabId })
+      } catch (err) {
+        log.terminal.warn('closeHerdrTabsForTask: closeTab failed', {
+          taskId,
+          tabId,
+          error: String(err),
+        })
+      }
+    }
+  } catch (err) {
+    log.terminal.warn('closeHerdrTabsForTask: failed', { taskId, error: String(err) })
+  }
+}
+
 function clearMirrorIds(terminalId: string): void {
   db.update(terminals)
     .set({
