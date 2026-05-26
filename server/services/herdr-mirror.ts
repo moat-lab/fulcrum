@@ -5,6 +5,8 @@ import { getHerdrService, HerdrService } from '../terminal/herdr-service'
 import { resolveWorkspaceForTaskId } from './herdr-workspace-mapper'
 import { getSetting } from '../lib/settings'
 import { log } from '../lib/logger'
+import { pollAndSyncMirrorWinsize } from './herdr-winsize-sync'
+import { getPTYManager } from '../terminal/pty-instance'
 
 /**
  * Mirror a fulcrum dtach-backed terminal into a herdr tab so the same shell
@@ -99,6 +101,18 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
     // Match the existing attach command shape (see dtach-service.ts:188-191).
     // `-z` makes dtach pass control characters straight through.
     await svc.runInPane(paneId, `stty -echoctl && exec dtach -a ${socketPath} -z`)
+
+    // Force the herdr-side dtach client's PTY to match the browser's current
+    // dimensions. Without this, the herdr pane's default size (whatever herdr
+    // assigned at pane creation) SIGWINCHes the dtach master PTY, the running
+    // TUI redraws at that wrong size, and the browser xterm renders the
+    // narrow-content-into-wide-grid overlap shown in clipboard-2026-05-26-003503.png.
+    // pollAndSyncMirrorWinsize is fire-and-forget; the dtach -a process may
+    // take a moment to appear after runInPane returns.
+    const info = getPTYManager().getInfo(terminalId)
+    if (info) {
+      void pollAndSyncMirrorWinsize(terminalId, info.cols, info.rows)
+    }
 
     // Only the primary pane (created via tab.create) hosts the AI agent.
     // Split panes are plain shells — reporting them as agents would lie to

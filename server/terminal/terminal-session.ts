@@ -8,6 +8,7 @@ import { getShellEnv } from '../lib/env'
 import type { TerminalInfo, TerminalStatus } from '../types'
 import { log } from '../lib/logger'
 import { getSettingByKey, getSetting } from '../lib/settings'
+import { syncMirrorWinsize } from '../services/herdr-winsize-sync'
 
 export interface TerminalSessionOptions {
   id: string
@@ -407,6 +408,14 @@ export class TerminalSession {
     // serialized snapshot on next attach would be at the previous dimensions
     // even though SIGWINCH had already gone out to the running TUI.
     this.buffer.resize(cols, rows)
+
+    // If a herdr pane is mirroring this terminal, force its PTY to the same
+    // size. Without this, the herdr-side dtach client and the browser-side
+    // dtach client end up with mismatched winsizes, the master PTY flips
+    // between them on every SIGWINCH, and TUIs like Claude Code render with
+    // half-overlapping glyphs in whichever client doesn't currently match
+    // the master. See server/services/herdr-winsize-sync.ts.
+    syncMirrorWinsize(this.id, cols, rows)
 
     this.updateDb({ cols, rows })
   }
