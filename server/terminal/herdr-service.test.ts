@@ -213,6 +213,59 @@ describe('HerdrService', () => {
     expect(fake.calls[0]).toEqual({ method: 'tab.close', params: { tab_id: 'wA:2' } })
   })
 
+  test('splitPane sends target_pane_id + direction and returns the new pane', async () => {
+    fake.on('pane.split', (params) => ({
+      type: 'pane_info',
+      pane: {
+        pane_id: 'wA-3',
+        terminal_id: 'term_3',
+        workspace_id: 'wA',
+        tab_id: 'wA:1',
+        focused: false,
+        cwd: params.cwd as string,
+      },
+    }))
+    const svc = serviceFor(fake)
+    const r = await svc.splitPane({
+      targetPaneId: 'wA-1',
+      direction: 'right',
+      cwd: '/work',
+      focus: false,
+    })
+    expect(r.pane.pane_id).toBe('wA-3')
+    expect(fake.calls[0]).toEqual({
+      method: 'pane.split',
+      params: { target_pane_id: 'wA-1', direction: 'right', cwd: '/work', focus: false },
+    })
+  })
+
+  test('splitPane omits cwd when not provided and defaults focus to false', async () => {
+    fake.on('pane.split', () => ({
+      type: 'pane_info',
+      pane: {
+        pane_id: 'wA-4',
+        terminal_id: 'term_4',
+        workspace_id: 'wA',
+        tab_id: 'wA:1',
+        focused: false,
+      },
+    }))
+    const svc = serviceFor(fake)
+    await svc.splitPane({ targetPaneId: 'wA-1', direction: 'down' })
+    expect(fake.calls[0].params).toEqual({
+      target_pane_id: 'wA-1',
+      direction: 'down',
+      focus: false,
+    })
+  })
+
+  test('closePane sends pane_id param', async () => {
+    fake.on('pane.close', () => ({ type: 'ok' }))
+    const svc = serviceFor(fake)
+    await svc.closePane('wA-3')
+    expect(fake.calls[0]).toEqual({ method: 'pane.close', params: { pane_id: 'wA-3' } })
+  })
+
   test('paneExists returns true on pane.get success', async () => {
     fake.on('pane.get', () => ({ type: 'pane_info', pane: { pane_id: 'wA-2' } }))
     const svc = serviceFor(fake)

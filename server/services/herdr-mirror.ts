@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNotNull, ne } from 'drizzle-orm'
 import { db, terminals } from '../db'
 import { getDtachService } from '../terminal/dtach-service'
 import { getHerdrService, HerdrService } from '../terminal/herdr-service'
@@ -13,15 +13,22 @@ import { log } from '../lib/logger'
  * Implementation:
  *   1. Ensure the herdr workspace for this task exists (one per project;
  *      "scratch" for non-git tasks).
- *   2. Create a tab labeled with the task title.
- *   3. In the tab's root pane, run `dtach -a <socket-path>` — that pane is
- *      now a second attached client to the same dtach session the browser
- *      uses.
+ *   2. If another terminal for the same task already has a herdr pane, split
+ *      that pane vertically and reuse its tab — one task = one tab. Otherwise
+ *      create a fresh tab labeled with the task title.
+ *   3. In the (new or existing) pane, run `dtach -a <socket-path>` — that
+ *      pane is now a second attached client to the same dtach session the
+ *      browser uses.
  *   4. Persist {workspaceId, tabId, paneId} onto the terminals row.
  *
  * Idempotent: if the row already has a herdrTabId it's a no-op. All errors
  * are logged but never propagated — mirror failure must not break the
  * browser path.
+ *
+ * Race-tolerance: if the right-column shell mirrors before the left-column
+ * agent has finished mirroring, no sibling is found and we fall through to
+ * the createTab branch — same as if there were no agent terminal at all.
+ * Worst case the user briefly sees two tabs; harmless.
  */
 export async function mirrorTerminal(terminalId: string): Promise<void> {
   if (!isMirrorEnabled()) return
@@ -54,56 +61,77 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
       return
     }
 
-    const { workspace } = await svc.ensureWorkspace({
-      label: target.workspaceLabel,
-      cwd: target.workspaceCwd,
-    })
+    const sibling = findSiblingWithPane(row.taskId, terminalId)
 
-    const tab = await svc.createTab({
-      workspaceId: workspace.workspace_id,
-      label: target.tabLabel,
-      cwd: target.workspaceCwd,
-    })
+    let workspaceId: string
+    let tabId: string
+    let paneId: string
+    let isSplit = false
+
+    if (sibling) {
+      const split = await svc.splitPane({
+        targetPaneId: sibling.herdrPaneId!,
+        direction: 'right',
+        cwd: target.workspaceCwd,
+        focus: false,
+      })
+      workspaceId = sibling.herdrWorkspaceId!
+      tabId = sibling.herdrTabId!
+      paneId = split.pane.pane_id
+      isSplit = true
+    } else {
+      const { workspace } = await svc.ensureWorkspace({
+        label: target.workspaceLabel,
+        cwd: target.workspaceCwd,
+      })
+      const tab = await svc.createTab({
+        workspaceId: workspace.workspace_id,
+        label: target.tabLabel,
+        cwd: target.workspaceCwd,
+      })
+      workspaceId = workspace.workspace_id
+      tabId = tab.tab.tab_id
+      paneId = tab.root_pane.pane_id
+    }
 
     const dtach = getDtachService()
     const socketPath = dtach.getSocketPath(terminalId)
     // Match the existing attach command shape (see dtach-service.ts:188-191).
     // `-z` makes dtach pass control characters straight through.
-    await svc.runInPane(tab.root_pane.pane_id, `stty -echoctl && exec dtach -a ${socketPath} -z`)
+    await svc.runInPane(paneId, `stty -echoctl && exec dtach -a ${socketPath} -z`)
 
-    // Tell herdr what agent is running inside this pane. Herdr's own
-    // process-introspection only sees `dtach -a` since the real agent
-    // lives on the other side of the socket — without this, the agents
-    // sidebar would be empty even though Claude/OpenCode/Codex is alive.
-    // We report `working` because the agent is being launched right now;
-    // herdr's own output_matched heuristics will refine it from there.
-    try {
-      await svc.reportAgent(tab.root_pane.pane_id, {
-        source: 'fulcrum',
-        agent: target.agent,
-        state: 'working',
-        message: target.tabLabel,
-      })
-      log.terminal.info('herdr agent reported', {
-        terminalId,
-        paneId: tab.root_pane.pane_id,
-        agent: target.agent,
-      })
-    } catch (err) {
-      // Non-fatal — agent labeling is a nicety, not load-bearing.
-      log.terminal.warn('reportAgent failed (non-fatal)', {
-        terminalId,
-        paneId: tab.root_pane.pane_id,
-        error: String(err),
-      })
+    // Only the primary pane (created via tab.create) hosts the AI agent.
+    // Split panes are plain shells — reporting them as agents would lie to
+    // herdr's agents sidebar.
+    if (!isSplit) {
+      try {
+        await svc.reportAgent(paneId, {
+          source: 'fulcrum',
+          agent: target.agent,
+          state: 'working',
+          message: target.tabLabel,
+        })
+        log.terminal.info('herdr agent reported', {
+          terminalId,
+          paneId,
+          agent: target.agent,
+        })
+      } catch (err) {
+        // Non-fatal — agent labeling is a nicety, not load-bearing.
+        log.terminal.warn('reportAgent failed (non-fatal)', {
+          terminalId,
+          paneId,
+          error: String(err),
+        })
+      }
     }
 
     const now = new Date().toISOString()
     db.update(terminals)
       .set({
-        herdrWorkspaceId: workspace.workspace_id,
-        herdrTabId: tab.tab.tab_id,
-        herdrPaneId: tab.root_pane.pane_id,
+        herdrWorkspaceId: workspaceId,
+        herdrTabId: tabId,
+        herdrPaneId: paneId,
         updatedAt: now,
       })
       .where(eq(terminals.id, terminalId))
@@ -114,7 +142,8 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
       taskId: row.taskId,
       workspaceLabel: target.workspaceLabel,
       tabLabel: target.tabLabel,
-      paneId: tab.root_pane.pane_id,
+      paneId,
+      split: isSplit,
     })
   } catch (err) {
     log.terminal.warn('mirrorTerminal: failed (continuing without mirror)', {
@@ -125,9 +154,30 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
   }
 }
 
+function findSiblingWithPane(taskId: string, selfTerminalId: string) {
+  return db
+    .select()
+    .from(terminals)
+    .where(
+      and(
+        eq(terminals.taskId, taskId),
+        ne(terminals.id, selfTerminalId),
+        isNotNull(terminals.herdrPaneId),
+        isNotNull(terminals.herdrTabId),
+        isNotNull(terminals.herdrWorkspaceId)
+      )
+    )
+    .get()
+}
+
 /**
- * Close the herdr tab created for a terminal. Honors the
+ * Close the herdr pane created for a terminal. Honors the
  * `terminal.herdr.autoCloseTab` setting; no-op when disabled.
+ *
+ * Closes the pane rather than the whole tab so that sibling panes (e.g. the
+ * agent pane when destroying the right-column shell, or vice versa) survive.
+ * Herdr cleans up the parent tab automatically when its last pane closes,
+ * so single-pane tabs behave the same as before.
  */
 export async function closeMirror(terminalId: string): Promise<void> {
   if (!isMirrorEnabled()) return
@@ -135,23 +185,23 @@ export async function closeMirror(terminalId: string): Promise<void> {
   if (autoClose === false) return
 
   const row = db.select().from(terminals).where(eq(terminals.id, terminalId)).get()
-  if (!row?.herdrTabId) return
+  if (!row?.herdrPaneId) return
 
   try {
     const svc = getHerdrService()
     if (!svc.isServerRunning()) {
       log.terminal.debug('closeMirror: herdr server not running; skipping close', { terminalId })
       // Still clear the stale ids so future mirror attempts don't think
-      // a tab already exists.
+      // a pane already exists.
       clearMirrorIds(terminalId)
       return
     }
-    await svc.closeTab(row.herdrTabId)
-    log.terminal.info('herdr mirror closed', { terminalId, tabId: row.herdrTabId })
+    await svc.closePane(row.herdrPaneId)
+    log.terminal.info('herdr mirror closed', { terminalId, paneId: row.herdrPaneId })
   } catch (err) {
     log.terminal.warn('closeMirror: failed', {
       terminalId,
-      tabId: row.herdrTabId,
+      paneId: row.herdrPaneId,
       error: String(err),
     })
   } finally {
