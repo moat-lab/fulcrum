@@ -75,8 +75,22 @@ const RESPONSE_TIMEOUT_MS = 4000
 const START_POLL_MS = 100
 const START_POLL_ATTEMPTS = 30 // 3s total
 
+// herdr's "default" session is unnamed: its socket lives at the config root,
+// not under sessions/<name>/. Spawning it also takes no --session flag. Treat
+// this name as a sentinel for "the unnamed session".
+const DEFAULT_SESSION = 'default'
+
 export class HerdrService {
   private requestSeq = 0
+  // Per-label in-flight ensureWorkspace dedupe. Without this, parallel
+  // ensureWorkspace('scratch', ...) callers (e.g. reconcileMirrorOnRestore
+  // firing concurrently for many task terminals on server startup) all see
+  // an empty list before any of them creates, and each goes on to create a
+  // duplicate. Coalescing on label keeps the create() call single-flight.
+  private inflightEnsure = new Map<
+    string,
+    Promise<{ workspace: HerdrWorkspaceInfo; created?: CreatedWorkspace }>
+  >()
 
   constructor(
     private readonly session: string,
@@ -85,6 +99,9 @@ export class HerdrService {
 
   /** Path to the herdr API socket for the current session. */
   getApiSocketPath(): string {
+    if (this.session === DEFAULT_SESSION) {
+      return path.join(CONFIG_DIR, 'herdr.sock')
+    }
     return path.join(CONFIG_DIR, 'sessions', this.session, 'herdr.sock')
   }
 
@@ -95,15 +112,20 @@ export class HerdrService {
 
   /**
    * Make sure the herdr server for this session is running.
-   * Spawns `herdr --session <name> server` detached if absent, then polls
-   * for the socket to appear. Returns true if reachable when we finish.
+   * Spawns `herdr --session <name> server` detached if absent (or
+   * `herdr server` for the unnamed default session), then polls for the
+   * socket to appear. Returns true if reachable when we finish.
    */
   async ensureServerRunning(): Promise<boolean> {
     if (this.isServerRunning()) return true
 
     log.terminal.info('herdr server not running; starting it', { session: this.session })
     try {
-      const child = spawn(this.binary, ['--session', this.session, 'server'], {
+      const args =
+        this.session === DEFAULT_SESSION
+          ? ['server']
+          : ['--session', this.session, 'server']
+      const child = spawn(this.binary, args, {
         stdio: 'ignore',
         detached: true,
       })
@@ -206,6 +228,21 @@ export class HerdrService {
    * returns the tab + root_pane that herdr makes alongside.
    */
   async ensureWorkspace(opts: {
+    label: string
+    cwd: string
+  }): Promise<{ workspace: HerdrWorkspaceInfo; created?: CreatedWorkspace }> {
+    const pending = this.inflightEnsure.get(opts.label)
+    if (pending) return pending
+    const work = this.doEnsureWorkspace(opts)
+    this.inflightEnsure.set(opts.label, work)
+    try {
+      return await work
+    } finally {
+      this.inflightEnsure.delete(opts.label)
+    }
+  }
+
+  private async doEnsureWorkspace(opts: {
     label: string
     cwd: string
   }): Promise<{ workspace: HerdrWorkspaceInfo; created?: CreatedWorkspace }> {

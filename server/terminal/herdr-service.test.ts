@@ -94,6 +94,20 @@ describe('HerdrService', () => {
     await fake.stop()
   })
 
+  test('getApiSocketPath: "default" session lives at the config root', () => {
+    const svc = new HerdrService('default', 'herdr')
+    expect(svc.getApiSocketPath()).toBe(
+      path.join(os.homedir(), '.config', 'herdr', 'herdr.sock')
+    )
+  })
+
+  test('getApiSocketPath: named sessions live under sessions/<name>/', () => {
+    const svc = new HerdrService('fulcrum', 'herdr')
+    expect(svc.getApiSocketPath()).toBe(
+      path.join(os.homedir(), '.config', 'herdr', 'sessions', 'fulcrum', 'herdr.sock')
+    )
+  })
+
   test('ping returns version info', async () => {
     fake.on('ping', () => ({ type: 'pong', version: '0.6.2', protocol: 10 }))
     const svc = serviceFor(fake)
@@ -143,6 +157,48 @@ describe('HerdrService', () => {
     expect(r.workspace.label).toBe('Foo')
     expect(r.created?.root_pane.pane_id).toBe('w1-1')
     expect(fake.calls.map((c) => c.method)).toEqual(['workspace.list', 'workspace.create'])
+  })
+
+  test('ensureWorkspace dedupes concurrent calls for the same label', async () => {
+    let createCount = 0
+    fake.on('workspace.list', () => ({ workspaces: [] }))
+    fake.on('workspace.create', (params) => {
+      createCount++
+      return {
+        type: 'workspace_created',
+        workspace: {
+          workspace_id: 'w-dedupe',
+          label: params.label as string,
+          number: 1,
+          focused: true,
+          pane_count: 1,
+          tab_count: 1,
+        },
+        tab: {
+          tab_id: 't1',
+          workspace_id: 'w-dedupe',
+          number: 1,
+          label: '1',
+          focused: true,
+          pane_count: 1,
+        },
+        root_pane: {
+          pane_id: 'p1',
+          terminal_id: 'tm1',
+          workspace_id: 'w-dedupe',
+          tab_id: 't1',
+          focused: true,
+        },
+      }
+    })
+    const svc = serviceFor(fake)
+    const results = await Promise.all([
+      svc.ensureWorkspace({ label: 'scratch', cwd: '/tmp' }),
+      svc.ensureWorkspace({ label: 'scratch', cwd: '/tmp' }),
+      svc.ensureWorkspace({ label: 'scratch', cwd: '/tmp' }),
+    ])
+    expect(createCount).toBe(1)
+    for (const r of results) expect(r.workspace.workspace_id).toBe('w-dedupe')
   })
 
   test('ensureWorkspace returns existing match without creating', async () => {
