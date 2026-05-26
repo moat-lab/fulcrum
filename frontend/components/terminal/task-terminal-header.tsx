@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { GitActionsButtons } from './git-actions-buttons'
 import { TaskActionsDropdown } from './task-actions-dropdown'
-import { HerdrAttachIndicator } from './herdr-attach-indicator'
 
 import { DeleteTaskDialog } from '@/components/delete-task-dialog'
 import { useUpdateTaskStatus } from '@/hooks/use-tasks'
@@ -184,9 +183,6 @@ export function TaskTerminalHeader({
 
         {/* Right-side actions */}
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {/* Herdr attach indicator — only renders when the terminal has been mirrored */}
-          <HerdrAttachIndicator terminalId={terminalId} compact={!showProjectAndCwd} />
-
           {/* Task status badge - visible until very narrow */}
           {showBadge && (
             <DropdownMenu>
