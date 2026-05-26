@@ -66,6 +66,10 @@ export interface CreatedTab {
   root_pane: HerdrPaneInfo
 }
 
+export interface CreatedPane {
+  pane: HerdrPaneInfo
+}
+
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'herdr')
 const RESPONSE_TIMEOUT_MS = 4000
 const START_POLL_MS = 100
@@ -222,6 +226,31 @@ export class HerdrService {
 
   async closeTab(tabId: string): Promise<void> {
     await this.call('tab.close', { tab_id: tabId })
+  }
+
+  /**
+   * Split an existing pane and get a fresh pane in the same tab.
+   * `direction: 'right'` produces a vertical split (new pane to the right);
+   * `direction: 'down'` produces a horizontal split (new pane below).
+   * When the last pane in a tab is later closed via {@link closePane}, herdr
+   * cleans up the tab itself.
+   */
+  async splitPane(opts: {
+    targetPaneId: string
+    direction: 'right' | 'down'
+    cwd?: string
+    focus?: boolean
+  }): Promise<CreatedPane> {
+    return this.call<CreatedPane>('pane.split', {
+      target_pane_id: opts.targetPaneId,
+      direction: opts.direction,
+      ...(opts.cwd ? { cwd: opts.cwd } : {}),
+      focus: opts.focus ?? false,
+    })
+  }
+
+  async closePane(paneId: string): Promise<void> {
+    await this.call('pane.close', { pane_id: paneId })
   }
 
   async listPanes(workspaceId?: string): Promise<HerdrPaneInfo[]> {
