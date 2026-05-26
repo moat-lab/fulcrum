@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { nanoid } from 'nanoid'
-import { db, tasks, repositories, taskLinks, taskRelationships, taskAttachments, tags, taskTags, type Task, type NewTask, type TaskLink } from '../db'
+import { db, tasks, repositories, taskLinks, taskRelationships, taskAttachments, tags, taskTags, terminals as terminalsTable, type Task, type NewTask, type TaskLink } from '../db'
 import { eq, asc, and, inArray } from 'drizzle-orm'
 import { detectLinkType } from '../lib/link-utils'
 import { execSync } from 'child_process'
@@ -14,6 +14,7 @@ import {
 } from '../terminal/pty-instance'
 import { broadcast } from '../websocket/terminal-ws'
 import { updateTaskStatus } from '../services/task-status'
+import { closeHerdrTabsForTask } from '../services/herdr-mirror'
 import { reindexTaskFTS } from '../services/search-service'
 import { log } from '../lib/logger'
 import { createGitWorktree, copyFilesToWorktree } from '../lib/git-utils'
@@ -47,6 +48,24 @@ function destroyTerminalsForWorktree(worktreePath: string): void {
       if (terminal.cwd === worktreePath) {
         destroyTerminalAndBroadcast(terminal.id)
       }
+    }
+  } catch {
+    // PTY manager might not be initialized yet, ignore
+  }
+}
+
+// Helper to destroy terminals associated with a task id (covers task-bound
+// terminals whose cwd no longer matches the worktree path, e.g. manual tasks
+// or right-column shells opened in a subdirectory).
+function destroyTerminalsForTask(taskId: string): void {
+  try {
+    const rows = db
+      .select({ id: terminalsTable.id })
+      .from(terminalsTable)
+      .where(eq(terminalsTable.taskId, taskId))
+      .all()
+    for (const row of rows) {
+      destroyTerminalAndBroadcast(row.id)
     }
   } catch {
     // PTY manager might not be initialized yet, ignore
@@ -365,9 +384,17 @@ app.delete('/bulk', async (c) => {
       const existing = db.select().from(tasks).where(eq(tasks.id, id)).get()
       if (!existing) continue
 
+      // Close herdr tab(s) before destroying terminals so we can still read
+      // their herdrTabId rows.
+      void closeHerdrTabsForTask(id)
+
+      // Always destroy task-bound terminals (covers manual tasks too).
+      destroyTerminalsForTask(id)
+
       // Handle linked worktree/directory based on deleteLinkedWorktrees flag
       if (existing.worktreePath) {
-        // Always destroy terminals for the worktree/scratch dir
+        // Also destroy any remaining terminals whose cwd matches the worktree
+        // but that aren't bound to this task in the DB (legacy / ad-hoc).
         destroyTerminalsForWorktree(existing.worktreePath)
 
         // Only delete the worktree/directory if flag is true
@@ -694,9 +721,18 @@ app.delete('/:id', (c) => {
     return c.json({ error: 'Task not found' }, 404)
   }
 
+  // Close any herdr tab(s) mirrored from this task's terminals BEFORE we
+  // destroy those terminals, so we can still read their herdrTabId rows.
+  void closeHerdrTabsForTask(id)
+
+  // Always destroy task-bound terminals — this covers manual tasks (no
+  // worktreePath) and right-column shells whose cwd differs from worktree.
+  destroyTerminalsForTask(id)
+
   // Handle linked worktree/directory based on deleteLinkedWorktree flag
   if (existing.worktreePath) {
-    // Always destroy terminals for the worktree/scratch dir
+    // Also destroy any remaining terminals whose cwd matches the worktree
+    // but that aren't bound to this task in the DB (legacy / ad-hoc).
     destroyTerminalsForWorktree(existing.worktreePath)
 
     if (deleteLinkedWorktree) {
