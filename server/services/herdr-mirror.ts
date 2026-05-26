@@ -5,7 +5,7 @@ import { getHerdrService, HerdrService } from '../terminal/herdr-service'
 import { resolveWorkspaceForTaskId } from './herdr-workspace-mapper'
 import { getSetting } from '../lib/settings'
 import { log } from '../lib/logger'
-import { pollAndSyncMirrorWinsize } from './herdr-winsize-sync'
+import { waitForMirrorAttached } from './herdr-winsize-sync'
 import { getPTYManager } from '../terminal/pty-instance'
 
 /**
@@ -102,17 +102,15 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
     // `-z` makes dtach pass control characters straight through.
     await svc.runInPane(paneId, `stty -echoctl && exec dtach -a ${socketPath} -z`)
 
-    // Force the herdr-side dtach client's PTY to match the browser's current
-    // dimensions. Without this, the herdr pane's default size (whatever herdr
-    // assigned at pane creation) SIGWINCHes the dtach master PTY, the running
-    // TUI redraws at that wrong size, and the browser xterm renders the
-    // narrow-content-into-wide-grid overlap shown in clipboard-2026-05-26-003503.png.
-    // pollAndSyncMirrorWinsize is fire-and-forget; the dtach -a process may
-    // take a moment to appear after runInPane returns.
-    const info = getPTYManager().getInfo(terminalId)
-    if (info) {
-      void pollAndSyncMirrorWinsize(terminalId, info.cols, info.rows)
-    }
+    // The herdr-side dtach -a will SIGWINCH the master to herdr's pane size
+    // as soon as it attaches, which leaves the browser-side rendering against
+    // a mismatched master. Wait for the dtach -a to appear, then re-trigger
+    // resize at the browser's known dimensions — TerminalSession.resize then
+    // clips to min(browser, herdr) so both views fit. Fire-and-forget.
+    void waitForMirrorAttached(terminalId).then(() => {
+      const info = getPTYManager().getInfo(terminalId)
+      if (info) getPTYManager().resize(terminalId, info.cols, info.rows)
+    })
 
     // Only the primary pane (created via tab.create) hosts the AI agent.
     // Split panes are plain shells — reporting them as agents would lie to

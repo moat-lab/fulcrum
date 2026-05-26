@@ -1,27 +1,31 @@
-// Sync the herdr-side dtach client's PTY winsize to the browser's dimensions.
+// Resolve the dual-attach winsize conflict on dtach task sessions.
 //
-// Background: a fulcrum task terminal lives in a `dtach` session that has two
+// Background: a fulcrum task terminal lives in a `dtach` session with two
 // attached clients — bun-pty (browser via xterm.js) and a herdr pane (running
 // `dtach -a` as its foreground process). dtach forwards SIGWINCH from
 // whichever client most recently resized to the master PTY. When the two
-// clients have different cols/rows, the master PTY's winsize flips between
-// them and one of the rendered views (the one whose grid no longer matches
-// what the TUI just drew) shows half-overlapping glyphs.
+// clients have different cols/rows the master flips between them and the
+// rendered view that doesn't currently match the master shows garbage (the
+// original bug: clipboard-2026-05-26-003503.png).
 //
-// herdr exposes no `pane.resize` RPC, so we can't tell herdr to change the
-// pane's size. Instead we reach down to the kernel: locate the herdr-side
-// `dtach -a` process by its socket-path argument, walk parent PIDs to confirm
-// it's the one whose ancestor is herdr (not the fulcrum server), and run
-// `stty -F /proc/<pid>/fd/0 cols X rows Y` against its slave PTY. That
-// TIOCSWINSZ raises SIGWINCH on dtach -a, which forwards the new size through
-// the dtach socket to the master PTY — bringing both clients into agreement.
+// herdr exposes no `pane.resize` RPC, so we can't reshape herdr to match the
+// browser. The reverse — forcing herdr's pane PTY to the browser size via
+// `stty -F /proc/<pid>/fd/0` — works but clips the bottom of TUIs whenever
+// herdr's pane is shorter than the browser (clipboard-2026-05-26-011725.png).
+//
+// Final strategy: read the herdr-side dtach client's natural winsize from
+// /proc, compute `min(browser, herdr)` in TerminalSession.resize(), and call
+// `pty.resize` on the bun-pty side at that MIN. The bun-side dtach -a
+// SIGWINCHes the master to MIN, which fits both clients. We do NOT write to
+// the herdr-side PTY — herdr keeps its natural size, the browser renders its
+// own larger grid with empty space on the right/bottom, and neither view
+// clips the TUI content.
 //
 // Linux-only. /proc layout doesn't exist on macOS; this becomes a no-op
 // there (the herdr-mirror feature has the same Linux-leaning shape today).
 
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { execSync } from 'child_process'
-import { log } from '../lib/logger'
 import { getDtachService } from '../terminal/dtach-service'
 
 /** Read PPid from /proc/<pid>/status. Returns 0 on any failure. */
@@ -95,72 +99,57 @@ function findMirrorDtachPid(socketPath: string): number | null {
 }
 
 /**
- * Force the herdr-side dtach client's PTY to the given dimensions. No-op if
- * the herdr pane isn't attached yet, or if /proc isn't available (macOS).
- * Never throws — mirror-sync failure must not break the browser path.
+ * Read the current slave-PTY winsize of the herdr-side dtach client. Returns
+ * null if there's no mirror attached, /proc isn't available, or stty fails.
+ *
+ * Used by `TerminalSession.resize()` to compute the smallest-common-denominator
+ * size — both the browser and herdr pane have to fit, so the master PTY must
+ * be `min(browser, herdr)`. Otherwise whichever client is smaller renders a
+ * cut-off TUI.
  */
-export function syncMirrorWinsize(terminalId: string, cols: number, rows: number): void {
-  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) return
-  if (!existsSync('/proc')) return
-
+export function readMirrorWinsize(
+  terminalId: string
+): { cols: number; rows: number } | null {
+  if (!existsSync('/proc')) return null
   const socketPath = getDtachService().getSocketPath(terminalId)
   const pid = findMirrorDtachPid(socketPath)
-  if (pid === null) {
-    // No herdr-side mirror attached — common case when herdr mirror is
-    // disabled or the pane was closed.
-    return
-  }
-
+  if (pid === null) return null
   const fdPath = `/proc/${pid}/fd/0`
-  if (!existsSync(fdPath)) return
-
+  if (!existsSync(fdPath)) return null
   try {
-    // stty exits 0 silently on success. Use a short timeout so a hung stty
-    // can't block the resize path.
-    execSync(`stty -F ${fdPath} cols ${cols} rows ${rows}`, {
-      stdio: 'ignore',
+    const out = execSync(`stty -F ${fdPath} size`, {
+      encoding: 'utf-8',
       timeout: 1000,
-    })
-    log.terminal.debug('mirror winsize synced', { terminalId, pid, cols, rows })
-  } catch (err) {
-    log.terminal.warn('mirror winsize sync failed (continuing)', {
-      terminalId,
-      pid,
-      cols,
-      rows,
-      error: String(err),
-    })
+    }).trim()
+    const [rowsStr, colsStr] = out.split(/\s+/)
+    const rows = parseInt(rowsStr, 10)
+    const cols = parseInt(colsStr, 10)
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) {
+      return null
+    }
+    return { cols, rows }
+  } catch {
+    return null
   }
 }
 
 /**
- * Poll for the herdr-side dtach client to appear, then sync its winsize.
- * Called once after `mirrorTerminal` spawns the pane — the dtach -a process
- * appears asynchronously (herdr has to inject the keystrokes, the shell has
- * to execute the command, the dtach binary has to start), so a single
- * immediate sync would miss it.
+ * Resolve once the herdr-side dtach -a process appears for this terminal, or
+ * after `attempts * intervalMs` of polling. Used by `mirrorTerminal` to defer
+ * the post-mirror resize until the mirror is actually attached — calling
+ * resize earlier would just MIN against a non-existent mirror.
  */
-export async function pollAndSyncMirrorWinsize(
+export async function waitForMirrorAttached(
   terminalId: string,
-  cols: number,
-  rows: number,
   opts: { attempts?: number; intervalMs?: number } = {}
-): Promise<void> {
+): Promise<boolean> {
   const attempts = opts.attempts ?? 20
   const intervalMs = opts.intervalMs ?? 150
-  if (!existsSync('/proc')) return
+  if (!existsSync('/proc')) return false
   const socketPath = getDtachService().getSocketPath(terminalId)
   for (let i = 0; i < attempts; i++) {
-    if (findMirrorDtachPid(socketPath) !== null) {
-      syncMirrorWinsize(terminalId, cols, rows)
-      return
-    }
+    if (findMirrorDtachPid(socketPath) !== null) return true
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
-  log.terminal.debug('mirror winsize: dtach client never appeared', {
-    terminalId,
-    cols,
-    rows,
-    attempts,
-  })
+  return false
 }
