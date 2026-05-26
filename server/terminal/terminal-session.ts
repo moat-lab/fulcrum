@@ -8,7 +8,7 @@ import { getShellEnv } from '../lib/env'
 import type { TerminalInfo, TerminalStatus } from '../types'
 import { log } from '../lib/logger'
 import { getSettingByKey, getSetting } from '../lib/settings'
-import { readMirrorWinsize } from '../services/herdr-winsize-sync'
+import { syncMirrorWinsize } from '../services/herdr-winsize-sync'
 
 export interface TerminalSessionOptions {
   id: string
@@ -391,23 +391,6 @@ export class TerminalSession {
       return
     }
 
-    // Asymmetric clip when a herdr pane is mirroring this terminal:
-    //
-    //   cols → min(browser, herdr)
-    //   rows → browser (unchanged)
-    //
-    // Width mismatch is what produces the half-overlapping glyphs in the
-    // smaller client (xterm.js wraps past its grid when the master is wider).
-    // Height mismatch only causes the smaller client to clip the bottom rows
-    // of alt-screen TUIs — no visual garbling, just truncation. Fulcrum is
-    // the primary view, so we keep its full row count; if herdr's pane is
-    // shorter, herdr clips. Browser xterm renders empty columns on the right
-    // when herdr is narrower — acceptable.
-    const mirror = readMirrorWinsize(this.id)
-    if (mirror) {
-      cols = Math.min(cols, mirror.cols)
-    }
-
     this.cols = cols
     this.rows = rows
 
@@ -425,6 +408,14 @@ export class TerminalSession {
     // serialized snapshot on next attach would be at the previous dimensions
     // even though SIGWINCH had already gone out to the running TUI.
     this.buffer.resize(cols, rows)
+
+    // Force the herdr-side dtach client (if mirroring) to the browser's
+    // dimensions so the master PTY stays at browser size — otherwise herdr's
+    // pane SIGWINCHing back to its natural (often wider) size makes xterm.js
+    // wrap past its grid and renders half-overlapping glyphs. Herdr clips the
+    // bottom of alt-screen TUIs when its pane is shorter than the browser;
+    // accepted trade-off (fulcrum is the primary view).
+    syncMirrorWinsize(this.id, cols, rows)
 
     this.updateDb({ cols, rows })
   }
