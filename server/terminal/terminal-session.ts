@@ -391,17 +391,21 @@ export class TerminalSession {
       return
     }
 
-    // If a herdr pane is mirroring this terminal, clip to the smallest common
-    // denominator. dtach forwards SIGWINCH from whichever client most recently
-    // resized; if we set the master to the browser's larger grid, the herdr
-    // pane (smaller) clips the bottom rows of any TUI in alternate-screen
-    // mode. Reading the mirror's current size first and using min(browser,
-    // herdr) keeps the TUI sized so BOTH views fit. The browser xterm renders
-    // its own larger grid with empty space on the right/bottom — acceptable.
+    // Asymmetric clip when a herdr pane is mirroring this terminal:
+    //
+    //   cols → min(browser, herdr)
+    //   rows → browser (unchanged)
+    //
+    // Width mismatch is what produces the half-overlapping glyphs in the
+    // smaller client (xterm.js wraps past its grid when the master is wider).
+    // Height mismatch only causes the smaller client to clip the bottom rows
+    // of alt-screen TUIs — no visual garbling, just truncation. Fulcrum is
+    // the primary view, so we keep its full row count; if herdr's pane is
+    // shorter, herdr clips. Browser xterm renders empty columns on the right
+    // when herdr is narrower — acceptable.
     const mirror = readMirrorWinsize(this.id)
     if (mirror) {
       cols = Math.min(cols, mirror.cols)
-      rows = Math.min(rows, mirror.rows)
     }
 
     this.cols = cols
