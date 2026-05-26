@@ -5,6 +5,8 @@ import { getHerdrService, HerdrService } from '../terminal/herdr-service'
 import { resolveWorkspaceForTaskId } from './herdr-workspace-mapper'
 import { getSetting } from '../lib/settings'
 import { log } from '../lib/logger'
+import { waitForMirrorAttached } from './herdr-winsize-sync'
+import { getPTYManager } from '../terminal/pty-instance'
 
 /**
  * Mirror a fulcrum dtach-backed terminal into a herdr tab so the same shell
@@ -99,6 +101,16 @@ export async function mirrorTerminal(terminalId: string): Promise<void> {
     // Match the existing attach command shape (see dtach-service.ts:188-191).
     // `-z` makes dtach pass control characters straight through.
     await svc.runInPane(paneId, `stty -echoctl && exec dtach -a ${socketPath} -z`)
+
+    // The herdr-side dtach -a will SIGWINCH the master to herdr's pane size
+    // as soon as it attaches, which leaves the browser-side rendering against
+    // a mismatched master. Wait for the dtach -a to appear, then re-trigger
+    // resize at the browser's known dimensions — TerminalSession.resize then
+    // clips to min(browser, herdr) so both views fit. Fire-and-forget.
+    void waitForMirrorAttached(terminalId).then(() => {
+      const info = getPTYManager().getInfo(terminalId)
+      if (info) getPTYManager().resize(terminalId, info.cols, info.rows)
+    })
 
     // Only the primary pane (created via tab.create) hosts the AI agent.
     // Split panes are plain shells — reporting them as agents would lie to

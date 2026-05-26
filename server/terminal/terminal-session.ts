@@ -8,6 +8,7 @@ import { getShellEnv } from '../lib/env'
 import type { TerminalInfo, TerminalStatus } from '../types'
 import { log } from '../lib/logger'
 import { getSettingByKey, getSetting } from '../lib/settings'
+import { syncMirrorWinsize } from '../services/herdr-winsize-sync'
 
 export interface TerminalSessionOptions {
   id: string
@@ -407,6 +408,14 @@ export class TerminalSession {
     // serialized snapshot on next attach would be at the previous dimensions
     // even though SIGWINCH had already gone out to the running TUI.
     this.buffer.resize(cols, rows)
+
+    // Force the herdr-side dtach client (if mirroring) to the browser's
+    // dimensions so the master PTY stays at browser size — otherwise herdr's
+    // pane SIGWINCHing back to its natural (often wider) size makes xterm.js
+    // wrap past its grid and renders half-overlapping glyphs. Herdr clips the
+    // bottom of alt-screen TUIs when its pane is shorter than the browser;
+    // accepted trade-off (fulcrum is the primary view).
+    syncMirrorWinsize(this.id, cols, rows)
 
     this.updateDb({ cols, rows })
   }
