@@ -65,6 +65,15 @@ export const TerminalModel = types
      * replay strictly ordered with respect to live output.
      */
     writeChain: Promise.resolve() as Promise<void>,
+    /**
+     * Bytes pending in xterm.write() callbacks for this terminal. Used to
+     * back-pressure the server: when pendingBytes crosses a high watermark we
+     * emit a PAUSE opcode; when it drains below a low watermark we emit RESUME.
+     * Volatile because it's purely a runtime queue depth, not state to sync.
+     */
+    pendingBytes: 0,
+    /** Whether we've sent PAUSE to the server and not yet RESUMEd. */
+    flowPaused: false,
   }))
   .views((self) => ({
     /** Whether the terminal is alive (running) */
@@ -99,11 +108,26 @@ export const TerminalModel = types
       // Reset the write chain so a stale promise from a prior xterm instance
       // can't keep operations queued against a terminal that no longer exists.
       self.writeChain = Promise.resolve()
+      // Reset flow-control bookkeeping. Pending callbacks on the old xterm
+      // will fire into the void; we start fresh.
+      self.pendingBytes = 0
+      self.flowPaused = false
     },
 
     /** Replace the per-terminal write-serialization chain. */
     setWriteChain(chain: Promise<void>) {
       self.writeChain = chain
+    },
+
+    /** Adjust the running count of xterm.write bytes in flight. */
+    addPendingBytes(delta: number) {
+      self.pendingBytes += delta
+      if (self.pendingBytes < 0) self.pendingBytes = 0
+    },
+
+    /** Mark whether we have asked the server to pause output to us. */
+    setFlowPaused(paused: boolean) {
+      self.flowPaused = paused
     },
 
     /** Set follow cursor state for VibeTunnel scroll management */

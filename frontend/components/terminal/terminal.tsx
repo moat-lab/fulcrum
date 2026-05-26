@@ -58,8 +58,20 @@ export function Terminal({ className, onReady, onResize, onContainerReady, termi
   const doFit = useCallback(() => {
     if (!fitAddonRef.current || !termRef.current) return
 
+    // FitAddon.proposeDimensions can return NaN when the container has zero
+    // size (tab hidden, panel collapsed). Calling .fit() with NaN propagates
+    // garbage cols/rows to the server; the running TUI then draws against a
+    // bogus geometry and the next visible render shows overlapping glyphs.
+    // Guard explicitly: if dimensions aren't usable, skip this fit cycle.
+    const proposed = fitAddonRef.current.proposeDimensions()
+    if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) {
+      return
+    }
+    if (proposed.cols < 2 || proposed.rows < 2) return
+
     fitAddonRef.current.fit()
     const { cols, rows } = termRef.current
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) return
     onResizeRef.current?.(cols, rows)
   }, [])
 
@@ -116,8 +128,18 @@ export function Terminal({ className, onReady, onResize, onContainerReady, termi
       term.refresh(0, term.rows - 1)
     }, 100)
 
+    // Debounce all resize triggers (window, ResizeObserver, IntersectionObserver,
+    // visibilitychange) through one 50 ms window. Multiple observers firing in
+    // close succession during a drag-resize otherwise produce a stream of fits
+    // that race the server's PTY resize calls, leaving the running TUI drawing
+    // at an intermediate geometry that no longer matches what xterm renders.
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined
     const handleResize = () => {
-      requestAnimationFrame(doFit)
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        resizeTimer = undefined
+        requestAnimationFrame(doFit)
+      }, 50)
     }
 
     window.addEventListener('resize', handleResize)
@@ -153,6 +175,7 @@ export function Terminal({ className, onReady, onResize, onContainerReady, termi
 
     return () => {
       clearTimeout(refitTimeout)
+      if (resizeTimer) clearTimeout(resizeTimer)
       window.removeEventListener('resize', handleResize)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       resizeObserver.disconnect()

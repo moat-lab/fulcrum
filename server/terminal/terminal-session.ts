@@ -242,11 +242,9 @@ export class TerminalSession {
   private setupPtyHandlers(): void {
     if (!this.pty) return
 
-    log.terminal.info('setupPtyHandlers: registering onData handler', { terminalId: this.id })
+    log.terminal.debug('setupPtyHandlers: registering onData handler', { terminalId: this.id })
 
     this.pty.onData((data: string) => {
-      log.terminal.info('pty.onData fired', { terminalId: this.id, dataLen: data.length })
-
       // Auto-dismiss Claude workspace trust prompt ("Yes, I trust this folder")
       if (!this.trustPromptHandled) {
         // Strip all ANSI escape sequences (CSI, OSC, etc.)
@@ -379,10 +377,30 @@ export class TerminalSession {
   }
 
   resize(cols: number, rows: number): void {
+    // Reject NaN/non-finite/too-small dims — these reach us when the frontend's
+    // FitAddon runs against a hidden container. Setting the PTY to a bogus
+    // geometry desynchronizes it from xterm.js and produces overlap on the
+    // next visible render.
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) {
+      log.terminal.warn('resize ignored: invalid dimensions', {
+        terminalId: this.id,
+        cols,
+        rows,
+      })
+      return
+    }
+
     this.cols = cols
     this.rows = rows
 
     if (this.pty) {
+      // pty.resize() ioctl's TIOCSWINSZ on the master PTY which causes the
+      // kernel to send SIGWINCH to the controlling process (dtach), which
+      // forwards it to the running shell. Modern dtach versions propagate
+      // SIGWINCH reliably — we tried writing CSI 8;rows;cols;t into the
+      // PTY as a belt-and-suspenders fallback, but that sequence is a
+      // *terminal request* and arrives at the shell as garbage keystrokes
+      // (causing bash syntax errors). Trust the ioctl path instead.
       this.pty.resize(cols, rows)
     }
     // Keep the canonical emulator in lockstep with the PTY. Without this, the

@@ -5,14 +5,23 @@ import type { ITerminal, ITerminalSnapshot, ITab, ITabSnapshot } from './models'
 import { log } from '@/lib/logger'
 import { generateRequestId, generateTempId, type PendingUpdate } from './sync'
 import type { AnyTerminal } from '@/components/terminal/terminal-types'
+import {
+  OPCODE_INPUT,
+  OPCODE_PAUSE,
+  OPCODE_RESUME,
+  encodeOpcodeFrame,
+  encodeStringPayload,
+} from '../../shared/terminal-protocol'
 
 /**
  * Environment injected into the store.
  * Contains non-serializable dependencies like WebSocket.
  */
 export interface StoreEnv {
-  /** WebSocket send function */
+  /** WebSocket send function (JSON envelope) */
   send: (message: object) => void
+  /** WebSocket send function for binary opcode frames (terminal:input/PAUSE/RESUME) */
+  sendBinary: (frame: Uint8Array) => void
   /** Logger instance */
   log: typeof log
 }
@@ -493,28 +502,34 @@ export const RootStore = types
         this.createTerminal({ name, cols, rows, cwd, tabId: tabId ?? undefined, positionInTab })
       },
 
-      /** Send input to terminal */
+      /** Send input to terminal (binary opcode frame). */
       writeToTerminal(terminalId: string, data: string) {
-        getWs().send({
-          type: 'terminal:input',
-          payload: { terminalId, data },
-        })
+        getWs().sendBinary(
+          encodeOpcodeFrame(OPCODE_INPUT, terminalId, encodeStringPayload(data))
+        )
       },
 
       /** Send text input followed by Enter key to terminal (for CLI tools like Claude Code) */
       sendInputToTerminal(terminalId: string, text: string) {
-        // Write the text first
-        getWs().send({
-          type: 'terminal:input',
-          payload: { terminalId, data: text },
-        })
+        getWs().sendBinary(
+          encodeOpcodeFrame(OPCODE_INPUT, terminalId, encodeStringPayload(text))
+        )
         // Then send Enter (\r) after a brief delay to ensure text is processed first
         setTimeout(() => {
-          getWs().send({
-            type: 'terminal:input',
-            payload: { terminalId, data: '\r' },
-          })
+          getWs().sendBinary(
+            encodeOpcodeFrame(OPCODE_INPUT, terminalId, encodeStringPayload('\r'))
+          )
         }, 50)
+      },
+
+      /** Emit a PAUSE opcode to back-pressure server output for this terminal. */
+      sendPause(terminalId: string) {
+        getWs().sendBinary(encodeOpcodeFrame(OPCODE_PAUSE, terminalId))
+      },
+
+      /** Emit a RESUME opcode; server will send a snapshot if frames were dropped. */
+      sendResume(terminalId: string) {
+        getWs().sendBinary(encodeOpcodeFrame(OPCODE_RESUME, terminalId))
       },
 
       /** Request terminal resize */
@@ -581,14 +596,16 @@ export const RootStore = types
 
         // Handle Shift+Enter to insert a newline for Claude Code multi-line input
         if (typeof xterm.attachCustomKeyEventHandler === 'function') {
+          const sendInput = (s: string) => {
+            getWs().sendBinary(
+              encodeOpcodeFrame(OPCODE_INPUT, terminalId, encodeStringPayload(s))
+            )
+          }
           xterm.attachCustomKeyEventHandler((event: KeyboardEvent) => {
             if (event.type === 'keydown' && event.shiftKey && event.key === 'Enter') {
               event.preventDefault()
               event.stopPropagation()
-              getWs().send({
-                type: 'terminal:input',
-                payload: { terminalId, data: '\n' },
-              })
+              sendInput('\n')
               return false // Prevent xterm from processing (would send regular CR)
             }
 
@@ -597,10 +614,7 @@ export const RootStore = types
             if (event.type === 'keydown' && event.key === 'Escape') {
               event.preventDefault()
               event.stopPropagation()
-              getWs().send({
-                type: 'terminal:input',
-                payload: { terminalId, data: '\x1b' },
-              })
+              sendInput('\x1b')
               return false // We handled it
             }
 
@@ -642,10 +656,9 @@ export const RootStore = types
           ) {
             return
           }
-          getWs().send({
-            type: 'terminal:input',
-            payload: { terminalId, data },
-          })
+          getWs().sendBinary(
+            encodeOpcodeFrame(OPCODE_INPUT, terminalId, encodeStringPayload(data))
+          )
         })
 
         // Track focus for reconnection restoration
@@ -845,6 +858,61 @@ export const RootStore = types
 
       // ============ Sync Actions ============
 
+      /**
+       * Apply a chunk of PTY output to xterm. Shared by the binary opcode
+       * fast-path (frontend/stores/index.tsx) and the JSON `terminal:output`
+       * envelope path. Serializes writes through the per-terminal writeChain
+       * so a subsequent reset+replay (terminal:attached) can never race ahead
+       * of an in-flight chunk and draw onto the freshly-cleared screen.
+       */
+      handleTerminalOutput(terminalId: string, data: string) {
+        const terminal = self.terminals.get(terminalId)
+        if (!terminal?.xterm) {
+          getWs().log.ws.warn('terminal:output but no xterm', { terminalId })
+          return
+        }
+        const xterm = terminal.xterm
+
+        // Track cursor visibility (DECTCEM). TUI apps hide the native cursor
+        // and render their own; we suppress auto-scroll while hidden so we
+        // don't fight their viewport management.
+        const ESC = '\x1b'
+        if (data.includes(`${ESC}[?25h`)) terminal.setCursorVisible(true)
+        if (data.includes(`${ESC}[?25l`)) terminal.setCursorVisible(false)
+
+        // Flow-control bookkeeping. We track bytes outstanding in xterm.write
+        // callbacks and signal PAUSE/RESUME upstream so a fast PTY producer
+        // can't outrun the parser. Watermarks chosen to match ttyd's pattern.
+        const FLOW_HIGH = 256 * 1024
+        const FLOW_LOW = 64 * 1024
+        const byteLen = data.length
+        terminal.addPendingBytes(byteLen)
+        if (!terminal.flowPaused && terminal.pendingBytes > FLOW_HIGH) {
+          terminal.setFlowPaused(true)
+          this.sendPause(terminalId)
+        }
+
+        const next = terminal.writeChain.then(
+          () =>
+            new Promise<void>((resolve) => {
+              xterm.write(data, () => {
+                terminal.addPendingBytes(-byteLen)
+                if (terminal.flowPaused && terminal.pendingBytes < FLOW_LOW) {
+                  terminal.setFlowPaused(false)
+                  this.sendResume(terminalId)
+                }
+                if (terminal.cursorVisible && self.autoScrollToBottom) {
+                  requestAnimationFrame(() => {
+                    xterm.scrollToBottom()
+                  })
+                }
+                resolve()
+              })
+            })
+        )
+        terminal.setWriteChain(next)
+      },
+
       /** Handle incoming WebSocket message */
       handleMessage(message: { type: string; payload: unknown }) {
         const { type, payload } = message
@@ -1018,47 +1086,7 @@ export const RootStore = types
 
           case 'terminal:output': {
             const { terminalId, data } = payload as { terminalId: string; data: string }
-            const terminal = self.terminals.get(terminalId)
-            if (terminal?.xterm) {
-              const xterm = terminal.xterm
-
-              // Track cursor visibility from escape sequences
-              // ESC[?25h = show cursor (DECTCEM), ESC[?25l = hide cursor
-              // TUI apps like Claude Code hide the native cursor and render their own
-              const ESC = '\x1b'
-              if (data.includes(`${ESC}[?25h`)) {
-                terminal.setCursorVisible(true)
-              }
-              if (data.includes(`${ESC}[?25l`)) {
-                terminal.setCursorVisible(false)
-              }
-
-              // Serialize through the per-terminal write chain so this chunk
-              // can never be parsed AFTER a subsequent reset+replay (which
-              // would draw onto the freshly-reset screen ahead of the buffer).
-              const next = terminal.writeChain.then(
-                () =>
-                  new Promise<void>((resolve) => {
-                    xterm.write(data, () => {
-                      // Only scroll to bottom if:
-                      // 1. Cursor is visible (not a TUI app managing viewport)
-                      // 2. Auto-scroll setting is enabled
-                      // When cursor is hidden (TUI app managing viewport), skip
-                      // auto-scroll to avoid interfering with the TUI's viewport
-                      // management (fixes cursor position issues in xterm 6.0.0+)
-                      if (terminal.cursorVisible && self.autoScrollToBottom) {
-                        requestAnimationFrame(() => {
-                          xterm.scrollToBottom()
-                        })
-                      }
-                      resolve()
-                    })
-                  })
-              )
-              terminal.setWriteChain(next)
-            } else {
-              getWs().log.ws.warn('terminal:output but no xterm', { terminalId })
-            }
+            this.handleTerminalOutput(terminalId, data)
             break
           }
 

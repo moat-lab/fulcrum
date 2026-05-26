@@ -141,15 +141,24 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
     // We can get cols/rows immediately after open(), no need to wait for rAF
     setXtermOpened(true)
 
-    // Initial fit after container is sized
-    requestAnimationFrame(() => {
+    // Initial fit after container is sized. Guard against NaN dimensions
+    // from a zero-size container (ResizablePanel pre-layout, hidden tab) —
+    // calling .fit() with NaN sets xterm to a bogus geometry that doesn't
+    // match the eventual PTY size, causing render overlap once visible.
+    const safeFit = () => {
+      const proposed = fitAddon.proposeDimensions()
+      if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) return
+      if (proposed.cols < 2 || proposed.rows < 2) return
       fitAddon.fit()
-    })
+    }
+    requestAnimationFrame(safeFit)
 
     // Schedule additional fit to catch async layout (ResizablePanel timing)
     const refitTimeout = setTimeout(() => {
-      fitAddon.fit()
-      term.refresh(0, term.rows - 1)
+      safeFit()
+      if (Number.isFinite(term.rows) && term.rows >= 1) {
+        term.refresh(0, term.rows - 1)
+      }
     }, 100)
 
     // xterm creates a hidden textarea for keyboard input - track its focus
@@ -178,8 +187,20 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
   const doFit = useCallback(() => {
     if (!fitAddonRef.current || !termRef.current) return
 
+    // Guard against NaN/zero dimensions from FitAddon when the container is
+    // hidden or sized at zero. Propagating a bogus cols/rows to the server
+    // sets the PTY to a geometry that no longer matches what xterm draws,
+    // producing the "overlapping characters" rendering bug after the panel
+    // becomes visible again.
+    const proposed = fitAddonRef.current.proposeDimensions()
+    if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) {
+      return
+    }
+    if (proposed.cols < 2 || proposed.rows < 2) return
+
     fitAddonRef.current.fit()
     const { cols, rows } = termRef.current
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) return
 
     if (terminalId) {
       resizeTerminal(terminalId, cols, rows)
@@ -190,8 +211,17 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
   useEffect(() => {
     if (!containerRef.current) return
 
+    // Debounce resize triggers through one 50 ms window. ResizeObserver,
+    // IntersectionObserver, visibilitychange and window-resize can all fire
+    // in close succession; coalescing them avoids racing the server's PTY
+    // resize calls and leaving the TUI drawing at an intermediate geometry.
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined
     const handleResize = () => {
-      requestAnimationFrame(doFit)
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        resizeTimer = undefined
+        requestAnimationFrame(doFit)
+      }, 50)
     }
 
     window.addEventListener('resize', handleResize)
@@ -225,6 +255,7 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
     visibilityObserver.observe(containerRef.current)
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
       window.removeEventListener('resize', handleResize)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       resizeObserver.disconnect()

@@ -4,10 +4,26 @@ import { getPTYManager } from '../terminal/pty-instance'
 import { getTabManager } from '../terminal/tab-manager'
 import { getWorktreeBasePath, getSettings, updateSettingByPath } from '../lib/settings'
 import { log } from '../lib/logger'
+import {
+  OPCODE_OUTPUT,
+  OPCODE_INPUT,
+  OPCODE_PAUSE,
+  OPCODE_RESUME,
+  decodeOpcodeFrame,
+  decodePayloadAsString,
+  encodeOpcodeFrame,
+  encodeStringPayload,
+  isJsonFrameByte,
+} from '../../shared/terminal-protocol'
 
 interface ClientData {
   id: string
   attachedTerminals: Set<string>
+  // Per-terminal paused flag. When true, server skips sending OUTPUT to this
+  // client and marks the terminal as "stale for client" — on RESUME we send a
+  // snapshot to resync rather than dribbling out missed frames.
+  pausedTerminals: Set<string>
+  staleTerminals: Set<string>
 }
 
 // Store client data keyed by WSContext
@@ -26,30 +42,36 @@ export function broadcast(message: ServerMessage): void {
 
 export function broadcastToTerminal(terminalId: string, message: ServerMessage): void {
   const json = JSON.stringify(message)
-  let sentCount = 0
-  const attachedClients: string[] = []
-
   for (const [ws, data] of clients.entries()) {
     if (data.attachedTerminals.has(terminalId)) {
-      attachedClients.push(data.id)
       try {
         ws.send(json)
-        sentCount++
       } catch {
         // Client might be disconnected
       }
     }
   }
+}
 
-  // Log for terminal:output messages to trace the broadcast
-  if (message.type === 'terminal:output') {
-    log.ws.info('broadcastToTerminal', {
-      terminalId,
-      totalClients: clients.size,
-      attachedClients: attachedClients.length,
-      sentCount,
-      dataLen: (message.payload as { data?: string }).data?.length ?? 0,
-    })
+// Hot-path output broadcast. Binary opcode frame, no JSON envelope, no
+// per-call logging (logged previously at info level — that fired on every
+// PTY chunk and dominated server logs during fast streams).
+export function broadcastTerminalOutput(terminalId: string, data: string): void {
+  const payload = encodeStringPayload(data)
+  const frame = encodeOpcodeFrame(OPCODE_OUTPUT, terminalId, payload)
+  for (const [ws, client] of clients.entries()) {
+    if (!client.attachedTerminals.has(terminalId)) continue
+    if (client.pausedTerminals.has(terminalId)) {
+      // Skip — client is back-pressured. Mark stale so RESUME triggers a
+      // canonical snapshot rather than leaving the screen out of date.
+      client.staleTerminals.add(terminalId)
+      continue
+    }
+    try {
+      ws.send(frame)
+    } catch {
+      // Client might be disconnected
+    }
   }
 }
 
@@ -61,11 +83,63 @@ function sendTo(ws: WSContext, message: ServerMessage): void {
   }
 }
 
+// Send a fresh canonical snapshot to a single client. Used to resync after a
+// PAUSE/RESUME cycle where we dropped intermediate frames.
+function sendSnapshot(ws: WSContext, terminalId: string): void {
+  const ptyManager = getPTYManager()
+  const buffer = ptyManager.getBuffer(terminalId)
+  if (buffer === null) return
+  sendTo(ws, {
+    type: 'terminal:attached',
+    payload: { terminalId, buffer },
+  })
+}
+
+async function handleBinaryFrame(ws: WSContext, clientData: ClientData, raw: ArrayBuffer | Uint8Array): Promise<boolean> {
+  const buf = raw instanceof Uint8Array ? raw : new Uint8Array(raw)
+  if (buf.length === 0) return false
+  if (isJsonFrameByte(buf[0])) return false // hand back to JSON path
+
+  const frame = decodeOpcodeFrame(buf)
+  if (!frame) {
+    log.ws.warn('Malformed opcode frame', { byteLength: buf.length, firstByte: buf[0] })
+    return true
+  }
+
+  const ptyManager = getPTYManager()
+
+  switch (frame.opcode) {
+    case OPCODE_INPUT: {
+      const data = decodePayloadAsString(frame.payload)
+      ptyManager.write(frame.terminalId, data)
+      return true
+    }
+    case OPCODE_PAUSE: {
+      clientData.pausedTerminals.add(frame.terminalId)
+      return true
+    }
+    case OPCODE_RESUME: {
+      const wasPaused = clientData.pausedTerminals.delete(frame.terminalId)
+      const wasStale = clientData.staleTerminals.delete(frame.terminalId)
+      if (wasPaused && wasStale) {
+        // Send a canonical snapshot to resync after dropped frames.
+        sendSnapshot(ws, frame.terminalId)
+      }
+      return true
+    }
+    default:
+      log.ws.warn('Unknown opcode', { opcode: frame.opcode, terminalId: frame.terminalId })
+      return true
+  }
+}
+
 export const terminalWebSocketHandlers: WSEvents = {
   onOpen(evt, ws) {
     const clientData: ClientData = {
       id: crypto.randomUUID(),
       attachedTerminals: new Set(),
+      pausedTerminals: new Set(),
+      staleTerminals: new Set(),
     }
     clients.set(ws, clientData)
     log.ws.info('Client connected', { totalClients: clients.size })
@@ -106,6 +180,19 @@ export const terminalWebSocketHandlers: WSEvents = {
     if (!clientData) return
 
     try {
+      // Binary opcode frame fast-path (terminal:input, PAUSE, RESUME).
+      // JSON envelopes always start with '{' (0x7B); opcodes are 0x00..0x03.
+      if (evt.data instanceof ArrayBuffer || ArrayBuffer.isView(evt.data)) {
+        const handled = await handleBinaryFrame(
+          ws,
+          clientData,
+          evt.data as ArrayBuffer | Uint8Array
+        )
+        if (handled) return
+        // Otherwise fall through — Bun sometimes delivers text frames as
+        // Uint8Array; if the first byte was '{' we treat it as JSON below.
+      }
+
       const message: ClientMessage = JSON.parse(
         typeof evt.data === 'string' ? evt.data : new TextDecoder().decode(evt.data as ArrayBuffer)
       )

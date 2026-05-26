@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
 import { RootStore, type IRootStore, type StoreEnv } from './root-store'
 import { log } from '@/lib/logger'
+import {
+  OPCODE_OUTPUT,
+  decodeOpcodeFrame,
+  decodePayloadAsString,
+  isJsonFrameByte,
+} from '../../shared/terminal-protocol'
 
 // Re-export types
 export type { IRootStore } from './root-store'
@@ -95,9 +101,22 @@ export function StoreProvider({
     }
   }, [])
 
+  // Binary opcode-frame send for hot-path messages (INPUT, PAUSE, RESUME).
+  // Avoids JSON envelope overhead and matches the server's broadcastTerminalOutput
+  // path. Frames carry the terminalId inline; see shared/terminal-protocol.ts.
+  const sendBinary = useCallback((frame: Uint8Array) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(frame)
+    } else {
+      log.ws.warn('sendBinary dropped (WebSocket not open)', {
+        readyState: wsRef.current?.readyState ?? 'no socket',
+      })
+    }
+  }, [])
+
   // Create store once with environment
   if (!storeRef.current) {
-    const env: StoreEnv = { send, log }
+    const env: StoreEnv = { send, sendBinary, log }
     storeRef.current = RootStore.create({}, env)
   }
   const store = storeRef.current
@@ -119,6 +138,7 @@ export function StoreProvider({
       }
 
       const newWs = new WebSocket(wsUrl)
+      newWs.binaryType = 'arraybuffer'
       wsRef.current = newWs
 
       newWs.onopen = () => {
@@ -131,6 +151,22 @@ export function StoreProvider({
       newWs.onmessage = (event) => {
         if (!mounted) return
         try {
+          // Binary opcode frame fast-path (terminal:output). JSON envelopes
+          // always start with '{' (0x7B); opcodes are 0x00..0x03.
+          if (event.data instanceof ArrayBuffer) {
+            const view = new Uint8Array(event.data)
+            if (view.length > 0 && !isJsonFrameByte(view[0])) {
+              const frame = decodeOpcodeFrame(view)
+              if (frame && frame.opcode === OPCODE_OUTPUT) {
+                store.handleTerminalOutput(frame.terminalId, decodePayloadAsString(frame.payload))
+                return
+              }
+            }
+            // Fallthrough: JSON envelope delivered as binary frame.
+            const text = new TextDecoder().decode(view)
+            store.handleMessage(JSON.parse(text))
+            return
+          }
           const message = JSON.parse(event.data)
           store.handleMessage(message)
         } catch (error) {
