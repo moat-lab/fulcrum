@@ -16,7 +16,7 @@ import { initPTYManager, setBroadcastDestroyed } from './terminal/pty-instance'
 import {
   terminalWebSocketHandlers,
   broadcast,
-  broadcastToTerminal,
+  broadcastTerminalOutput,
 } from './websocket/terminal-ws'
 import { startPRMonitor, stopPRMonitor } from './services/pr-monitor'
 import { startMetricsCollector, stopMetricsCollector } from './services/metrics-collector'
@@ -217,11 +217,7 @@ async function main() {
   // Initialize PTY manager with broadcast callbacks
   ptyManager = initPTYManager({
     onData: (terminalId, data) => {
-      log.desktop.info('PTY onData', { terminalId, dataLen: data.length })
-      broadcastToTerminal(terminalId, {
-        type: 'terminal:output',
-        payload: { terminalId, data },
-      })
+      broadcastTerminalOutput(terminalId, data)
     },
     onExit: (terminalId, exitCode, status) => {
       broadcast({

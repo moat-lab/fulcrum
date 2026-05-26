@@ -5,7 +5,7 @@ import { initPTYManager, setBroadcastDestroyed } from './terminal/pty-instance'
 import {
   terminalWebSocketHandlers,
   broadcast,
-  broadcastToTerminal,
+  broadcastTerminalOutput,
 } from './websocket/terminal-ws'
 import { ensureFnoxBootstrap, ensureLatestConfig, getSettingByKey, initFnoxConfig } from './lib/settings'
 import { startPRMonitor, stopPRMonitor } from './services/pr-monitor'
@@ -105,10 +105,7 @@ if (!dbCheck.available) {
 // Initialize PTY manager with broadcast callbacks
 const ptyManager = initPTYManager({
   onData: (terminalId, data) => {
-    broadcastToTerminal(terminalId, {
-      type: 'terminal:output',
-      payload: { terminalId, data },
-    })
+    broadcastTerminalOutput(terminalId, data)
   },
   onExit: (terminalId, exitCode, status) => {
     broadcast({

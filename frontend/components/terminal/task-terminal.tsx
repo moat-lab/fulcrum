@@ -48,6 +48,12 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
   const [isCreating, setIsCreating] = useState(false)
   const [isStartingAgent, setIsStartingAgent] = useState(false)
   const [xtermOpened, setXtermOpened] = useState(false)
+  // Bumps each time we successfully fit the terminal to its container. The
+  // createTerminal effect depends on this so it can re-evaluate once dims are
+  // valid — without this it might first run with default 80×24 (before the
+  // initial fit landed), spawn the PTY at that size, and leave Claude Code
+  // rendering into a narrow column until the user manually resizes.
+  const [fitTick, setFitTick] = useState(0)
   const [agentNotFound, setAgentNotFound] = useState<AgentType | null>(null)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -138,18 +144,37 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
     fitAddonRef.current = fitAddon
 
     // Mark xterm as opened synchronously - this gates terminal creation
-    // We can get cols/rows immediately after open(), no need to wait for rAF
     setXtermOpened(true)
 
-    // Initial fit after container is sized
-    requestAnimationFrame(() => {
+    // Initial fit after container is sized. Guard against NaN dimensions
+    // from a zero-size container (ResizablePanel pre-layout, hidden tab) —
+    // calling .fit() with NaN sets xterm to a bogus geometry that doesn't
+    // match the eventual PTY size, causing render overlap once visible.
+    // Returns true on success so the caller can decide whether to keep
+    // polling for layout to settle.
+    const safeFit = (): boolean => {
+      const proposed = fitAddon.proposeDimensions()
+      if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) return false
+      if (proposed.cols < 2 || proposed.rows < 2) return false
       fitAddon.fit()
-    })
+      setFitTick((n) => n + 1)
+      return true
+    }
+    // Attempt the first fit synchronously so the createTerminal effect (gated
+    // on xtermOpened + fitTick) can read fitted dims as soon as possible —
+    // otherwise it reads xterm's default 80×24, spawns the PTY at that size,
+    // and leaves Claude Code rendering inside a narrow column until the user
+    // manually resizes the panel.
+    if (!safeFit()) {
+      requestAnimationFrame(safeFit)
+    }
 
-    // Schedule additional fit to catch async layout (ResizablePanel timing)
+    // Schedule additional fit to catch async layout (ResizablePanel timing).
     const refitTimeout = setTimeout(() => {
-      fitAddon.fit()
-      term.refresh(0, term.rows - 1)
+      safeFit()
+      if (Number.isFinite(term.rows) && term.rows >= 1) {
+        term.refresh(0, term.rows - 1)
+      }
     }, 100)
 
     // xterm creates a hidden textarea for keyboard input - track its focus
@@ -178,8 +203,20 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
   const doFit = useCallback(() => {
     if (!fitAddonRef.current || !termRef.current) return
 
+    // Guard against NaN/zero dimensions from FitAddon when the container is
+    // hidden or sized at zero. Propagating a bogus cols/rows to the server
+    // sets the PTY to a geometry that no longer matches what xterm draws,
+    // producing the "overlapping characters" rendering bug after the panel
+    // becomes visible again.
+    const proposed = fitAddonRef.current.proposeDimensions()
+    if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) {
+      return
+    }
+    if (proposed.cols < 2 || proposed.rows < 2) return
+
     fitAddonRef.current.fit()
     const { cols, rows } = termRef.current
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) return
 
     if (terminalId) {
       resizeTerminal(terminalId, cols, rows)
@@ -190,8 +227,17 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
   useEffect(() => {
     if (!containerRef.current) return
 
+    // Debounce resize triggers through one 50 ms window. ResizeObserver,
+    // IntersectionObserver, visibilitychange and window-resize can all fire
+    // in close succession; coalescing them avoids racing the server's PTY
+    // resize calls and leaving the TUI drawing at an intermediate geometry.
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined
     const handleResize = () => {
-      requestAnimationFrame(doFit)
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        resizeTimer = undefined
+        requestAnimationFrame(doFit)
+      }, 50)
     }
 
     window.addEventListener('resize', handleResize)
@@ -225,6 +271,7 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
     visibilityObserver.observe(containerRef.current)
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
       window.removeEventListener('resize', handleResize)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       resizeObserver.disconnect()
@@ -271,6 +318,33 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
 
     // Create terminal only once
     if (!createdTerminalRef.current && termRef.current) {
+      // Fit *synchronously* against the container before reading cols/rows.
+      // xtermOpened is set immediately after term.open(), but the initial fit
+      // runs later in rAF — so without this we'd send the default 80×24 to
+      // the server, the PTY would spawn at that size, Claude Code (or any
+      // TUI) would render its welcome screen at 80 cols, and the user would
+      // see a narrow-column UI until they manually resize the panel.
+      // If proposeDimensions can't yield valid dims yet (zero-size container,
+      // pre-layout), bail and let the React state/effects re-fire later.
+      const fitAddon = fitAddonRef.current
+      if (fitAddon) {
+        const proposed = fitAddon.proposeDimensions()
+        if (
+          !proposed ||
+          !Number.isFinite(proposed.cols) ||
+          !Number.isFinite(proposed.rows) ||
+          proposed.cols < 2 ||
+          proposed.rows < 2
+        ) {
+          log.taskTerminal.debug('Deferring terminal create: container not laid out yet', {
+            cwd,
+            proposed,
+          })
+          return
+        }
+        fitAddon.fit()
+      }
+
       log.taskTerminal.info('Creating new terminal', {
         reason: 'no_existing_terminal_for_cwd',
         cwd,
@@ -309,7 +383,7 @@ export function TaskTerminal({ taskName, cwd, taskId, className, agent = 'claude
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- startup props are captured once at creation time
-  }, [connected, cwd, xtermOpened, terminalsLoaded, terminals, taskName, createTerminal])
+  }, [connected, cwd, xtermOpened, fitTick, terminalsLoaded, terminals, taskName, createTerminal])
 
   // Update terminalId when terminal appears in list or when temp ID is replaced with real ID
   // This handles the optimistic update flow where tempId → realId
