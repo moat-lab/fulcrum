@@ -48,19 +48,27 @@ function hasAncestor(pid: number, ancestor: number, maxDepth = 16): boolean {
 }
 
 /**
- * Find every PID whose cmdline contains `searchArg`.
- * Same shape as findProcessesByArg in dtach-service.ts but local to avoid
- * circular import.
+ * Find every `dtach -a <socketPath>` process. We require both the `-a` flag
+ * and the socket path so we don't pick up the orphaned `dtach -n` master
+ * (parent of the actual shell, ppid=systemd, fd 0 is the master PTY end —
+ * stty against that fails).
  */
-function findPidsByArg(searchArg: string): number[] {
+function findDtachAttachPids(socketPath: string): number[] {
   if (!existsSync('/proc')) return []
   const pids: number[] = []
   try {
     for (const dir of readdirSync('/proc')) {
       if (!/^\d+$/.test(dir)) continue
       try {
+        // cmdline is NUL-separated argv. Look for a "-a" arg followed by the
+        // socket path arg — that's the unique signature of an attach client.
         const cmdline = readFileSync(`/proc/${dir}/cmdline`, 'utf-8')
-        if (cmdline.includes(searchArg)) pids.push(parseInt(dir, 10))
+        const args = cmdline.split('\0')
+        if (!args[0]?.endsWith('dtach')) continue
+        const aIdx = args.indexOf('-a')
+        if (aIdx < 0) continue
+        if (args[aIdx + 1] !== socketPath) continue
+        pids.push(parseInt(dir, 10))
       } catch {
         // process exited between readdir and readFile
       }
@@ -72,14 +80,14 @@ function findPidsByArg(searchArg: string): number[] {
 }
 
 /**
- * Identify the herdr-side dtach -a process for a given socket path: it's any
+ * Identify the herdr-side dtach -a process for a given socket path: it's the
  * `dtach -a <socketPath>` whose ancestor chain does NOT contain the fulcrum
  * server (this Bun process). There can be at most one such process per socket
  * in practice (one browser, one herdr mirror).
  */
 function findMirrorDtachPid(socketPath: string): number | null {
   const selfPid = process.pid
-  const candidates = findPidsByArg(socketPath)
+  const candidates = findDtachAttachPids(socketPath)
   for (const pid of candidates) {
     if (!hasAncestor(pid, selfPid)) return pid
   }
