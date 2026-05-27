@@ -56,6 +56,14 @@ export const TerminalModel = types
      */
     cursorVisible: true,
     /**
+     * Whether the terminal is currently in the alternate screen buffer
+     * (CSI ?1049h / legacy ?47h / ?1047h). TUI apps like vim, less, htop, and
+     * Claude Code's fullscreen UIs use the alt buffer. Tracked so other
+     * behaviors can branch on it; the renderer-refresh on alt-screen exit is
+     * triggered directly by the byte-stream match in handleTerminalOutput.
+     */
+    inAltScreen: false,
+    /**
      * Promise chain serializing all xterm.write / reset+replay operations for
      * this terminal. xterm.write() returns immediately and parses asynchronously,
      * so a synchronous reset() between two queued writes will clear the screen
@@ -138,6 +146,11 @@ export const TerminalModel = types
     /** Set cursor visibility state (tracked from terminal escape sequences) */
     setCursorVisible(visible: boolean) {
       self.cursorVisible = visible
+    },
+
+    /** Set alternate-screen-buffer state (tracked from CSI ?1049h/l and legacy variants). */
+    setInAltScreen(inAlt: boolean) {
+      self.inAltScreen = inAlt
     },
 
     /** Set the cleanup function for xterm attachment */

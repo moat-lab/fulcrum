@@ -880,6 +880,18 @@ export const RootStore = types
         if (data.includes(`${ESC}[?25h`)) terminal.setCursorVisible(true)
         if (data.includes(`${ESC}[?25l`)) terminal.setCursorVisible(false)
 
+        // Track alt-screen mode (DECSET 1049 / legacy 47 / 1047). On exit
+        // the DOM renderer can leave stale row content painted from the alt
+        // buffer; forcing a viewport refresh after the write callback repaints
+        // from the now-correct buffer state and clears the artifact. (Repro:
+        // run a TUI like vim or Claude Code's fullscreen UI, then exit it —
+        // without this, characters from both renders appear interleaved.)
+        const altEnterRe = /\x1b\[\?(?:1049|1047|47)h/
+        const altExitRe = /\x1b\[\?(?:1049|1047|47)l/
+        if (altEnterRe.test(data)) terminal.setInAltScreen(true)
+        const altExited = altExitRe.test(data)
+        if (altExited) terminal.setInAltScreen(false)
+
         // Flow-control bookkeeping. We track bytes outstanding in xterm.write
         // callbacks and signal PAUSE/RESUME upstream so a fast PTY producer
         // can't outrun the parser. Watermarks chosen to match ttyd's pattern.
@@ -904,6 +916,15 @@ export const RootStore = types
                 if (terminal.cursorVisible && self.autoScrollToBottom) {
                   requestAnimationFrame(() => {
                     xterm.scrollToBottom()
+                  })
+                }
+                if (altExited) {
+                  requestAnimationFrame(() => {
+                    try {
+                      xterm.refresh(0, xterm.rows - 1)
+                    } catch {
+                      // xterm may be torn down between write callback and rAF; ignore.
+                    }
                   })
                 }
                 resolve()
