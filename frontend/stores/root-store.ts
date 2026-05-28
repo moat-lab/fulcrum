@@ -886,8 +886,8 @@ export const RootStore = types
         // from the now-correct buffer state and clears the artifact. (Repro:
         // run a TUI like vim or Claude Code's fullscreen UI, then exit it —
         // without this, characters from both renders appear interleaved.)
-        const altEnterRe = /\x1b\[\?(?:1049|1047|47)h/
-        const altExitRe = /\x1b\[\?(?:1049|1047|47)l/
+        const altEnterRe = new RegExp(`${ESC}\\[\\?(?:1049|1047|47)h`)
+        const altExitRe = new RegExp(`${ESC}\\[\\?(?:1049|1047|47)l`)
         if (altEnterRe.test(data)) terminal.setInAltScreen(true)
         const altExited = altExitRe.test(data)
         if (altExited) terminal.setInAltScreen(false)
