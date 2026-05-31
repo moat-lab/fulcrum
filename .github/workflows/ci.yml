@@ -10,6 +10,8 @@ jobs:
   check:
     name: Lint & Typecheck
     runs-on: [self-hosted, linux, vctcn]
+    container:
+      image: catthehacker/ubuntu:act-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,7 +30,7 @@ jobs:
         run: bun install
 
       - name: Run lint with auto-fix
-        run: bunx eslint . --fix
+        run: NODE_OPTIONS='--max-old-space-size=3072' bunx eslint frontend/ server/ cli/src/ shared/ plugins/ --fix
 
       - name: Commit lint fixes
         uses: stefanzweifel/git-auto-commit-action@v5
@@ -43,7 +45,10 @@ jobs:
 
   test:
     name: Test
+    needs: check
     runs-on: [self-hosted, linux, vctcn]
+    container:
+      image: catthehacker/ubuntu:act-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
