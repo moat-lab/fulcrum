@@ -9,32 +9,40 @@ on:
 jobs:
   build:
     name: Build and push image
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
+    runs-on: [self-hosted, linux, vctcn, netbird]
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
+    env:
+      REGISTRY: registry.237575.xyz
+      IMAGE: registry.237575.xyz/fulcrum/app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          driver-opts: network=host
 
       - name: Resolve image tag
         id: meta
         run: |
-          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "owner_lc=${owner_lc}" | tee -a "$GITHUB_OUTPUT"
-          echo "tag=ghcr.io/${owner_lc}/fulcrum:${{ github.sha }}" | tee -a "$GITHUB_OUTPUT"
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::12}"
+          echo "tag=${IMAGE}:${GITHUB_SHA}" | tee -a "$GITHUB_OUTPUT"
+          echo "short_tag=${IMAGE}:${short_sha}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Get Keycloak access token
+        id: registry-token
+        uses: Mouriya-Emma/keycloak-token-action@v1
+        with:
+          keycloak-url: https://keycloak.237575.xyz
+          realm: registry
+          client-id: registry
+          client-secret: ${{ secrets.REGISTRY_KEYCLOAK_CLIENT_SECRET }}
+
+      - name: Login to registry.237575.xyz
+        run: echo "${{ steps.registry-token.outputs.access-token }}" | docker login "$REGISTRY" -u sa-registry --password-stdin
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -43,14 +51,20 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.tag }}
-            ghcr.io/${{ steps.meta.outputs.owner_lc }}/fulcrum:latest
+            ${{ steps.meta.outputs.short_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Pull verification
+        run: |
+          set -euo pipefail
+          docker pull "${{ steps.meta.outputs.tag }}"
+          docker image inspect "${{ steps.meta.outputs.tag }}" >/dev/null
 
   deploy:
     name: Deploy Komodo stack
     needs: build
-    runs-on: [self-hosted, linux, vctcn]
+    runs-on: [self-hosted, linux, vctcn, netbird]
     steps:
       - name: Komodo UpdateStack — pin image tag
         env:
