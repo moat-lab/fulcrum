@@ -10,6 +10,10 @@ jobs:
   check:
     name: Lint & Typecheck
     runs-on: [self-hosted, linux, vctcn]
+    concurrency:
+      group: ci-autocommit-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: false
+      queue: max
     container:
       image: catthehacker/ubuntu:act-24.04
     steps:
