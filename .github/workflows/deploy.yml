@@ -65,6 +65,12 @@ jobs:
     name: Deploy Komodo stack
     needs: build
     runs-on: [self-hosted, linux, vctcn, netbird]
+    # homelab-apps ResourceSync also writes Stack fulcrum. This repo-scoped group
+    # cannot serialize that cross-repo race: https://github.com/mouriya-s-lab/garm-edge-incus/issues/15
+    concurrency:
+      group: komodo-stack-fulcrum
+      cancel-in-progress: false
+      queue: max
     steps:
       - name: Komodo UpdateStack — pin image tag
         env:
